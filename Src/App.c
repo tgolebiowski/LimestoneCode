@@ -43,10 +43,6 @@ typedef struct MeshData {
 	uint16_t vertexCount;
 }MeshData;
 
-uint16_t SCREEN_WIDTH = 640;
-uint16_t SCREEN_HEIGHT = 480;
-uint16_t mSecsPerFrame = 60 / 1000;
-
 static Matrix4 spinMatrix;
 static ShaderProgram myProgram;
 static MeshData tinyMeshData;
@@ -131,30 +127,30 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     //Read data for each mesh
     for( uint8_t i = 0; i < numMeshes; i++ ) {
         const struct aiMesh* mesh = scene->mMeshes[i];
-        printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
+        //printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
 
         //Read vertex data
         uint16_t vertexCount = mesh->mNumVertices;
         data->vertexData = calloc( 1, vertexCount * sizeof(GLfloat) * 3 );    //Allocate space for vertex buffer
-        printf("Vertex Pointer data: %p\n", data->vertexData );
+        //printf("Vertex Pointer data: %p\n", data->vertexData );
         for( uint16_t j = 0; j < vertexCount; j++ ) {
             data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
             data->vertexData[j * 3 + 1] = mesh->mVertices[j].z * 50.0f;
             data->vertexData[j * 3 + 2] = mesh->mVertices[j].y * 50.0f;
-            printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
+            //printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
         }
         data->vertexCount = vertexCount;
 
         //Read index data
         uint16_t indexCount = mesh->mNumFaces * 3;
         data->indexData = calloc( 1, indexCount * sizeof(GLuint) );    //Allocate space for index buffer
-        printf("Index Pointer data: %p\n", data->indexData );
+        //printf("Index Pointer data: %p\n", data->indexData );
         for( uint16_t j = 0; j < mesh->mNumFaces; j++ ) {
             const struct aiFace face = mesh->mFaces[j];
             data->indexData[j * 3 + 0] = face.mIndices[0];
             data->indexData[j * 3 + 1] = face.mIndices[1];
             data->indexData[j * 3 + 2] = face.mIndices[2];
-            printf( "Index Set: %d, %d, %d\n", data->indexData[j * 3 + 0], data->indexData[j * 3 + 1], data->indexData[j * 3 + 2]);
+            //printf( "Index Set: %d, %d, %d\n", data->indexData[j * 3 + 0], data->indexData[j * 3 + 1], data->indexData[j * 3 + 2]);
         }
         data->indexCount = indexCount;
     }
@@ -166,17 +162,15 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
 void CreateRenderMesh(OpenGLMesh* renderMesh, MeshData* meshData) {
     //Create VBO
-    printf( "Gonna gen VBO @ ptr: %p\n", &renderMesh->vbo );
     glGenBuffers( 1, &renderMesh->vbo );
-    printf( "Created VBO with ptr value: %d\n", renderMesh->vbo );
     glBindBuffer( GL_ARRAY_BUFFER, renderMesh->vbo );
-    printf( "Vertex Array Data - count %d, pointer: %p\n", meshData->vertexCount, meshData->vertexData );
+    //printf( "Vertex Array Data - count %d, pointer: %p\n", meshData->vertexCount, meshData->vertexData );
     glBufferData( GL_ARRAY_BUFFER, 3 * meshData->vertexCount * sizeof(GLfloat), meshData->vertexData, GL_STATIC_DRAW );
 
     //Create IBO
     glGenBuffers( 1, &renderMesh->ibo );
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, renderMesh->ibo );
-    printf( "Index Array Data - count %d, pointer: %p\n", meshData->indexCount, meshData->indexData );
+    //printf( "Index Array Data - count %d, pointer: %p\n", meshData->indexCount, meshData->indexData );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, meshData->indexCount * sizeof(GLuint), meshData->indexData, GL_STATIC_DRAW );
 
     glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 

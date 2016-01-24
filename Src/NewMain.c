@@ -7,6 +7,11 @@
 
 bool running = true;
 bool isFullscreen = false;
+
+uint16_t SCREEN_WIDTH = 640;
+uint16_t SCREEN_HEIGHT = 480;
+uint16_t mSecsPerFrame = 1000 / 60;
+
 typedef struct AppInfo {
 	HINSTANCE appInstance;
 	HWND hwnd;
@@ -162,9 +167,17 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 			TranslateMessage( &Msg );
 			DispatchMessage( &Msg );
 		}
+
+		DWORD startTime = GetTickCount();
 		Update();
 		Render();
 		SwapBuffers( appInfo.deviceContext );
+		DWORD endTime = GetTickCount();
+		DWORD computeTime = endTime - startTime;
+		if(computeTime < mSecsPerFrame ) {
+			Sleep(mSecsPerFrame - computeTime);
+		}
+
 	} while( running );
 	return Msg.wParam;
 }
