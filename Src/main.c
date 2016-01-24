@@ -14,11 +14,9 @@
 
 #include "Math3D.c"
 
-uint16_t SCREEN_WIDTH = 640;
-uint16_t SCREEN_HEIGHT = 480;
-uint16_t mSecsPerFrame = 60 / 1000;
-SDL_Window* window;
-SDL_GLContext gContext;
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#include "stb_image.h"
 
 typedef struct ShaderProgram {
     GLuint programID;
@@ -29,6 +27,12 @@ typedef struct ShaderProgram {
     GLchar* fragShaderSrc;
     GLchar uniformNameBuffer[512];
 }ShaderProgram;
+
+typedef struct OpenGLTexture {
+    GLuint textureID;
+    uint16_t width;
+    uint16_t height;
+}OpenGLTexture;
 
 typedef struct OpenGLMesh {
 	Matrix4 m;
@@ -44,81 +48,17 @@ typedef struct MeshData {
 	uint16_t vertexCount;
 }MeshData;
 
+uint16_t SCREEN_WIDTH = 640;
+uint16_t SCREEN_HEIGHT = 480;
+uint16_t mSecsPerFrame = 60 / 1000;
+SDL_Window* window;
+SDL_GLContext gContext;
+
 Matrix4 spinMatrix;
 ShaderProgram myProgram;
 MeshData tinyMeshData;
 OpenGLMesh renderMesh;
-
-GLint vbo = -1;
-GLint ibo = -1;
-
-void LoadMeshFromFile( MeshData* data ) {
-	// Start the import on the given file with some example postprocessing
-    // Usually - if speed is not the most important aspect for you - you'll t
-    // probably to request more postprocessing than we do in this example.
-    const char* fileName = "Data/Pointy.fbx";
-    unsigned int myFlags = 
-    aiProcess_CalcTangentSpace         | // calculate tangents and bitangents if possible
-	aiProcess_JoinIdenticalVertices    | // join identical vertices/ optimize indexing
-    //aiProcess_ValidateDataStructure  | // perform a full validation of the loader's output
-    aiProcess_Triangulate              | // Ensure all verticies are triangulated (each 3 vertices are triangle)
-    //aiProcess_ConvertToLeftHanded      | // convert everything to D3D left handed space (by default right-handed, for OpenGL)
-	aiProcess_SortByPType              | // ?
-	aiProcess_ImproveCacheLocality     | // improve the cache locality of the output vertices
-	aiProcess_RemoveRedundantMaterials | // remove redundant materials
-	aiProcess_FindDegenerates          | // remove degenerated polygons from the import
-	aiProcess_FindInvalidData          | // detect invalid model data, such as invalid normal vectors
-	aiProcess_GenUVCoords              | // convert spherical, cylindrical, box and planar mapping to proper UVs
-	aiProcess_TransformUVCoords        | // preprocess UV transformations (scaling, translation ...)
-	aiProcess_FindInstances            | // search for instanced meshes and remove them by references to one master
-	aiProcess_LimitBoneWeights         | // limit bone weights to 4 per vertex
-	aiProcess_OptimizeMeshes           | // join small meshes, if possible;
-	aiProcess_SplitByBoneCount         | // split meshes with too many bones. Necessary for our (limited) hardware skinning shader
-	0;
-
-    const struct aiScene* scene = aiImportFile( fileName, myFlags );
-
-    // If the import failed, report it
-    if( !scene ) {
-        //DoTheErrorLogging( aiGetErrorString());
-        printf( "Failed to import \n" );
-        //return false;
-    }
-    // Now we can access the file's contents
-    printf( "Yay, loaded file: %s\n", fileName );
-    printf( "%d Meshes in file\n", scene->mNumMeshes );
-    for( uint8_t i = 0; i < scene->mNumMeshes; i++ ) {
-    	const struct aiMesh* mesh = scene->mMeshes[i];
-
-     	printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
-
-     	uint16_t vertexCount = mesh->mNumVertices;
-     	data->vertexData = calloc( 1, vertexCount * sizeof(GLfloat) * 3 );
-     	//printf("Vertex Pointer data: %p\n", data->vertexData );
-     	for( uint16_t j = 0; j < vertexCount; j++ ) {
-     		data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
-     		data->vertexData[j * 3 + 1] = mesh->mVertices[j].z * 50.0f;
-     		data->vertexData[j * 3 + 2] = mesh->mVertices[j].y * 50.0f;
-     		//printf( "Vertex Data: %f, %f, %f\n", data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
-     	}
-     	data->vertexCount = vertexCount;
-
-     	uint16_t indexCount = mesh->mNumFaces * 3;
-     	data->indexData = calloc( 1, indexCount * sizeof(GLuint) );
-     	//printf("Index Pointer data: %p\n", data->indexData );
-     	for( uint16_t j = 0; j < mesh->mNumFaces; j++ ) {
-     		const struct aiFace face = mesh->mFaces[j];
-     		data->indexData[j * 3 + 0] = face.mIndices[0];
-     		data->indexData[j * 3 + 1] = face.mIndices[1];
-     		data->indexData[j * 3 + 2] = face.mIndices[2];
-     		//printf( "Index Set: %d, %d, %d\n", data->indexData[j * 3 + 0], data->indexData[j * 3 + 1], data->indexData[j * 3 + 2]);
-     	}
-     	data->indexCount = indexCount;
-    }
-
-    // We're done. Release all resources associated with this import
-    aiReleaseImport( scene);
-}
+OpenGLTexture myTexture;
 
 bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
 	//Set viewport
@@ -138,11 +78,9 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     //Initialize clear color
     glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
 
-    //Enable texturing
-    glEnable( GL_TEXTURE_2D );
-
     //Set blending
     glEnable( GL_BLEND );
+    glHint(GL_PERSPECTIVE_CORRECTION_HINT , GL_NICEST);
     glDisable( GL_DEPTH_TEST );
     glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
 
@@ -214,6 +152,118 @@ bool Init() {
     	return false;
     }
 
+    return true;
+}
+
+bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
+    //Get ptr to currently bound ptr (probably SDL's screen/frame texture buffer whatever)
+    GLint prevBoundTex;
+    glGetIntegerv( GL_TEXTURE_BINDING_2D, &prevBoundTex );
+    printf( "Previously Bound Texture Ptr: %d\n", prevBoundTex );
+
+    //Load data from file
+    uint8_t n;
+    unsigned char* data = stbi_load( fileName, &texData->width, &texData->height, &n, 0 );
+    if( data == NULL ) {
+        printf( "Could not load file: %s\n", fileName );
+        return false;
+    }
+    printf( "Loaded file: %s\n", fileName );
+    printf( "Width: %d, Height: %d, Components per channel: %d\n", texData->width, texData->height, n );
+
+    //Generate Texture and bind pointer
+    glGenTextures( 1, &texData->textureID );
+    glBindTexture( GL_TEXTURE_2D, texData->textureID );
+
+    //Create Texture in Memory, parameters in order:
+    //1 - Which Texture binding
+    //2 - # of MipMaps
+    //3 - # of components per pixel, 4 means RGBA, 3 means RGB & so on
+    //4 - Texture Width
+    //5 - Texture Height
+    //6 - OpenGL Reference says this value must be 0 :I great library
+    //7 - How are pixels organized
+    //8 - size of each component
+    //9 - ptr to texture data
+    glTexImage2D( GL_TEXTURE_2D, 0, n, texData->width, texData->height, 0, GL_RGB, GL_UNSIGNED_BYTE, data );
+
+    //Set image filtering
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR ); // Use linear interoplation when the texture is squished
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST ); // Use nearest filter when texture is stretched
+
+    printf( "Closing Image\n" );
+    stbi_image_free( data );
+
+    glBindTexture( GL_TEXTURE_2D, prevBoundTex );
+    return true;
+}
+
+bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
+    // Start the import on the given file with some example postprocessing
+    // Usually - if speed is not the most important aspect for you - you'll t
+    // probably to request more postprocessing than we do in this example.
+    unsigned int myFlags = 
+    aiProcess_CalcTangentSpace         | // calculate tangents and bitangents if possible
+    aiProcess_JoinIdenticalVertices    | // join identical vertices/ optimize indexing
+    aiProcess_Triangulate              | // Ensure all verticies are triangulated (each 3 vertices are triangle)
+    aiProcess_ImproveCacheLocality     | // improve the cache locality of the output vertices
+    aiProcess_FindDegenerates          | // remove degenerated polygons from the import
+    aiProcess_FindInvalidData          | // detect invalid model data, such as invalid normal vectors
+    aiProcess_TransformUVCoords        | // preprocess UV transformations (scaling, translation ...)
+    aiProcess_LimitBoneWeights         | // limit bone weights to 4 per vertex
+    aiProcess_OptimizeMeshes           | // join small meshes, if possible;
+    0;
+
+    const struct aiScene* scene = aiImportFile( fileName, myFlags );
+
+    // If the import failed, report it
+    if( !scene ) {
+        //DoTheErrorLogging( aiGetErrorString());
+        printf( "Failed to import %s\n", fileName );
+        return false;
+    }
+
+    // Now we can access the file's contents
+    uint16_t numMeshes = scene->mNumMeshes;
+    printf( "Yay, loaded file: %s\n", fileName );
+    //printf( "%d Meshes in file\n", numMeshes );
+    if(numMeshes == 0) {
+        return false;
+    }
+
+    //Read data for each mesh
+    for( uint8_t i = 0; i < numMeshes; i++ ) {
+        const struct aiMesh* mesh = scene->mMeshes[i];
+        //printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
+
+        //Read vertex data
+        uint16_t vertexCount = mesh->mNumVertices;
+        data->vertexData = calloc( 1, vertexCount * sizeof(GLfloat) * 3 );    //Allocate space for vertex buffer
+        //printf("Vertex Pointer data: %p\n", data->vertexData );
+        for( uint16_t j = 0; j < vertexCount; j++ ) {
+            data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
+            data->vertexData[j * 3 + 1] = mesh->mVertices[j].z * 50.0f;
+            data->vertexData[j * 3 + 2] = mesh->mVertices[j].y * 50.0f;
+            //printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
+        }
+        data->vertexCount = vertexCount;
+
+        //Read index data
+        uint16_t indexCount = mesh->mNumFaces * 3;
+        data->indexData = calloc( 1, indexCount * sizeof(GLuint) );    //Allocate space for index buffer
+        //printf("Index Pointer data: %p\n", data->indexData );
+        for( uint16_t j = 0; j < mesh->mNumFaces; j++ ) {
+            const struct aiFace face = mesh->mFaces[j];
+            data->indexData[j * 3 + 0] = face.mIndices[0];
+            data->indexData[j * 3 + 1] = face.mIndices[1];
+            data->indexData[j * 3 + 2] = face.mIndices[2];
+            //printf( "Index Set: %d, %d, %d\n", data->indexData[j * 3 + 0], data->indexData[j * 3 + 1], data->indexData[j * 3 + 2]);
+        }
+        data->indexCount = indexCount;
+    }
+
+    // We're done. Release all resources associated with this import
+    aiReleaseImport( scene);
     return true;
 }
 
@@ -324,7 +374,7 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
         printf( "Could not compile Vertex Shader\n" );
         printShaderLog( vertexShader );
     } else {
-        printf( "Vertex Shader compiled\n" );
+        printf( "Vertex Shader %s compiled\n", vertShaderFile );
         //Actually attach it if it compiled
         glAttachShader( program->programID, vertexShader );
     }
@@ -344,7 +394,7 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
         printf( "Unable to compile fragment shader\n" );
         printShaderLog( fragShader );
     } else {
-        printf( "Frag Shader compiled\n" );
+        printf( "Frag Shader %s compiled\n", fragShaderFile );
         //Actually attach it if it compiled
         glAttachShader( program->programID, fragShader );
     }
@@ -356,8 +406,6 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     glGetProgramiv( program->programID, GL_LINK_STATUS, &compiled );
     if( compiled != GL_TRUE ) {
         printf( "Error linking program\n" );
-    }else {
-    	printf( "Shader Linked\n" );
     }
 
     uintptr_t nameBufferOffset = 0;
@@ -383,11 +431,15 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     	memcpy(&program->uniformNameBuffer[nameBufferOffset], &name[0], name_len * sizeof(char));
     	nameBufferOffset += name_len + 1;
 
-        printf("Got info for Shader Uniform: %s\n", name);
+        //printf("Got info for Shader Uniform: %s\n", name);
     }
 
     glDeleteShader( vertexShader ); 
     glDeleteShader( fragShader );
+}
+
+void LoadData() {
+
 }
 
 void Update() {
@@ -395,6 +447,10 @@ void Update() {
 }
 
 void Render() {
+
+    //Enable texturing
+    glEnable( GL_TEXTURE_2D );
+
 	//Clear color buffer & depth buffer
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	//Clear model view matrix info
@@ -405,34 +461,19 @@ void Render() {
 }
 
 int main(int argc, char** argv) {
-	if(!Init()) {
+    LoadTextureFromFile( &myTexture, "Data/Checkerboard.png" );
+    if(!Init()) {
 		return 0;
 	}
 	printf("SDL setup seems to have worked.\n");
 
-	//VBO data
-    GLfloat vertexData[] =
-    {
-        -50.0f, -50.0f, 0.0f,
-        50.0f, -50.0f, 0.0f,
-        0.0f,  50.0f, 0.0f
-    };
-    uint16_t vertexCount = 3;
-
-    //IBO data
-    GLuint indexData[] = { 0, 1, 2 };
-    uint16_t indexCount = 3;
-
-    //tinyMeshData.vertexCount = vertexCount;
-    //tinyMeshData.indexCount = indexCount;
-    //tinyMeshData.vertexData = &vertexData;
-    //tinyMeshData.indexData = &indexData;
-
-    LoadMeshFromFile( &tinyMeshData );
+    LoadMeshFromFile( &tinyMeshData, "Data/Pointy.fbx" );
     CreateRenderMesh( &renderMesh, &tinyMeshData );
     CreateShader( &myProgram, "Data/Vert.vert", "Data/Frag.frag" );
-    Identity( &renderMesh.m );
 
+    printf( "Loading and creation complete\n" );
+
+    Identity( &renderMesh.m );
 	const float spinSpeed = 3.1415926 / 64.0f;
     SetRotation( &spinMatrix, 0.0f, 1.0f, 0.0f, spinSpeed );
 
