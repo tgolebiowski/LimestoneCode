@@ -18,42 +18,17 @@ static AppInfo appInfo;
 
 LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 	switch (uMsg) {
-		case WM_CREATE:
-		{
-			PIXELFORMATDESCRIPTOR pfd = {
-				sizeof(PIXELFORMATDESCRIPTOR),
-				1,
-			    PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
-			    PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
-			    32,                        //Colordepth of the framebuffer.
-			    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-			    24,                        //Number of bits for the depthbuffer
-			    8,                        //Number of bits for the stencilbuffer
-			    0,                        //Number of Aux buffers in the framebuffer.
-			    PFD_MAIN_PLANE,
-			    0, 0, 0, 0
-			};
-
-			appInfo.deviceContext = GetDC(hWnd);
-
-			int  letWindowsChooseThisPixelFormat;
-			letWindowsChooseThisPixelFormat = ChoosePixelFormat( appInfo.deviceContext, &pfd ); 
-			SetPixelFormat( appInfo.deviceContext, letWindowsChooseThisPixelFormat, &pfd );
-
-			appInfo.openglRenderContext = wglCreateContext(appInfo.deviceContext);
-			wglMakeCurrent (appInfo.deviceContext, appInfo.openglRenderContext);
-
-			MessageBoxA(0,(char*)glGetString(GL_VERSION), "OPENGL VERSION",0);
-		}
-		break;
 
 		case WM_CLOSE:
 		DestroyWindow( appInfo.hwnd );
+		wglDeleteContext( appInfo.openglRenderContext );
+		ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
 		running = false;
 		break;
 
 		case WM_DESTROY:
 		wglDeleteContext( appInfo.openglRenderContext );
+		ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
 		PostQuitMessage( 0 );
 		running = false;
 		break;
@@ -109,9 +84,39 @@ bool CreateClayWindow() {
 	// at this point WM_CREATE message is sent/received
 	// the WM_CREATE branch inside WinProc function will execute here
 	appInfo.hwnd = CreateWindowEx(0, WindowName, "Wet Clay App", WS_BORDER, posx, posy, 640, 480, NULL, NULL, appInfo.appInstance, NULL);
-	SetWindowLong(appInfo.hwnd, GWL_STYLE, 0);
-	ShowWindow(appInfo.hwnd, SW_SHOWNORMAL);
-	UpdateWindow(appInfo.hwnd);
+
+
+	PIXELFORMATDESCRIPTOR pfd = {
+		sizeof(PIXELFORMATDESCRIPTOR),
+		1,
+			    PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
+			    PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
+			    32,                        //Colordepth of the framebuffer.
+			    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			    24,                        //Number of bits for the depthbuffer
+			    8,                        //Number of bits for the stencilbuffer
+			    0,                        //Number of Aux buffers in the framebuffer.
+			    PFD_MAIN_PLANE,
+			    0, 0, 0, 0
+	};
+
+	appInfo.deviceContext = GetDC(appInfo.hwnd);
+
+	int  letWindowsChooseThisPixelFormat;
+	letWindowsChooseThisPixelFormat = ChoosePixelFormat( appInfo.deviceContext, &pfd ); 
+	SetPixelFormat( appInfo.deviceContext, letWindowsChooseThisPixelFormat, &pfd );
+
+	appInfo.openglRenderContext = wglCreateContext( appInfo.deviceContext );
+	if( wglMakeCurrent ( appInfo.deviceContext, appInfo.openglRenderContext ) == false ) {
+		printf( "Couldn't make GL context current.\n" );
+		return false;
+	}
+
+	glewInit();
+
+	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
+	ShowWindow (appInfo.hwnd, SW_SHOWNORMAL );
+	//UpdateWindow( appInfo.hwnd );
 
 	// if ((appInfo.hdc = GetDC(appInfo.hwnd)) == NULL) {	// get device context
 	// 	printf( "Failed to grab device context\n" );
