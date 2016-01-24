@@ -1,5 +1,5 @@
 #object files
-OBJS = Src/Main.c
+OBJS = Src/NewMain.c
 
 #CC specifies which compiler we're using 
 CC = gcc

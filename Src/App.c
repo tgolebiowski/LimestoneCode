@@ -1,8 +1,3 @@
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdint.h>
-
-#include "SDL.h"
 #define GLEW_STATIC
 #include "glew.h"
 #include "SDL_opengl.h"
@@ -51,109 +46,12 @@ typedef struct MeshData {
 uint16_t SCREEN_WIDTH = 640;
 uint16_t SCREEN_HEIGHT = 480;
 uint16_t mSecsPerFrame = 60 / 1000;
-SDL_Window* window;
-SDL_GLContext gContext;
 
-Matrix4 spinMatrix;
-ShaderProgram myProgram;
-MeshData tinyMeshData;
-OpenGLMesh renderMesh;
-OpenGLTexture myTexture;
-
-bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
-	//Set viewport
-	glViewport( 0.0f, 0.0f, screen_w, screen_h );
-
-	float halfHeight = screen_h * 0.5f;
-	float halfWidth = screen_w * 0.5f;
-    //Initialize Projection Matrix
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-    glOrtho( -halfWidth, halfWidth, -halfHeight, halfHeight, halfWidth, -halfWidth );
-
-    //Initialize Modelview Matrix
-    glMatrixMode( GL_MODELVIEW );
-    glLoadIdentity();
-
-    //Initialize clear color
-    glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
-
-    //Set blending
-    glEnable( GL_BLEND );
-    glHint(GL_PERSPECTIVE_CORRECTION_HINT , GL_NICEST);
-    glDisable( GL_DEPTH_TEST );
-    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-
-	//Initialize framebuffer //RETURN TO LAZY FOO LESSON 27 on Framebuffers
-    //glGenFramebuffers( 1, &frameBuffer.gFBO );
-    //if( gFBOTexture.getTextureID() == 0 ) { 
-    //Create it 
-    //gFBOTexture.createPixels32( SCREEN_WIDTH, SCREEN_HEIGHT ); 
-    //gFBOTexture.padPixels32(); 
-    //gFBOTexture.loadTextureFromPixels32(); } 
-    //Bind texture 
-    //glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gFBOTexture.getTextureID(), 0 );
-
-    //Check for error
-    GLenum error = glGetError();
-    if( error != GL_NO_ERROR ) {
-        printf( "Error initializing OpenGL! %s\n", gluErrorString( error ) );
-        return false;
-    } else {
-    	printf( "Initialized OpenGL\n" );
-    }
-
-    return true;
-}
-
-bool Init() {
-    // initialize SDL
-    if( SDL_Init( SDL_INIT_VIDEO ) >= 0 ) {
-
-        SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 2 );
-        SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 1 );
-        SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE );
-        printf("Set Attributes\n");
-
-        window = SDL_CreateWindow("Wet Clay", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 
-            SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
-        if(window == NULL) {
-            printf("Failed to create window\n");
-            return false;
-        } else {
-            printf("created window\n");
-
-            gContext = SDL_GL_CreateContext( window );
-            if( gContext == NULL ) {
-                printf("could not create GL context\n");
-            } else {
-                printf("created GL context\n");
-            }
-
-            if( SDL_GL_SetSwapInterval( 1 ) < 0 ) {
-                printf( "Warning: Unable to set VSync! SDL Error: %s\n", SDL_GetError() );
-            }
-        }
-    } else {
-        printf( "Could not init SDL video. SDL Error: %s\n", SDL_GetError() );
-        return false; // sdl could not initialize
-    }
-
-    //Initialize GL stuff
-    glewExperimental = GL_TRUE;
-    GLenum error = glewInit();
-    if( error != GLEW_OK ) {
-        printf( "Failed to init GLEW\n" );
-    }
-
-    //Initialize OpenGL
-    if( !InitOpenGLRenderer( SCREEN_WIDTH, SCREEN_HEIGHT ) ) {
-    	printf( "Unable to initialize OpenGL!\n" );
-    	return false;
-    }
-
-    return true;
-}
+static Matrix4 spinMatrix;
+static ShaderProgram myProgram;
+static MeshData tinyMeshData;
+static OpenGLMesh renderMesh;
+static OpenGLTexture myTexture;
 
 bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     //Get ptr to currently bound ptr (probably SDL's screen/frame texture buffer whatever)
@@ -218,7 +116,6 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
     // If the import failed, report it
     if( !scene ) {
-        //DoTheErrorLogging( aiGetErrorString());
         printf( "Failed to import %s\n", fileName );
         return false;
     }
@@ -226,7 +123,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     // Now we can access the file's contents
     uint16_t numMeshes = scene->mNumMeshes;
     printf( "Yay, loaded file: %s\n", fileName );
-    //printf( "%d Meshes in file\n", numMeshes );
+    printf( "%d Meshes in file\n", numMeshes );
     if(numMeshes == 0) {
         return false;
     }
@@ -234,30 +131,30 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     //Read data for each mesh
     for( uint8_t i = 0; i < numMeshes; i++ ) {
         const struct aiMesh* mesh = scene->mMeshes[i];
-        //printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
+        printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
 
         //Read vertex data
         uint16_t vertexCount = mesh->mNumVertices;
         data->vertexData = calloc( 1, vertexCount * sizeof(GLfloat) * 3 );    //Allocate space for vertex buffer
-        //printf("Vertex Pointer data: %p\n", data->vertexData );
+        printf("Vertex Pointer data: %p\n", data->vertexData );
         for( uint16_t j = 0; j < vertexCount; j++ ) {
             data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
             data->vertexData[j * 3 + 1] = mesh->mVertices[j].z * 50.0f;
             data->vertexData[j * 3 + 2] = mesh->mVertices[j].y * 50.0f;
-            //printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
+            printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
         }
         data->vertexCount = vertexCount;
 
         //Read index data
         uint16_t indexCount = mesh->mNumFaces * 3;
         data->indexData = calloc( 1, indexCount * sizeof(GLuint) );    //Allocate space for index buffer
-        //printf("Index Pointer data: %p\n", data->indexData );
+        printf("Index Pointer data: %p\n", data->indexData );
         for( uint16_t j = 0; j < mesh->mNumFaces; j++ ) {
             const struct aiFace face = mesh->mFaces[j];
             data->indexData[j * 3 + 0] = face.mIndices[0];
             data->indexData[j * 3 + 1] = face.mIndices[1];
             data->indexData[j * 3 + 2] = face.mIndices[2];
-            //printf( "Index Set: %d, %d, %d\n", data->indexData[j * 3 + 0], data->indexData[j * 3 + 1], data->indexData[j * 3 + 2]);
+            printf( "Index Set: %d, %d, %d\n", data->indexData[j * 3 + 0], data->indexData[j * 3 + 1], data->indexData[j * 3 + 2]);
         }
         data->indexCount = indexCount;
     }
@@ -268,44 +165,47 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 }
 
 void CreateRenderMesh(OpenGLMesh* renderMesh, MeshData* meshData) {
-	//Create VBO
+    //Create VBO
+    printf( "Gonna gen VBO @ ptr: %p\n", &renderMesh->vbo );
     glGenBuffers( 1, &renderMesh->vbo );
+    printf( "Created VBO with ptr value: %d\n", renderMesh->vbo );
     glBindBuffer( GL_ARRAY_BUFFER, renderMesh->vbo );
-    //printf( "Vertex Array Data - count %d, pointer: %p\n", meshData->vertexCount, meshData->vertexData );
+    printf( "Vertex Array Data - count %d, pointer: %p\n", meshData->vertexCount, meshData->vertexData );
     glBufferData( GL_ARRAY_BUFFER, 3 * meshData->vertexCount * sizeof(GLfloat), meshData->vertexData, GL_STATIC_DRAW );
 
     //Create IBO
     glGenBuffers( 1, &renderMesh->ibo );
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, renderMesh->ibo );
-    //printf( "Index Array Data - count %d, pointer: %p\n", meshData->indexCount, meshData->indexData );
+    printf( "Index Array Data - count %d, pointer: %p\n", meshData->indexCount, meshData->indexData );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, meshData->indexCount * sizeof(GLuint), meshData->indexData, GL_STATIC_DRAW );
 
     glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint)NULL );
 
     renderMesh->elementCount = meshData->indexCount;
+    printf("Created render mesh\n");
 }
 
 void RenderMesh( OpenGLMesh* mesh, ShaderProgram* program ) {
-	glEnableClientState( GL_VERTEX_ARRAY );
-	glUseProgram( program->programID );
+    glEnableClientState( GL_VERTEX_ARRAY );
+    glUseProgram( program->programID );
 
-	glMatrixMode( GL_MODELVIEW );
-	glMultMatrixf( &mesh->m.m[0] );
+    glMatrixMode( GL_MODELVIEW );
+    glMultMatrixf( &mesh->m.m[0] );
 
     //Set vertex data
-	glBindBuffer( GL_ARRAY_BUFFER, mesh->vbo );
-	glVertexPointer( 3, GL_FLOAT, 0, 0 );
+    glBindBuffer( GL_ARRAY_BUFFER, mesh->vbo );
+    glVertexPointer( 3, GL_FLOAT, 0, 0 );
     //Set index data and render
-	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, mesh->ibo );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, mesh->ibo );
 
     //Assume we're doing just GL_Triangles
-	glDrawElements( GL_TRIANGLES, mesh->elementCount, GL_UNSIGNED_INT, NULL );
+    glDrawElements( GL_TRIANGLES, mesh->elementCount, GL_UNSIGNED_INT, NULL );
 
     //Disable vertex arrays
-	glDisableClientState( GL_VERTEX_ARRAY );
+    glDisableClientState( GL_VERTEX_ARRAY );
     //clear shader
-	glUseProgram( (GLuint)NULL );
+    glUseProgram( (GLuint)NULL );
 }
 
 void printShaderLog( GLuint shader ) {
@@ -412,24 +312,24 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     GLint total = -1;
     glGetProgramiv( program->programID, GL_ACTIVE_UNIFORMS, &total ); 
     for(uint8_t i = 0; i < total; ++i)  {
-    	//Allocate space for searching
-    	GLint name_len = -1;
-    	GLsizei size = -1;
-    	GLenum type = GL_ZERO;
-    	char name[100];
+        //Allocate space for searching
+        GLint name_len = -1;
+        GLsizei size = -1;
+        GLenum type = GL_ZERO;
+        char name[100];
 
-    	//Get uniform info
-    	glGetActiveUniform( program->programID, i, sizeof(name)-1, &name_len, &size, &type, &name[0] );
-    	name[name_len] = 0;
+        //Get uniform info
+        glGetActiveUniform( program->programID, i, sizeof(name)-1, &name_len, &size, &type, &name[0] );
+        name[name_len] = 0;
 
-    	//Copy info into program struct
-    	//Get uniform ptr
-    	program->uniformPtrs[i] = glGetUniformLocation( program->programID, &name[0] );
-    	//Set ptr to name
-    	program->uniformNames[i] = &program->uniformNameBuffer[nameBufferOffset];
-    	//Copy name
-    	memcpy(&program->uniformNameBuffer[nameBufferOffset], &name[0], name_len * sizeof(char));
-    	nameBufferOffset += name_len + 1;
+        //Copy info into program struct
+        //Get uniform ptr
+        program->uniformPtrs[i] = glGetUniformLocation( program->programID, &name[0] );
+        //Set ptr to name
+        program->uniformNames[i] = &program->uniformNameBuffer[nameBufferOffset];
+        //Copy name
+        memcpy(&program->uniformNameBuffer[nameBufferOffset], &name[0], name_len * sizeof(char));
+        nameBufferOffset += name_len + 1;
 
         //printf("Got info for Shader Uniform: %s\n", name);
     }
@@ -438,71 +338,86 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     glDeleteShader( fragShader );
 }
 
-void LoadData() {
+bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
+    //SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 2 );
+    //SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 1 );
+    //SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE );
 
+    //Set viewport
+    glViewport( 0.0f, 0.0f, screen_w, screen_h );
+
+    float halfHeight = screen_h * 0.5f;
+    float halfWidth = screen_w * 0.5f;
+    //Initialize Projection Matrix
+    glMatrixMode( GL_PROJECTION );
+    glLoadIdentity();
+    glOrtho( -halfWidth, halfWidth, -halfHeight, halfHeight, halfWidth, -halfWidth );
+
+    //Initialize Modelview Matrix
+    glMatrixMode( GL_MODELVIEW );
+    glLoadIdentity();
+
+    //Initialize clear color
+    glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
+
+    //Set blending
+    glEnable( GL_BLEND );
+    glHint(GL_PERSPECTIVE_CORRECTION_HINT , GL_NICEST);
+    glDisable( GL_DEPTH_TEST );
+    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+
+    //Initialize framebuffer //RETURN TO LAZY FOO LESSON 27 on Framebuffers
+    //glGenFramebuffers( 1, &frameBuffer.gFBO );
+    //if( gFBOTexture.getTextureID() == 0 ) { 
+    //Create it 
+    //gFBOTexture.createPixels32( SCREEN_WIDTH, SCREEN_HEIGHT ); 
+    //gFBOTexture.padPixels32(); 
+    //gFBOTexture.loadTextureFromPixels32(); } 
+    //Bind texture 
+    //glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gFBOTexture.getTextureID(), 0 );
+
+    //Check for error
+    GLenum error = glGetError();
+    if( error != GL_NO_ERROR ) {
+        printf( "Error initializing OpenGL! %s\n", gluErrorString( error ) );
+        return false;
+    } else {
+        printf( "Initialized OpenGL\n" );
+    }
+
+    return true;
 }
 
-void Update() {
-	renderMesh.m = MultMatrix( renderMesh.m, spinMatrix );
-}
+bool Init() {
+    if( InitOpenGLRenderer(640, 480) == false) return false;
 
-void Render() {
-
-    //Enable texturing
-    glEnable( GL_TEXTURE_2D );
-
-	//Clear color buffer & depth buffer
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	//Clear model view matrix info
-	glMatrixMode( GL_MODELVIEW );
-	glLoadIdentity();
-
-	RenderMesh( &renderMesh, &myProgram );
-}
-
-int main(int argc, char** argv) {
-    //LoadTextureFromFile( &myTexture, "Data/Checkerboard.png" );
-    if(!Init()) {
-		return 0;
-	}
-	printf("SDL setup seems to have worked.\n");
-
+    LoadTextureFromFile( &myTexture, "Data/Checkerboard.png" );
     LoadMeshFromFile( &tinyMeshData, "Data/Pointy.fbx" );
     CreateRenderMesh( &renderMesh, &tinyMeshData );
     CreateShader( &myProgram, "Data/Vert.vert", "Data/Frag.frag" );
 
     Identity( &renderMesh.m );
-	const float spinSpeed = 3.1415926 / 64.0f;
+    const float spinSpeed = 3.1415926 / 64.0f;
     SetRotation( &spinMatrix, 0.0f, 1.0f, 0.0f, spinSpeed );
 
-    bool quit = false;
-    SDL_Event e;
-    while( !quit ) {
-        uint16_t startTime = SDL_GetTicks();
+    printf("Init went well");
+    return true;
+}
 
-        while( SDL_PollEvent( &e ) != 0 ) {
-            if( e.type == SDL_QUIT ) {
-                quit = true;
-            }
-        }
+void Render() {
+    //Enable texturing
+    glEnable( GL_TEXTURE_2D );
 
-        Update();
+    //Clear color buffer & depth buffer
+    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    //Clear model view matrix info
+    glMatrixMode( GL_MODELVIEW );
+    glLoadIdentity();
 
-        Render();
+    RenderMesh( &renderMesh, &myProgram );
+}
 
-        SDL_GL_SwapWindow( window );
-
-        uint16_t endTime = SDL_GetTicks();
-        uint16_t totalTime = endTime - startTime;
-        if( totalTime < mSecsPerFrame ) {
-            SDL_Delay(mSecsPerFrame - totalTime);
-        }
-    }
-    //Destroy window 
-    SDL_DestroyWindow( window ); 
-    //Quit SDL subsystems 
-    SDL_Quit(); 
-    printf("Quit");
-
-	return 1;
+bool Update() {
+    renderMesh.m = MultMatrix( renderMesh.m, spinMatrix );
+    return true;
 }
