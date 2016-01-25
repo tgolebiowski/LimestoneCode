@@ -34,10 +34,12 @@ typedef struct OpenGLMesh {
 	GLuint elementCount;
 	GLuint vbo;
 	GLuint ibo;
+    GLuint uvBuffer;
 }OpenGLMesh;
 
 typedef struct MeshData {
 	GLfloat* vertexData;
+    GLfloat* uvData;
 	GLuint* indexData;
 	uint16_t indexCount;
 	uint16_t vertexCount;
@@ -50,11 +52,6 @@ static OpenGLMesh renderMesh;
 static OpenGLTexture myTexture;
 
 bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
-    //Get ptr to currently bound ptr (probably SDL's screen/frame texture buffer whatever)
-    GLint prevBoundTex;
-    glGetIntegerv( GL_TEXTURE_BINDING_2D, &prevBoundTex );
-    printf( "Previously Bound Texture Ptr: %d\n", prevBoundTex );
-
     //Load data from file
     uint8_t n;
     unsigned char* data = stbi_load( fileName, &texData->width, &texData->height, &n, 0 );
@@ -88,7 +85,6 @@ bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     printf( "Closing Image\n" );
     stbi_image_free( data );
 
-    glBindTexture( GL_TEXTURE_2D, prevBoundTex );
     return true;
 }
 
@@ -127,16 +123,21 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     //Read data for each mesh
     for( uint8_t i = 0; i < numMeshes; i++ ) {
         const struct aiMesh* mesh = scene->mMeshes[i];
-        //printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
+        printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
 
         //Read vertex data
         uint16_t vertexCount = mesh->mNumVertices;
+        data->uvData = calloc( 1, vertexCount * sizeof(GLfloat) * 2);
         data->vertexData = calloc( 1, vertexCount * sizeof(GLfloat) * 3 );    //Allocate space for vertex buffer
         //printf("Vertex Pointer data: %p\n", data->vertexData );
         for( uint16_t j = 0; j < vertexCount; j++ ) {
             data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
             data->vertexData[j * 3 + 1] = mesh->mVertices[j].z * 50.0f;
             data->vertexData[j * 3 + 2] = mesh->mVertices[j].y * 50.0f;
+
+            data->uvData[j * 2 + 0] = mesh->mTextureCoords[0][j].x;
+            data->uvData[j * 2 + 1] = mesh->mTextureCoords[0][j].y;
+            //printf("UV Data: %f, %f\n", data->uvData[j * 2 + 0], data->uvData[j * 2 + 1]);
             //printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
         }
         data->vertexCount = vertexCount;
@@ -156,48 +157,58 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     }
 
     // We're done. Release all resources associated with this import
-    aiReleaseImport( scene);
-    return true;
+    aiReleaseImport( scene );
+    return true; 
 }
 
 void CreateRenderMesh(OpenGLMesh* renderMesh, MeshData* meshData) {
     //Create VBO
     glGenBuffers( 1, &renderMesh->vbo );
     glBindBuffer( GL_ARRAY_BUFFER, renderMesh->vbo );
-    //printf( "Vertex Array Data - count %d, pointer: %p\n", meshData->vertexCount, meshData->vertexData );
     glBufferData( GL_ARRAY_BUFFER, 3 * meshData->vertexCount * sizeof(GLfloat), meshData->vertexData, GL_STATIC_DRAW );
 
     //Create IBO
     glGenBuffers( 1, &renderMesh->ibo );
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, renderMesh->ibo );
-    //printf( "Index Array Data - count %d, pointer: %p\n", meshData->indexCount, meshData->indexData );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, meshData->indexCount * sizeof(GLuint), meshData->indexData, GL_STATIC_DRAW );
+
+    //Create UV Buffer
+    glGenBuffers( 1, &renderMesh->uvBuffer );
+    glBindBuffer( GL_ARRAY_BUFFER, renderMesh->uvBuffer );
+    glBufferData( GL_ARRAY_BUFFER, 2 * meshData->vertexCount * sizeof(GLfloat), meshData->uvData, GL_STATIC_DRAW );
 
     glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint)NULL );
 
     renderMesh->elementCount = meshData->indexCount;
-    printf("Created render mesh\n");
+    //printf("Created render mesh\n");
 }
 
 void RenderMesh( OpenGLMesh* mesh, ShaderProgram* program ) {
-    glEnableClientState( GL_VERTEX_ARRAY );
-    glUseProgram( program->programID );
-
     glMatrixMode( GL_MODELVIEW );
-    glMultMatrixf( &mesh->m.m[0] );
+    glMultMatrixf( &mesh->m.m[0] ); //Apply model's transformation
+
+    glUseProgram( program->programID ); //Bind Shader
+
+    glEnableClientState( GL_VERTEX_ARRAY );
+    glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+    glEnable( GL_TEXTURE_2D );
 
     //Set vertex data
     glBindBuffer( GL_ARRAY_BUFFER, mesh->vbo );
     glVertexPointer( 3, GL_FLOAT, 0, 0 );
-    //Set index data and render
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, mesh->ibo );
+    //Set UV data
+    glBindBuffer( GL_ARRAY_BUFFER, mesh->uvBuffer );
+    glTexCoordPointer( 2, GL_FLOAT, 0, 0 );
 
-    //Assume we're doing just GL_Triangles
-    glDrawElements( GL_TRIANGLES, mesh->elementCount, GL_UNSIGNED_INT, NULL );
+    glBindTexture( GL_TEXTURE_2D, myTexture.textureID );
+
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, mesh->ibo );                            //Bind index data
+    glDrawElements( GL_TRIANGLES, mesh->elementCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
 
     //Disable vertex arrays
     glDisableClientState( GL_VERTEX_ARRAY );
+    glDisableClientState( GL_TEXTURE_COORD_ARRAY );
     //clear shader
     glUseProgram( (GLuint)NULL );
 }
@@ -258,6 +269,7 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     //Bind source to program
     LoadShaderSrc( vertShaderFile, &program->vertexShaderSrc );
     glShaderSource( vertexShader, 1, &program->vertexShaderSrc, NULL );
+    free( &program->vertexShaderSrc );
 
     //Compile Vertex Shader
     glCompileShader( vertexShader );
@@ -278,6 +290,7 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     //Load source and bind to GL program
     LoadShaderSrc( fragShaderFile, &program->fragShaderSrc );
     glShaderSource( fragShader, 1, &program->fragShaderSrc, NULL );
+    free( &program->fragShaderSrc );
 
     //Compile fragment source
     glCompileShader( fragShader );
@@ -340,8 +353,8 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     //Set viewport
     glViewport( 0.0f, 0.0f, screen_w, screen_h );
 
-    float halfHeight = screen_h * 0.5f;
-    float halfWidth = screen_w * 0.5f;
+    const float halfHeight = screen_h * 0.5f;
+    const float halfWidth = screen_w * 0.5f;
     //Initialize Projection Matrix
     glMatrixMode( GL_PROJECTION );
     glLoadIdentity();
@@ -354,11 +367,12 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     //Initialize clear color
     glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
 
-    //Set blending
     glEnable( GL_BLEND );
-    glHint(GL_PERSPECTIVE_CORRECTION_HINT , GL_NICEST);
-    glDisable( GL_DEPTH_TEST );
+    glEnable( GL_TEXTURE_2D );
+    glHint( GL_PERSPECTIVE_CORRECTION_HINT , GL_NICEST );
     glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+    glEnable( GL_CULL_FACE );
+    glCullFace( GL_BACK );
 
     //Initialize framebuffer //RETURN TO LAZY FOO LESSON 27 on Framebuffers
     //glGenFramebuffers( 1, &frameBuffer.gFBO );
@@ -399,9 +413,6 @@ bool Init() {
 }
 
 void Render() {
-    //Enable texturing
-    glEnable( GL_TEXTURE_2D );
-
     //Clear color buffer & depth buffer
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     //Clear model view matrix info

@@ -10,7 +10,7 @@ bool isFullscreen = false;
 
 uint16_t SCREEN_WIDTH = 640;
 uint16_t SCREEN_HEIGHT = 480;
-uint16_t mSecsPerFrame = 1000 / 60;
+uint16_t mSecsPerFrame = 1000 / 30;
 
 typedef struct AppInfo {
 	HINSTANCE appInstance;
@@ -23,7 +23,6 @@ static AppInfo appInfo;
 
 LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 	switch (uMsg) {
-
 		case WM_CLOSE:
 		DestroyWindow( appInfo.hwnd );
 		wglDeleteContext( appInfo.openglRenderContext );
@@ -34,8 +33,8 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 		case WM_DESTROY:
 		wglDeleteContext( appInfo.openglRenderContext );
 		ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
-		PostQuitMessage( 0 );
 		running = false;
+		PostQuitMessage( 0 );
 		break;
 	}
 
@@ -65,12 +64,9 @@ bool CreateClayWindow() {
 		return false;
 	}
 
-	int width = 640;
-	int height = 480;
-
 	// center position of the window
-	int posx = (GetSystemMetrics(SM_CXSCREEN) / 2) - (width / 2);
-	int posy = (GetSystemMetrics(SM_CYSCREEN) / 2) - (height / 2);
+	int posx = (GetSystemMetrics(SM_CXSCREEN) / 2) - (SCREEN_WIDTH / 2);
+	int posy = (GetSystemMetrics(SM_CYSCREEN) / 2) - (SCREEN_HEIGHT / 2);
  
 	// set up the window for a windowed application by default
 	//long wndStyle = WS_OVERLAPPEDWINDOW;
@@ -88,7 +84,7 @@ bool CreateClayWindow() {
  
 	// at this point WM_CREATE message is sent/received
 	// the WM_CREATE branch inside WinProc function will execute here
-	appInfo.hwnd = CreateWindowEx(0, WindowName, "Wet Clay App", WS_BORDER, posx, posy, 640, 480, NULL, NULL, appInfo.appInstance, NULL);
+	appInfo.hwnd = CreateWindowEx(0, WindowName, "Wet Clay App", WS_BORDER, posx, posy, SCREEN_WIDTH, SCREEN_HEIGHT, NULL, NULL, appInfo.appInstance, NULL);
 
 
 	PIXELFORMATDESCRIPTOR pfd = {
@@ -120,38 +116,8 @@ bool CreateClayWindow() {
 	glewInit();
 
 	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
-	ShowWindow (appInfo.hwnd, SW_SHOWNORMAL );
-	//UpdateWindow( appInfo.hwnd );
-
-	// if ((appInfo.hdc = GetDC(appInfo.hwnd)) == NULL) {	// get device context
-	// 	printf( "Failed to grab device context\n" );
-	// 	running = false;
-	// 	return false;
-	// }
-
-	// const PIXELFORMATDESCRIPTOR pfd = {
-	// 	sizeof(PIXELFORMATDESCRIPTOR),
-	// 	1,
-	//     PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
-	//     PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
-	//     32,                        //Colordepth of the framebuffer.
-	//     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //Padding...?
-	//     24,                        //Number of bits for the depthbuffer
-	//     8,                        //Number of bits for the stencilbuffer
-	//     0,                        //Number of Aux buffers in the framebuffer.
-	//     PFD_MAIN_PLANE,
-	//     0, 0, 0, 0                //More padding
-	// };
-
-	// int iPixelFormat = ChoosePixelFormat(appInfo.hdc, &pfd); 
-	// SetPixelFormat( appInfo.hdc, iPixelFormat, &pfd );
-
-	// appInfo.hglrc = wglCreateContext( appInfo.hdc );
-
-	// if( wglMakeCurrent ( appInfo.hdc, appInfo.hglrc ) == false ) {
-	// 	printf( "Couldn't make GL context current.\n" );
-	// 	return false;
-	// }
+	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
+	UpdateWindow( appInfo.hwnd );
 
 	return true;
 }
@@ -168,11 +134,13 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 			DispatchMessage( &Msg );
 		}
 
-		DWORD startTime = GetTickCount();
+		static DWORD startTime;
+		static DWORD endTime;
+		startTime = GetTickCount();
 		Update();
 		Render();
 		SwapBuffers( appInfo.deviceContext );
-		DWORD endTime = GetTickCount();
+		endTime = GetTickCount();
 		DWORD computeTime = endTime - startTime;
 		if(computeTime < mSecsPerFrame ) {
 			Sleep(mSecsPerFrame - computeTime);
