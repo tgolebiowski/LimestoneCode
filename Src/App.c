@@ -24,9 +24,12 @@ typedef struct ShaderProgram {
     GLuint programID;
 
     uint8_t uniformCount;
-    GLuint uniformPtrs[16];
-    GLenum uniformTypes[16];
-    GLchar* uniformNames[16];
+    GLuint uniformPtrs[8];
+    GLenum uniformTypes[8];
+    GLchar* uniformNames[8];
+
+    GLuint positionAttribute;
+    GLuint texCoordAttribute;
 
     uint8_t samplerCount;
     GLuint samplerPtrs[4];
@@ -61,6 +64,7 @@ typedef struct MeshData {
 }MeshData;
 
 static Matrix4 spinMatrix;
+static Matrix4 cameraMatrix;
 static ShaderProgram myProgram;
 static MeshData tinyMeshData;
 static OpenGLMesh renderMesh;
@@ -140,7 +144,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
     // Now we can access the file's contents
     uint16_t numMeshes = scene->mNumMeshes;
-    printf( "Yay, loaded file: %s\n", fileName );
+    printf( "Loaded file: %s\n", fileName );
     printf( "%d Meshes in file\n", numMeshes );
     if(numMeshes == 0) {
         return false;
@@ -354,6 +358,9 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
         nameBufferOffset += name_len + 1;
     }
 
+    program->positionAttribute = glGetAttribLocation( program->programID, "position" );
+    program->texCoordAttribute = glGetAttribLocation( program->programID, "texCoord" );
+
     glUseProgram(0);
 
     glDeleteShader( vertexShader ); 
@@ -364,32 +371,27 @@ void RenderMesh( OpenGLMesh* mesh, ShaderProgram* program ) {
     //Flush errors
     while( glGetError() != GL_NO_ERROR ){};
 
-    glMatrixMode( GL_MODELVIEW );
-    glMultMatrixf( &mesh->m.m[0] ); //Apply model's transformation
-
-    glUseProgram( program->programID ); //Bind Shader
- 
-    glEnableClientState( GL_VERTEX_ARRAY );
-    glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+    //Bind Shader
+    glUseProgram( program->programID );
+    //glUniformMatrix4fv( glGetUniformLocation(program->programID, "cameraMatrix"), 1, false, &cameraMatrix.m[0] );
+    glUniformMatrix4fv( glGetUniformLocation(program->programID, "modelMatrix"), 1, false, &mesh->m.m[0] );
 
     //Set vertex data
     glBindBuffer( GL_ARRAY_BUFFER, mesh->vbo );
-    glVertexPointer( 3, GL_FLOAT, 0, 0 );
+    glEnableVertexAttribArray( program->positionAttribute );
+    glVertexAttribPointer( program->positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
     //Set UV data
     glBindBuffer( GL_ARRAY_BUFFER, mesh->uvBuffer );
-    glTexCoordPointer( 2, GL_FLOAT, 0, 0 );
+    glEnableVertexAttribArray( program->texCoordAttribute );
+    glVertexAttribPointer( program->texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
 
-    glActiveTexture( GL_TEXTURE0 );
     glBindTexture( GL_TEXTURE_2D, myTextureSet.texturePtrs[0] );
     glActiveTexture( GL_TEXTURE1 );
     glBindTexture( GL_TEXTURE_2D, myTextureSet.texturePtrs[1] );
 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, mesh->ibo );                            //Bind index data
     glDrawElements( GL_TRIANGLES, mesh->elementCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
-    
-    //Disable vertex arrays
-    glDisableClientState( GL_VERTEX_ARRAY );
-    glDisableClientState( GL_TEXTURE_COORD_ARRAY );
 
     //Unbind textures
     glBindTexture( GL_TEXTURE_2D, 0 );
@@ -406,13 +408,13 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     glEnable( GL_DEPTH_TEST );
     //Configure Texturing, setting some nice perspective correction
     //glEnable( GL_TEXTURE_2D );
-    glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
+    //glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
     //Set Blending
     glEnable( GL_BLEND );
     glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
     //Configure Back Face Culling
     glEnable( GL_CULL_FACE );
-    //glCullFace( GL_BACK );
+    glCullFace( GL_BACK );
 
     GLint k;
     glGetIntegerv( GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &k );
@@ -424,13 +426,9 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     const float halfHeight = screen_h * 0.5f;
     const float halfWidth = screen_w * 0.5f;
     //Initialize Projection Matrix
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-    glOrtho( -halfWidth, halfWidth, -halfHeight, halfHeight, halfWidth, -halfWidth );
-
-    //Initialize Modelview Matrix
-    glMatrixMode( GL_MODELVIEW );
-    glLoadIdentity();
+    glMatrixMode(GL_PROJECTION);
+    glOrtho( -halfWidth, halfWidth, -halfHeight, halfHeight, -halfWidth, halfWidth );
+    //SetOrthoProjection( &cameraMatrix, -halfWidth, halfWidth, halfHeight, -halfHeight, -halfWidth, halfWidth );
 
     //Initialize framebuffer //RETURN TO LAZY FOO LESSON 27 on Framebuffers
 
@@ -465,6 +463,8 @@ bool Init() {
     const float spinSpeed = 3.1415926 / 64.0f;
     SetRotation( &spinMatrix, 0.0f, 1.0f, 0.0f, spinSpeed );
 
+    Identity( &cameraMatrix );
+
     printf("Init went well\n");
     return true;
 }
@@ -472,9 +472,6 @@ bool Init() {
 void Render() {
     //Clear color buffer & depth buffer
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    //Clear model view matrix info
-    glMatrixMode( GL_MODELVIEW );
-    glLoadIdentity();
 
     RenderMesh( &renderMesh, &myProgram );
 }

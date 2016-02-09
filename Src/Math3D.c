@@ -104,6 +104,28 @@ void SetRotation( Matrix4* mtx, const float x, const float y, const float z, con
 	mtx->m[3][3] = 1;
 }
 
+void SetOrthoProjection(Matrix4* m, const float l, const float r, const float t, const float b, const float n, const float f) {
+	m->m[0][0] = 2.0f / (r - l);
+	m->m[0][1] = 0.0f;
+	m->m[0][2] = 0.0f;
+	m->m[0][3] = 0.0f;
+
+	m->m[1][0] = 0.0f;
+	m->m[1][1] = 2.0f / (t - b);
+	m->m[1][2] = 0.0f;
+	m->m[1][3] = 0.0f;
+
+	m->m[2][0] = 0.0f;
+	m->m[2][1] = 0.0f;
+	m->m[2][2] = -2.0f / (f - n);
+	m->m[2][3] = 0.0f;
+
+	m->m[3][0] = -(r + l) / (r - l);
+	m->m[3][1] = -(t + b) / (t - b);
+	m->m[3][2] = -(f + n) / (f - n);
+	m->m[3][3] = 1.0f;
+}
+
 Matrix4 MultMatrix(const Matrix4 m, const Matrix4 m2) {
 	Matrix4 r;
 	r.m[0][0] = m.m[0][0] * m2.m[0][0] + m.m[0][1] * m2.m[1][0] + m.m[0][2] * m2.m[2][0] + m.m[0][3] * m2.m[3][0];
