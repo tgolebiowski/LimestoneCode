@@ -1,6 +1,6 @@
 #define GLEW_STATIC
 #include "glew.h"
-#include "SDL_opengl.h"
+#include "wglew.h"
 #include "glut.h"
 
 #include "cimport.h"               // Assimp Plain-C interface
@@ -13,21 +13,36 @@
 #define STBI_ONLY_PNG
 #include "stb_image.h"
 
-typedef struct ShaderProgram {
-    GLuint programID;
-    uint8_t uniformCount;
-    GLuint uniformPtrs[16];
-    GLchar* uniformNames[16];
-    GLchar* vertexShaderSrc;
-    GLchar* fragShaderSrc;
-    GLchar uniformNameBuffer[512];
-}ShaderProgram;
-
 typedef struct OpenGLTexture {
     GLuint textureID;
+    GLenum pixelFormat;
     uint16_t width;
     uint16_t height;
 }OpenGLTexture;
+
+typedef struct ShaderProgram {
+    GLuint programID;
+
+    uint8_t uniformCount;
+    GLuint uniformPtrs[16];
+    GLenum uniformTypes[16];
+    GLchar* uniformNames[16];
+
+    uint8_t samplerCount;
+    GLuint samplerPtrs[4];
+    GLchar* samplerNames[4];
+
+    GLchar* vertexShaderSrc;
+    GLchar* fragShaderSrc;
+    GLchar uniformNameBuffer[256];
+}ShaderProgram;
+
+typedef struct ShaderTextureSet {
+    uint8_t count;
+    ShaderProgram* associatedShader;
+    GLuint shaderSamplerPtrs[4];
+    GLuint texturePtrs[4];
+}ShaderTextureSet;
 
 typedef struct OpenGLMesh {
 	Matrix4 m;
@@ -50,6 +65,8 @@ static ShaderProgram myProgram;
 static MeshData tinyMeshData;
 static OpenGLMesh renderMesh;
 static OpenGLTexture myTexture;
+static OpenGLTexture otherTexture;
+static ShaderTextureSet myTextureSet;
 
 bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     //Load data from file
@@ -62,9 +79,23 @@ bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     printf( "Loaded file: %s\n", fileName );
     printf( "Width: %d, Height: %d, Components per channel: %d\n", texData->width, texData->height, n );
 
+    if( n == 3 ) {
+        texData->pixelFormat = GL_RGB;
+    } else if( n == 4 ) {
+        texData->pixelFormat = GL_RGBA;
+    }
+
     //Generate Texture and bind pointer
     glGenTextures( 1, &texData->textureID );
     glBindTexture( GL_TEXTURE_2D, texData->textureID );
+    printf( "Created texture from file %s with id: %d\n", fileName, texData->textureID );
+
+    //Set texture wrapping
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    //Set Texture filtering
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST ); // Use nearest filtering all the time
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST ); 
 
     //Create Texture in Memory, parameters in order:
     //1 - Which Texture binding
@@ -76,13 +107,9 @@ bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     //7 - How are pixels organized
     //8 - size of each component
     //9 - ptr to texture data
-    glTexImage2D( GL_TEXTURE_2D, 0, n, texData->width, texData->height, 0, GL_RGB, GL_UNSIGNED_BYTE, data );
+    glTexImage2D( GL_TEXTURE_2D, 0, n, texData->width, texData->height, 0, texData->pixelFormat, GL_UNSIGNED_BYTE, data );
 
-    //Set image filtering
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR ); // Use linear interoplation when the texture is squished
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST ); // Use nearest filter when texture is stretched
-
-    printf( "Closing Image\n" );
+    glBindTexture( GL_TEXTURE_2D, 0 );
     stbi_image_free( data );
 
     return true;
@@ -101,7 +128,6 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     aiProcess_FindInvalidData          | // detect invalid model data, such as invalid normal vectors
     aiProcess_TransformUVCoords        | // preprocess UV transformations (scaling, translation ...)
     aiProcess_LimitBoneWeights         | // limit bone weights to 4 per vertex
-    aiProcess_OptimizeMeshes           | // join small meshes, if possible;
     0;
 
     const struct aiScene* scene = aiImportFile( fileName, myFlags );
@@ -182,35 +208,6 @@ void CreateRenderMesh(OpenGLMesh* renderMesh, MeshData* meshData) {
 
     renderMesh->elementCount = meshData->indexCount;
     //printf("Created render mesh\n");
-}
-
-void RenderMesh( OpenGLMesh* mesh, ShaderProgram* program ) {
-    glMatrixMode( GL_MODELVIEW );
-    glMultMatrixf( &mesh->m.m[0] ); //Apply model's transformation
-
-    glUseProgram( program->programID ); //Bind Shader
-
-    glEnableClientState( GL_VERTEX_ARRAY );
-    glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-    glEnable( GL_TEXTURE_2D );
-
-    //Set vertex data
-    glBindBuffer( GL_ARRAY_BUFFER, mesh->vbo );
-    glVertexPointer( 3, GL_FLOAT, 0, 0 );
-    //Set UV data
-    glBindBuffer( GL_ARRAY_BUFFER, mesh->uvBuffer );
-    glTexCoordPointer( 2, GL_FLOAT, 0, 0 );
-
-    glBindTexture( GL_TEXTURE_2D, myTexture.textureID );
-
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, mesh->ibo );                            //Bind index data
-    glDrawElements( GL_TRIANGLES, mesh->elementCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
-
-    //Disable vertex arrays
-    glDisableClientState( GL_VERTEX_ARRAY );
-    glDisableClientState( GL_TEXTURE_COORD_ARRAY );
-    //clear shader
-    glUseProgram( (GLuint)NULL );
 }
 
 void printShaderLog( GLuint shader ) {
@@ -313,11 +310,19 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     glGetProgramiv( program->programID, GL_LINK_STATUS, &compiled );
     if( compiled != GL_TRUE ) {
         printf( "Error linking program\n" );
+    } else {
+        printf( "Shader Program Linked Successfully\n");
     }
+
 
     uintptr_t nameBufferOffset = 0;
     GLint total = -1;
     glGetProgramiv( program->programID, GL_ACTIVE_UNIFORMS, &total ); 
+    program->uniformCount = 0;
+    program->samplerCount = 0;
+
+    glUseProgram(program->programID);
+
     for(uint8_t i = 0; i < total; ++i)  {
         //Allocate space for searching
         GLint name_len = -1;
@@ -329,26 +334,89 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
         glGetActiveUniform( program->programID, i, sizeof(name)-1, &name_len, &size, &type, &name[0] );
         name[name_len] = 0;
 
-        //Copy info into program struct
-        //Get uniform ptr
-        program->uniformPtrs[i] = glGetUniformLocation( program->programID, &name[0] );
-        //Set ptr to name
-        program->uniformNames[i] = &program->uniformNameBuffer[nameBufferOffset];
-        //Copy name
+        if( type == GL_SAMPLER_2D ) {
+            GLuint samplerLocation = glGetUniformLocation( program->programID, &name[0] );
+            glUniform1i( samplerLocation, program->samplerCount);
+            program->samplerNames[program->samplerCount] = &program->uniformNameBuffer[nameBufferOffset];
+            program->samplerPtrs[program->samplerCount] = samplerLocation;
+            printf( "Got info for Sampler Uniform: %s, ptr %d, bound to unit %d\n", name, samplerLocation, program->samplerCount );
+            program->samplerCount++;
+        }else {
+            //Copy info into program struct
+            //Get uniform ptr
+            program->uniformPtrs[program->uniformCount] = glGetUniformLocation( program->programID, &name[0] );
+            program->uniformNames[program->uniformCount] = &program->uniformNameBuffer[nameBufferOffset];   //Set ptr to name
+            printf( "Got info for Shader Uniform: %s, type: %d, size: %d, ptr %d\n", name, type, size, program->uniformPtrs[program->uniformCount] );
+            program->uniformCount++;
+        }
+
         memcpy(&program->uniformNameBuffer[nameBufferOffset], &name[0], name_len * sizeof(char));
         nameBufferOffset += name_len + 1;
-
-        //printf("Got info for Shader Uniform: %s\n", name);
     }
+
+    glUseProgram(0);
 
     glDeleteShader( vertexShader ); 
     glDeleteShader( fragShader );
 }
 
+void RenderMesh( OpenGLMesh* mesh, ShaderProgram* program ) {
+    //Flush errors
+    while( glGetError() != GL_NO_ERROR ){};
+
+    glMatrixMode( GL_MODELVIEW );
+    glMultMatrixf( &mesh->m.m[0] ); //Apply model's transformation
+
+    glUseProgram( program->programID ); //Bind Shader
+ 
+    glEnableClientState( GL_VERTEX_ARRAY );
+    glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+
+    //Set vertex data
+    glBindBuffer( GL_ARRAY_BUFFER, mesh->vbo );
+    glVertexPointer( 3, GL_FLOAT, 0, 0 );
+    //Set UV data
+    glBindBuffer( GL_ARRAY_BUFFER, mesh->uvBuffer );
+    glTexCoordPointer( 2, GL_FLOAT, 0, 0 );
+
+    glActiveTexture( GL_TEXTURE0 );
+    glBindTexture( GL_TEXTURE_2D, myTextureSet.texturePtrs[0] );
+    glActiveTexture( GL_TEXTURE1 );
+    glBindTexture( GL_TEXTURE_2D, myTextureSet.texturePtrs[1] );
+
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, mesh->ibo );                            //Bind index data
+    glDrawElements( GL_TRIANGLES, mesh->elementCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
+    
+    //Disable vertex arrays
+    glDisableClientState( GL_VERTEX_ARRAY );
+    glDisableClientState( GL_TEXTURE_COORD_ARRAY );
+
+    //Unbind textures
+    glBindTexture( GL_TEXTURE_2D, 0 );
+    glActiveTexture( GL_TEXTURE0 );
+    glBindTexture( GL_TEXTURE_2D, 0 );
+    //clear shader
+    glUseProgram( (GLuint)NULL );
+}
+
 bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
-    //SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, 2 );
-    //SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 1 );
-    //SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE );
+    //Initialize clear color
+    glClearColor( 0.1f, 0.1f, 0.1f, 1.0f );
+
+    glEnable( GL_DEPTH_TEST );
+    //Configure Texturing, setting some nice perspective correction
+    //glEnable( GL_TEXTURE_2D );
+    glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
+    //Set Blending
+    glEnable( GL_BLEND );
+    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+    //Configure Back Face Culling
+    glEnable( GL_CULL_FACE );
+    //glCullFace( GL_BACK );
+
+    GLint k;
+    glGetIntegerv( GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &k );
+    printf("Max texture units: %d\n", k);
 
     //Set viewport
     glViewport( 0.0f, 0.0f, screen_w, screen_h );
@@ -364,25 +432,7 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     glMatrixMode( GL_MODELVIEW );
     glLoadIdentity();
 
-    //Initialize clear color
-    glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
-
-    glEnable( GL_BLEND );
-    glEnable( GL_TEXTURE_2D );
-    glHint( GL_PERSPECTIVE_CORRECTION_HINT , GL_NICEST );
-    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-    glEnable( GL_CULL_FACE );
-    glCullFace( GL_BACK );
-
     //Initialize framebuffer //RETURN TO LAZY FOO LESSON 27 on Framebuffers
-    //glGenFramebuffers( 1, &frameBuffer.gFBO );
-    //if( gFBOTexture.getTextureID() == 0 ) { 
-    //Create it 
-    //gFBOTexture.createPixels32( SCREEN_WIDTH, SCREEN_HEIGHT ); 
-    //gFBOTexture.padPixels32(); 
-    //gFBOTexture.loadTextureFromPixels32(); } 
-    //Bind texture 
-    //glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gFBOTexture.getTextureID(), 0 );
 
     //Check for error
     GLenum error = glGetError();
@@ -399,16 +449,23 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
 bool Init() {
     if( InitOpenGLRenderer(640, 480) == false) return false;
 
-    LoadTextureFromFile( &myTexture, "Data/Checkerboard.png" );
+    LoadTextureFromFile( &myTexture, "Data/pink_texture.png" );
+    LoadTextureFromFile( &otherTexture, "Data/green_texture.png" );
     LoadMeshFromFile( &tinyMeshData, "Data/Pointy.fbx" );
     CreateRenderMesh( &renderMesh, &tinyMeshData );
     CreateShader( &myProgram, "Data/Vert.vert", "Data/Frag.frag" );
+    myTextureSet.count = 2;
+    myTextureSet.associatedShader = &myProgram;
+    myTextureSet.texturePtrs[0] = myTexture.textureID;
+    myTextureSet.texturePtrs[1] = otherTexture.textureID;
+    myTextureSet.shaderSamplerPtrs[0] = &myProgram.samplerPtrs[0];
+    myTextureSet.shaderSamplerPtrs[1] = &myProgram.samplerPtrs[1];
 
     Identity( &renderMesh.m );
     const float spinSpeed = 3.1415926 / 64.0f;
     SetRotation( &spinMatrix, 0.0f, 1.0f, 0.0f, spinSpeed );
 
-    printf("Init went well");
+    printf("Init went well\n");
     return true;
 }
 

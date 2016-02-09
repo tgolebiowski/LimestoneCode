@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
+#define GLEW_STATIC
+#include <glew.h>
+#include <glut.h>
 
 #include "App.c"
 
@@ -10,7 +13,7 @@ bool isFullscreen = false;
 
 uint16_t SCREEN_WIDTH = 640;
 uint16_t SCREEN_HEIGHT = 480;
-uint16_t mSecsPerFrame = 1000 / 30;
+uint16_t mSecsPerFrame = 1000 / 60;
 
 typedef struct AppInfo {
 	HINSTANCE appInstance;
@@ -23,19 +26,23 @@ static AppInfo appInfo;
 
 LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 	switch (uMsg) {
-		case WM_CLOSE:
-		DestroyWindow( appInfo.hwnd );
-		wglDeleteContext( appInfo.openglRenderContext );
-		ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
-		running = false;
-		break;
+		case WM_CLOSE: {
+			running = false;
+			wglMakeCurrent( appInfo.deviceContext, NULL );
+			wglDeleteContext( appInfo.openglRenderContext );
+			ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
+			DestroyWindow( appInfo.hwnd );
+			break;
+		}
 
-		case WM_DESTROY:
-		wglDeleteContext( appInfo.openglRenderContext );
-		ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
-		running = false;
-		PostQuitMessage( 0 );
-		break;
+		case WM_DESTROY: {
+			running = false;
+			wglMakeCurrent( appInfo.deviceContext, NULL );
+			wglDeleteContext( appInfo.openglRenderContext );
+			ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
+			PostQuitMessage( 0 );
+			break;
+		}
 	}
 
 	// Pass All Unhandled Messages To DefWindowProc
@@ -90,15 +97,15 @@ bool CreateClayWindow() {
 	PIXELFORMATDESCRIPTOR pfd = {
 		sizeof(PIXELFORMATDESCRIPTOR),
 		1,
-			    PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
-			    PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
-			    32,                        //Colordepth of the framebuffer.
-			    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-			    24,                        //Number of bits for the depthbuffer
-			    8,                        //Number of bits for the stencilbuffer
-			    0,                        //Number of Aux buffers in the framebuffer.
-			    PFD_MAIN_PLANE,
-			    0, 0, 0, 0
+	    PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
+		PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
+		32,                        //Colordepth of the framebuffer.
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		24,                        //Number of bits for the depthbuffer
+	    8,                        //Number of bits for the stencilbuffer
+		0,                        //Number of Aux buffers in the framebuffer.
+		PFD_MAIN_PLANE,
+		0, 0, 0, 0
 	};
 
 	appInfo.deviceContext = GetDC(appInfo.hwnd);
@@ -137,9 +144,13 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 		static DWORD startTime;
 		static DWORD endTime;
 		startTime = GetTickCount();
-		Update();
-		Render();
-		SwapBuffers( appInfo.deviceContext );
+
+		if(running) {
+			Update();
+			Render();
+			SwapBuffers( appInfo.deviceContext );
+		}
+
 		endTime = GetTickCount();
 		DWORD computeTime = endTime - startTime;
 		if(computeTime < mSecsPerFrame ) {
@@ -147,5 +158,6 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 		}
 
 	} while( running );
+
 	return Msg.wParam;
 }
