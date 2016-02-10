@@ -18,6 +18,7 @@ typedef struct OpenGLTexture {
     GLenum pixelFormat;
     uint16_t width;
     uint16_t height;
+    GLuint* data;
 }OpenGLTexture;
 
 typedef struct ShaderProgram {
@@ -64,13 +65,20 @@ typedef struct MeshData {
 }MeshData;
 
 static Matrix4 spinMatrix;
-static Matrix4 cameraMatrix;
+//static Matrix4 cameraMatrix;
 static ShaderProgram myProgram;
 static MeshData tinyMeshData;
 static OpenGLMesh renderMesh;
 static OpenGLTexture myTexture;
 static OpenGLTexture otherTexture;
 static ShaderTextureSet myTextureSet;
+
+static GLuint frameBufferPtr;
+static OpenGLTexture frameBufferTexture;
+static GLuint framebuffVBO;
+static GLuint framebuffIBO;
+static GLuint framebuffUVBuff;
+static ShaderProgram framebufferShader;
 
 bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     //Load data from file
@@ -99,7 +107,7 @@ bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     //Set Texture filtering
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST ); // Use nearest filtering all the time
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST ); 
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
 
     //Create Texture in Memory, parameters in order:
     //1 - Which Texture binding
@@ -117,6 +125,108 @@ bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     stbi_image_free( data );
 
     return true;
+}
+
+bool CreateEmptyTexture( OpenGLTexture* texture, const uint16_t width, const uint16_t height ) {
+    if(texture == NULL) {
+        return false;
+    }
+
+    size_t spaceNeeded = sizeof(GLuint) * width * height;
+    if( ( texture->data = malloc( spaceNeeded ) ) == NULL) {
+        return false;
+    }
+    memset( texture->data, 0, spaceNeeded );
+
+    texture->height = height;
+    texture->width = width;
+    texture->pixelFormat = GL_RGBA;
+
+    //Generate Texture and bind pointer
+    glGenTextures( 1, &texture->textureID );
+    if( texture->textureID == -1 ){
+        return false;
+    }
+
+    glBindTexture( GL_TEXTURE_2D, texture->textureID );
+
+    //Set texture wrapping
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    //Set Texture filtering
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST ); // Use nearest filtering all the time
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+
+    //Create Texture in Memory, parameters in order:
+    //1 - Which Texture binding
+    //2 - # of MipMaps
+    //3 - # of components per pixel, 4 means RGBA, 3 means RGB & so on
+    //4 - Texture Width
+    //5 - Texture Height
+    //6 - OpenGL Reference says this value must be 0 :I whatta great library
+    //7 - How are pixels organized
+    //8 - size of each component
+    //9 - ptr to texture data
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture->data );
+
+    glBindTexture( GL_TEXTURE_2D, 0 );
+
+    return true;
+}
+
+void CreateFrameBuffer( OpenGLTexture* texture ) {
+    const GLfloat uvData[4 * 2] = { 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f };
+    const GLuint iData[4] = { 3, 2, 1, 0 };
+    GLfloat vData[4 * 3] = { 0.0f, 0.0f, 0.0f, 
+                            (float)texture->width, 0.0f, 0.0f,
+                            (float)texture->width, (float)texture->height, 0.0f, 
+                            0.0f, (float)texture->height, 0.0f };
+
+    //Create VBO
+    glGenBuffers( 1, &framebuffVBO );
+    glBindBuffer( GL_ARRAY_BUFFER, framebuffVBO );
+    glBufferData( GL_ARRAY_BUFFER, 3 * 4 * sizeof(GLfloat), &vData, GL_STATIC_DRAW );
+
+    //Create IBO
+    glGenBuffers( 1, &framebuffIBO );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, framebuffIBO );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, 4 * sizeof(GLuint), &iData, GL_STATIC_DRAW );
+
+    //Create UV Buffer
+    glGenBuffers( 1, &framebuffUVBuff );
+    glBindBuffer( GL_ARRAY_BUFFER, &framebuffUVBuff );
+    glBufferData( GL_ARRAY_BUFFER, 2 * 4 * sizeof(GLfloat), &uvData, GL_STATIC_DRAW );
+
+    glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint)NULL );
+}
+
+void RenderFramebufferTexture( OpenGLTexture* texture ) {
+    glBindTexture( GL_TEXTURE_2D, texture->textureID );
+
+    //Bind Shader
+    glUseProgram( framebufferShader.programID );
+
+    //Set vertex data
+    glBindBuffer( GL_ARRAY_BUFFER, framebuffVBO );
+    glEnableVertexAttribArray( framebufferShader.positionAttribute );
+    glVertexAttribPointer( framebufferShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+    //Set UV data
+    glBindBuffer( GL_ARRAY_BUFFER, framebuffUVBuff );
+    glEnableVertexAttribArray( framebufferShader.texCoordAttribute );
+    glVertexAttribPointer( framebufferShader.texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
+
+    glBindTexture( GL_TEXTURE_2D, texture->textureID );
+
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, framebuffIBO );    //Bind index data
+    glDrawElements( GL_QUADS, 4, GL_UNSIGNED_INT, NULL );     //Render da quad
+
+    //clear shader
+    glUseProgram( (GLuint)NULL );
+
+    //Unbind textures
+    glBindTexture( GL_TEXTURE_2D, 0 );
 }
 
 bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
@@ -369,11 +479,10 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
 
 void RenderMesh( OpenGLMesh* mesh, ShaderProgram* program ) {
     //Flush errors
-    while( glGetError() != GL_NO_ERROR ){};
+    //while( glGetError() != GL_NO_ERROR ){};
 
     //Bind Shader
     glUseProgram( program->programID );
-    //glUniformMatrix4fv( glGetUniformLocation(program->programID, "cameraMatrix"), 1, false, &cameraMatrix.m[0] );
     glUniformMatrix4fv( glGetUniformLocation(program->programID, "modelMatrix"), 1, false, &mesh->m.m[0] );
 
     //Set vertex data
@@ -430,7 +539,10 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     glOrtho( -halfWidth, halfWidth, -halfHeight, halfHeight, -halfWidth, halfWidth );
     //SetOrthoProjection( &cameraMatrix, -halfWidth, halfWidth, halfHeight, -halfHeight, -halfWidth, halfWidth );
 
-    //Initialize framebuffer //RETURN TO LAZY FOO LESSON 27 on Framebuffers
+    //Initialize framebuffer
+    CreateEmptyTexture( &frameBufferTexture, 1024, 1024 );
+    CreateFrameBuffer( &frameBufferTexture );
+    glGenFramebuffers( 1, &frameBufferPtr );
 
     //Check for error
     GLenum error = glGetError();
@@ -445,38 +557,46 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
 }
 
 bool Init() {
-    if( InitOpenGLRenderer(640, 480) == false) return false;
+    if( InitOpenGLRenderer( 640, 480 ) == false ) return false;
 
-    LoadTextureFromFile( &myTexture, "Data/pink_texture.png" );
-    LoadTextureFromFile( &otherTexture, "Data/green_texture.png" );
+    LoadTextureFromFile( &myTexture, "Data/Textures/pink_texture.png" );
+    LoadTextureFromFile( &otherTexture, "Data/Textures/green_texture.png" );
     LoadMeshFromFile( &tinyMeshData, "Data/Pointy.fbx" );
     CreateRenderMesh( &renderMesh, &tinyMeshData );
-    CreateShader( &myProgram, "Data/Vert.vert", "Data/Frag.frag" );
+    CreateShader( &myProgram, "Data/Shaders/Vert.vert", "Data/Shaders/Frag.frag" );
+    CreateShader( &framebufferShader, "Data/Shaders/Framebuffer.vert", "Data/Shaders/Framebuffer.frag" );
     myTextureSet.count = 2;
     myTextureSet.associatedShader = &myProgram;
     myTextureSet.texturePtrs[0] = myTexture.textureID;
     myTextureSet.texturePtrs[1] = otherTexture.textureID;
-    myTextureSet.shaderSamplerPtrs[0] = &myProgram.samplerPtrs[0];
-    myTextureSet.shaderSamplerPtrs[1] = &myProgram.samplerPtrs[1];
+    myTextureSet.shaderSamplerPtrs[0] = myProgram.samplerPtrs[0];
+    myTextureSet.shaderSamplerPtrs[1] = myProgram.samplerPtrs[1];
 
     Identity( &renderMesh.m );
     const float spinSpeed = 3.1415926 / 64.0f;
     SetRotation( &spinMatrix, 0.0f, 1.0f, 0.0f, spinSpeed );
 
-    Identity( &cameraMatrix );
+    //memset( &cameraMatrix.m[0], 0.0f, sizeof(float) * 16 );
 
     printf("Init went well\n");
     return true;
 }
 
 void Render() {
+    //glBindFramebuffer( GL_FRAMEBUFFER, frameBufferPtr );
+    //glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBufferTexture.textureID, 0 );
+
     //Clear color buffer & depth buffer
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     RenderMesh( &renderMesh, &myProgram );
+
+    //glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+
+    //RenderFramebufferTexture( &frameBufferTexture );
 }
 
 bool Update() {
-    renderMesh.m = MultMatrix( renderMesh.m, spinMatrix );
+    //renderMesh.m = MultMatrix( renderMesh.m, spinMatrix );
     return true;
 }

@@ -2,6 +2,7 @@
 OBJS = Src/WinMain.c
 
 #CC specifies which compiler we're using 
+#CC = "C:\Program Files\LLVM\msbuild-bin\cl.exe" figure how to make clang work here
 CC = gcc
 
 #INCLUDE_PATHS specifies the additional include paths we'll need 
