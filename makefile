@@ -7,11 +7,11 @@ CC = gcc
 
 #INCLUDE_PATHS specifies the additional include paths we'll need 
 #INCLUDE_PATHS = -IC:\mingw_dev_lib\include\SDL2 
-INCLUDE_PATHS = -IDependencies\include\OpenGL -IDependencies\include\assimp
+INCLUDE_PATHS = -IDependencies/include/OpenGL -IDependencies/include/assimp
 
 #LIBRARY_PATHS specifies the additional library paths we'll need 
 #LIBRARY_PATHS = -LC:\mingw_dev_lib\lib 
-LIBRARY_PATHS = -LDependencies\lib\OpenGL  -LDependencies\lib\assimp
+LIBRARY_PATHS = -LDependencies/lib/OpenGL  -LDependencies/lib/assimp
 #-LDependencies\lib\assimp
 
 #COMPILER_FLAGS specifies the additional compilation options we're using

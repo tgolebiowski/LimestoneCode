@@ -3,8 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #define GLEW_STATIC
-#include <glew.h>
-#include <glut.h>
+#include "glew.h"
+#include "glut.h"
 
 #include "App.c"
 

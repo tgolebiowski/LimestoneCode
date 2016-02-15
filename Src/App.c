@@ -36,8 +36,6 @@ typedef struct ShaderProgram {
     GLuint samplerPtrs[4];
     GLchar* samplerNames[4];
 
-    GLchar* vertexShaderSrc;
-    GLchar* fragShaderSrc;
     GLchar uniformNameBuffer[256];
 }ShaderProgram;
 
@@ -371,6 +369,8 @@ void LoadShaderSrc(const char* fileName, char** srcPtr){
 void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char* fragShaderFile) {
     GLuint vertexShader;
     GLuint fragShader;
+    GLchar* vertexShaderSrc;
+    GLchar* fragShaderSrc;
 
     //Create program
     program->programID = glCreateProgram();
@@ -378,9 +378,9 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     //Create vertex shader component
     vertexShader = glCreateShader( GL_VERTEX_SHADER );
     //Bind source to program
-    LoadShaderSrc( vertShaderFile, &program->vertexShaderSrc );
-    glShaderSource( vertexShader, 1, &program->vertexShaderSrc, NULL );
-    free( &program->vertexShaderSrc );
+    LoadShaderSrc( vertShaderFile, &vertexShaderSrc );
+    glShaderSource( vertexShader, 1, &vertexShaderSrc, NULL );
+    free( vertexShaderSrc );
 
     //Compile Vertex Shader
     glCompileShader( vertexShader );
@@ -399,9 +399,9 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     //Create fragment shader component
     fragShader = glCreateShader( GL_FRAGMENT_SHADER );
     //Load source and bind to GL program
-    LoadShaderSrc( fragShaderFile, &program->fragShaderSrc );
-    glShaderSource( fragShader, 1, &program->fragShaderSrc, NULL );
-    free( &program->fragShaderSrc );
+    LoadShaderSrc( fragShaderFile, &fragShaderSrc );
+    glShaderSource( fragShader, 1, &fragShaderSrc, NULL );
+    free( fragShaderSrc );
 
     //Compile fragment source
     glCompileShader( fragShader );
@@ -427,7 +427,6 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     } else {
         printf( "Shader Program Linked Successfully\n");
     }
-
 
     uintptr_t nameBufferOffset = 0;
     GLint total = -1;
@@ -597,6 +596,6 @@ void Render() {
 }
 
 bool Update() {
-    //renderMesh.m = MultMatrix( renderMesh.m, spinMatrix );
+    renderMesh.m = MultMatrix( renderMesh.m, spinMatrix );
     return true;
 }
