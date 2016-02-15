@@ -159,5 +159,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 
 	} while( running );
 
+	printf("Exitting\n");
+
 	return Msg.wParam;
 }

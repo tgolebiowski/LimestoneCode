@@ -20,11 +20,11 @@ COMPILER_FLAGS = -Wall -ggdb -std=c99
 #LINKER_FLAGS specifies the libraries we're linking against 
 GLFLAGS = -lglu32 -lglew32 -lfreeglut_static -lopengl32
 LIBRARIES = $(GLFLAGS) -lassimpd -lwinmm -lgdi32
-
 # Put this at the end of linker flags to supress console output: -Wl,--subsystem,windows
 
 #OBJ_NAME specifies the name of our exectuable
 OBJ_NAME = go.exe
+
 #This is the target that compiles our executable 
 all : $(OBJS) 
 	$(CC) $(OBJS) -D FREEGLUT_STATIC $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(COMPILER_FLAGS) $(LIBRARIES) -lmingw32 -o $(OBJ_NAME)

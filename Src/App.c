@@ -16,8 +16,8 @@
 typedef struct OpenGLTexture {
     GLuint textureID;
     GLenum pixelFormat;
-    uint16_t width;
-    uint16_t height;
+    int width;
+    int height;
     GLuint* data;
 }OpenGLTexture;
 
@@ -36,8 +36,6 @@ typedef struct ShaderProgram {
     GLuint samplerPtrs[4];
     GLchar* samplerNames[4];
 
-    GLchar* vertexShaderSrc;
-    GLchar* fragShaderSrc;
     GLchar uniformNameBuffer[256];
 }ShaderProgram;
 
@@ -82,7 +80,7 @@ static ShaderProgram framebufferShader;
 
 bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     //Load data from file
-    uint8_t n;
+    int n;
     unsigned char* data = stbi_load( fileName, &texData->width, &texData->height, &n, 0 );
     if( data == NULL ) {
         printf( "Could not load file: %s\n", fileName );
@@ -133,7 +131,7 @@ bool CreateEmptyTexture( OpenGLTexture* texture, const uint16_t width, const uin
     }
 
     size_t spaceNeeded = sizeof(GLuint) * width * height;
-    if( ( texture->data = malloc( spaceNeeded ) ) == NULL) {
+    if( ( texture->data = (GLuint*)malloc( spaceNeeded ) ) == NULL) {
         return false;
     }
     memset( texture->data, 0, spaceNeeded );
@@ -194,7 +192,7 @@ void CreateFrameBuffer( OpenGLTexture* texture ) {
 
     //Create UV Buffer
     glGenBuffers( 1, &framebuffUVBuff );
-    glBindBuffer( GL_ARRAY_BUFFER, &framebuffUVBuff );
+    glBindBuffer( GL_ARRAY_BUFFER, framebuffUVBuff );
     glBufferData( GL_ARRAY_BUFFER, 2 * 4 * sizeof(GLfloat), &uvData, GL_STATIC_DRAW );
 
     glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 
@@ -267,8 +265,8 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
         //Read vertex data
         uint16_t vertexCount = mesh->mNumVertices;
-        data->uvData = calloc( 1, vertexCount * sizeof(GLfloat) * 2);
-        data->vertexData = calloc( 1, vertexCount * sizeof(GLfloat) * 3 );    //Allocate space for vertex buffer
+        data->uvData = (GLfloat*)calloc( 1, vertexCount * sizeof(GLfloat) * 2);
+        data->vertexData = (GLfloat*)calloc( 1, vertexCount * sizeof(GLfloat) * 3 );    //Allocate space for vertex buffer
         //printf("Vertex Pointer data: %p\n", data->vertexData );
         for( uint16_t j = 0; j < vertexCount; j++ ) {
             data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
@@ -284,7 +282,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
         //Read index data
         uint16_t indexCount = mesh->mNumFaces * 3;
-        data->indexData = calloc( 1, indexCount * sizeof(GLuint) );    //Allocate space for index buffer
+        data->indexData = (GLuint*)calloc( 1, indexCount * sizeof(GLuint) );    //Allocate space for index buffer
         //printf("Index Pointer data: %p\n", data->indexData );
         for( uint16_t j = 0; j < mesh->mNumFaces; j++ ) {
             const struct aiFace face = mesh->mFaces[j];
@@ -361,7 +359,7 @@ void LoadShaderSrc(const char* fileName, char** srcPtr){
     //Reset to beginning
     fseek( file, 0, SEEK_SET );
     //Allocate space for src
-    *srcPtr = calloc( fileSize + 1, sizeof( GLchar ) );
+    *srcPtr = (char*)calloc( fileSize + 1, sizeof( GLchar ) );
     //Actually read data into allocated space
     fread( *srcPtr , 1, fileSize, file );
     //Close source file
@@ -371,6 +369,8 @@ void LoadShaderSrc(const char* fileName, char** srcPtr){
 void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char* fragShaderFile) {
     GLuint vertexShader;
     GLuint fragShader;
+    GLchar* vertexShaderSrc;
+    GLchar* fragShaderSrc;
 
     //Create program
     program->programID = glCreateProgram();
@@ -378,9 +378,8 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     //Create vertex shader component
     vertexShader = glCreateShader( GL_VERTEX_SHADER );
     //Bind source to program
-    LoadShaderSrc( vertShaderFile, &program->vertexShaderSrc );
-    glShaderSource( vertexShader, 1, &program->vertexShaderSrc, NULL );
-    free( &program->vertexShaderSrc );
+    LoadShaderSrc( vertShaderFile, &vertexShaderSrc );
+    glShaderSource( vertexShader, 1, &vertexShaderSrc, NULL );
 
     //Compile Vertex Shader
     glCompileShader( vertexShader );
@@ -399,9 +398,8 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     //Create fragment shader component
     fragShader = glCreateShader( GL_FRAGMENT_SHADER );
     //Load source and bind to GL program
-    LoadShaderSrc( fragShaderFile, &program->fragShaderSrc );
-    glShaderSource( fragShader, 1, &program->fragShaderSrc, NULL );
-    free( &program->fragShaderSrc );
+    LoadShaderSrc( fragShaderFile, &fragShaderSrc );
+    glShaderSource( fragShader, 1, &fragShaderSrc, NULL );
 
     //Compile fragment source
     glCompileShader( fragShader );
@@ -428,7 +426,11 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
         printf( "Shader Program Linked Successfully\n");
     }
 
+    //clean up space allocated for shader program source files
+    free( vertexShaderSrc );
+    free( fragShaderSrc );
 
+    //Now we're going to cache all the uniforms and attributes in the shader
     uintptr_t nameBufferOffset = 0;
     GLint total = -1;
     glGetProgramiv( program->programID, GL_ACTIVE_UNIFORMS, &total ); 
@@ -483,7 +485,7 @@ void RenderMesh( OpenGLMesh* mesh, ShaderProgram* program ) {
 
     //Bind Shader
     glUseProgram( program->programID );
-    glUniformMatrix4fv( glGetUniformLocation(program->programID, "modelMatrix"), 1, false, &mesh->m.m[0] );
+    glUniformMatrix4fv( glGetUniformLocation(program->programID, "modelMatrix"), 1, false, (const float*)&mesh->m.m[0] );
 
     //Set vertex data
     glBindBuffer( GL_ARRAY_BUFFER, mesh->vbo );
@@ -583,20 +585,20 @@ bool Init() {
 }
 
 void Render() {
-    //glBindFramebuffer( GL_FRAMEBUFFER, frameBufferPtr );
-    //glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBufferTexture.textureID, 0 );
+    glBindFramebuffer( GL_FRAMEBUFFER, frameBufferPtr );
+    glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBufferTexture.textureID, 0 );
 
     //Clear color buffer & depth buffer
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     RenderMesh( &renderMesh, &myProgram );
 
-    //glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+    glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
-    //RenderFramebufferTexture( &frameBufferTexture );
+    RenderFramebufferTexture( &frameBufferTexture );
 }
 
 bool Update() {
-    //renderMesh.m = MultMatrix( renderMesh.m, spinMatrix );
+    renderMesh.m = MultMatrix( renderMesh.m, spinMatrix );
     return true;
 }
