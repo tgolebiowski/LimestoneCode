@@ -584,17 +584,17 @@ bool Init() {
 }
 
 void Render() {
-    glBindFramebuffer( GL_FRAMEBUFFER, frameBufferPtr );
-    glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBufferTexture.textureID, 0 );
+    //glBindFramebuffer( GL_FRAMEBUFFER, frameBufferPtr );
+    //glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBufferTexture.textureID, 0 );
 
     //Clear color buffer & depth buffer
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     RenderMesh( &renderMesh, &myProgram );
 
-    glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+    //glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
-    RenderFramebufferTexture( &frameBufferTexture );
+    //RenderFramebufferTexture( &frameBufferTexture );
 }
 
 bool Update() {

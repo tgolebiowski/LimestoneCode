@@ -40,7 +40,7 @@ all : $(OBJS)
 #---link-opt: One or more linker options. CL passes these options to the linker.
 
 CLANG_CL_LIBRARIES = user32.lib glu32.lib glew32s.lib opengl32.lib libassimp.lib gdi32.lib
-CLANG_CL_LINKER = /link -LIBPATH:Dependencies/lib/OpenGL/ -LIBPATH:Dependencies/lib/assimp/
+CLANG_CL_LINKER = /link -DEBUG -LIBPATH:Dependencies/lib/OpenGL/ -LIBPATH:Dependencies/lib/assimp/
 
 withClang : $(OBJS)
 	clang-cl -Wall -m32 $(INCLUDE_PATHS) $(OBJS) -o $(OBJ_NAME) $(CLANG_CL_LINKER) $(CLANG_CL_LIBRARIES)
