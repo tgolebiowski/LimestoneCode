@@ -7,12 +7,11 @@ CC = gcc
 
 #INCLUDE_PATHS specifies the additional include paths we'll need 
 #INCLUDE_PATHS = -IC:\mingw_dev_lib\include\SDL2 
-INCLUDE_PATHS = -IDependencies\include\OpenGL -IDependencies\include\assimp
+INCLUDE_PATHS = -IDependencies/include/OpenGL -IDependencies/include/assimp
 
 #LIBRARY_PATHS specifies the additional library paths we'll need 
 #LIBRARY_PATHS = -LC:\mingw_dev_lib\lib 
-LIBRARY_PATHS = -LDependencies\lib\OpenGL  -LDependencies\lib\assimp
-#-LDependencies\lib\assimp
+LIBRARY_PATHS = -LDependencies/lib/OpenGL  -LDependencies/lib/assimp
 
 #COMPILER_FLAGS specifies the additional compilation options we're using
 COMPILER_FLAGS = -Wall -ggdb -std=c99
@@ -20,7 +19,7 @@ COMPILER_FLAGS = -Wall -ggdb -std=c99
 #SDLFLAGS = -lSDL2main -lSDL2 $(sdl2-config --libs --cflags)
 #LINKER_FLAGS specifies the libraries we're linking against 
 GLFLAGS = -lglu32 -lglew32 -lfreeglut_static -lopengl32
-LINKER_FLAGS = -lmingw32 $(GLFLAGS) -lassimpd -lwinmm -lgdi32
+LINKER_FLAGS = $(GLFLAGS) -lassimpd -lwinmm -lgdi32
 
 # Put this at the end of linker flags to supress console output: -Wl,--subsystem,windows
 
@@ -28,8 +27,12 @@ LINKER_FLAGS = -lmingw32 $(GLFLAGS) -lassimpd -lwinmm -lgdi32
 OBJ_NAME = go
 #This is the target that compiles our executable 
 all : $(OBJS) 
-	$(CC) $(OBJS) -D FREEGLUT_STATIC $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(COMPILER_FLAGS) $(LINKER_FLAGS) -o $(OBJ_NAME)
+	$(CC) $(OBJS) -D FREEGLUT_STATIC $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(COMPILER_FLAGS) $(LINKER_FLAGS) -lmingw32 -o $(OBJ_NAME)
 	@echo Wet Clay is ready.
+
+withClang : $(OBJS)
+	clang++ -Wall -g -m32 $(OBJS) $(INCLUDE_PATHS) -o /link $(LIBRARY_PATHS) $(LINKER_FLAGS)
+	@echo Code clay is ready.
 
 clean:
 	$(RM) *.o *~
