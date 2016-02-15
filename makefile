@@ -19,19 +19,28 @@ COMPILER_FLAGS = -Wall -ggdb -std=c99
 #SDLFLAGS = -lSDL2main -lSDL2 $(sdl2-config --libs --cflags)
 #LINKER_FLAGS specifies the libraries we're linking against 
 GLFLAGS = -lglu32 -lglew32 -lfreeglut_static -lopengl32
-LINKER_FLAGS = $(GLFLAGS) -lassimpd -lwinmm -lgdi32
+LIBRARIES = $(GLFLAGS) -lassimpd -lwinmm -lgdi32
 
 # Put this at the end of linker flags to supress console output: -Wl,--subsystem,windows
 
 #OBJ_NAME specifies the name of our exectuable
-OBJ_NAME = go
+OBJ_NAME = go.exe
 #This is the target that compiles our executable 
 all : $(OBJS) 
-	$(CC) $(OBJS) -D FREEGLUT_STATIC $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(COMPILER_FLAGS) $(LINKER_FLAGS) -lmingw32 -o $(OBJ_NAME)
+	$(CC) $(OBJS) -D FREEGLUT_STATIC $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(COMPILER_FLAGS) $(LIBRARIES) -lmingw32 -o $(OBJ_NAME)
 	@echo Wet Clay is ready.
 
+#Saving this here, from m$ documentation website
+#CL [option...] file... [option | file]... [lib...] [@command-file] [/link link-opt...]
+#---option: one or more compiler options
+#---file: The name of one or more source files, .obj files, or libraries. CL compiles source 
+#files and passes the names of the .obj files and libraries to the linker.
+#---lib: One or more library names.
+#---command-file: A file that contains multiple options and filenames.
+#---link-opt: One or more linker options. CL passes these options to the linker.
+
 withClang : $(OBJS)
-	clang++ -Wall -g -m32 $(OBJS) $(INCLUDE_PATHS) -o /link $(LIBRARY_PATHS) $(LINKER_FLAGS)
+	clang++ -Wall -g -m32 $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(OBJS) $(LIBRARIES) -o $(OBJ_NAME)
 	@echo Code clay is ready.
 
 clean:
