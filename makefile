@@ -7,7 +7,7 @@ CC = gcc
 
 #INCLUDE_PATHS specifies the additional include paths we'll need 
 #INCLUDE_PATHS = -IC:\mingw_dev_lib\include\SDL2 
-INCLUDE_PATHS = -IDependencies/include/OpenGL -IDependencies/include/assimp
+INCLUDE_PATHS = -IDependencies/include
 
 #LIBRARY_PATHS specifies the additional library paths we'll need 
 #LIBRARY_PATHS = -LC:\mingw_dev_lib\lib 
@@ -18,7 +18,7 @@ COMPILER_FLAGS = -Wall -ggdb -std=c99
 
 #SDLFLAGS = -lSDL2main -lSDL2 $(sdl2-config --libs --cflags)
 #LINKER_FLAGS specifies the libraries we're linking against 
-GLFLAGS = -lglu32 -lglew32 -lfreeglut_static -lopengl32
+GLFLAGS = -lglu32 -lglew32 -lopengl32
 LIBRARIES = $(GLFLAGS) -lassimpd -lwinmm -lgdi32
 # Put this at the end of linker flags to supress console output: -Wl,--subsystem,windows
 
@@ -27,7 +27,7 @@ OBJ_NAME = go.exe
 
 #This is the target that compiles our executable 
 all : $(OBJS) 
-	$(CC) $(OBJS) -D FREEGLUT_STATIC $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(COMPILER_FLAGS) $(LIBRARIES) -lmingw32 -o $(OBJ_NAME)
+	gcc -Wall -ggdb -std=c99 $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(OBJS) $(LIBRARIES) -lmingw32 -o $(OBJ_NAME)
 	@echo Wet Clay is ready.
 
 #Saving this here, from m$ documentation website
@@ -39,8 +39,11 @@ all : $(OBJS)
 #---command-file: A file that contains multiple options and filenames.
 #---link-opt: One or more linker options. CL passes these options to the linker.
 
+CLANG_CL_LIBRARIES = user32.lib glu32.lib glew32s.lib opengl32.lib libassimp.lib gdi32.lib
+CLANG_CL_LINKER = /link -LIBPATH:Dependencies/lib/OpenGL/ -LIBPATH:Dependencies/lib/assimp/
+
 withClang : $(OBJS)
-	clang++ -Wall -g -m32 $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(OBJS) $(LIBRARIES) -o $(OBJ_NAME)
+	clang-cl -Wall -m32 $(INCLUDE_PATHS) $(OBJS) -o $(OBJ_NAME) $(CLANG_CL_LINKER) $(CLANG_CL_LIBRARIES)
 	@echo Code clay is ready.
 
 clean:

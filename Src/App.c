@@ -1,11 +1,10 @@
 #define GLEW_STATIC
-#include "glew.h"
-#include "wglew.h"
-#include "glut.h"
+#include "OpenGL/glew.h"
+#include "OpenGL/wglew.h"
 
-#include "cimport.h"               // Assimp Plain-C interface
-#include "scene.h"                 // Assimp Output data structure
-#include "postprocess.h"           // Assimp Post processing flags
+#include "assimp/cimport.h"               // Assimp Plain-C interface
+#include "assimp/scene.h"                 // Assimp Output data structure
+#include "assimp/postprocess.h"           // Assimp Post processing flags
 
 #include "Math3D.c"
 

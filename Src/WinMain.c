@@ -2,9 +2,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
+
 #define GLEW_STATIC
-#include <glew.h>
-#include <glut.h>
+#include "OpenGL/glew.h"
 
 #include "App.c"
 
