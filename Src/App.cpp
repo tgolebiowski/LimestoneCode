@@ -6,7 +6,7 @@
 #include "assimp/scene.h"                 // Assimp Output data structure
 #include "assimp/postprocess.h"           // Assimp Post processing flags
 
-#include "Math3D.c"
+#include "Math3D.cpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
@@ -250,16 +250,17 @@ void printShaderLog( GLuint shader ) {
     }
 }
 
-void LoadShaderSrc(const char* fileName, char** srcPtr){
-    FILE* file = fopen( fileName, "r" );
-    if( file == NULL ) {
-        printf( "Could not load vert source file\n" );
+void LoadShaderSrc(const char* fileName, GLchar** srcPtr){
+    FILE* file;
+    errno_t e = fopen_s(&file, fileName, "r" );
+    if( file == NULL || e != 0) {
+        printf( "Could not load shader source file %s\n", fileName );
         return;
     }
     //Seek till end of file, and get size
     fseek( file, 0, SEEK_END );
     uint16_t fileSize = ftell( file );
-    printf( "Opened vert src file, length is: %d\n", fileSize );
+    printf( "Opened shader src file %s, length is: %d\n", fileName, fileSize );
     //Reset to beginning
     fseek( file, 0, SEEK_SET );
     //Allocate space for src
@@ -420,8 +421,8 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
         //Read vertex data
         uint16_t vertexCount = mesh->mNumVertices;
-        data->uvData = calloc( 1, vertexCount * sizeof(GLfloat) * 2);
-        data->vertexData = calloc( 1, vertexCount * sizeof(GLfloat) * 3 );    //Allocate space for vertex buffer
+        data->uvData = (GLfloat*)calloc( 1, vertexCount * sizeof(GLfloat) * 2);
+        data->vertexData = (GLfloat*)calloc( 1, vertexCount * sizeof(GLfloat) * 3 );    //Allocate space for vertex buffer
         //printf("Vertex Pointer data: %p\n", data->vertexData );
         for( uint16_t j = 0; j < vertexCount; j++ ) {
             data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
@@ -437,7 +438,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
         //Read index data
         uint16_t indexCount = mesh->mNumFaces * 3;
-        data->indexData = calloc( 1, indexCount * sizeof(GLuint) );    //Allocate space for index buffer
+        data->indexData = (GLuint*)calloc( 1, indexCount * sizeof(GLuint) );    //Allocate space for index buffer
         //printf("Index Pointer data: %p\n", data->indexData );
         for( uint16_t j = 0; j < mesh->mNumFaces; j++ ) {
             const struct aiFace face = mesh->mFaces[j];

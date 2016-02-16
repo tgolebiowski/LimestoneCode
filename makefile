@@ -1,5 +1,5 @@
 #object files
-OBJS = Src/WinMain.c
+OBJS = Src/WinMain.cpp
 
 #CC specifies which compiler we're using 
 #CC = "C:\Program Files\LLVM\msbuild-bin\cl.exe" figure how to make clang work here
@@ -26,7 +26,7 @@ LIBRARIES = $(GLFLAGS) -lassimpd -lwinmm -lgdi32
 OBJ_NAME = go.exe
 
 #This is the target that compiles our executable 
-all : $(OBJS) 
+withGCC : $(OBJS) 
 	gcc -Wall -ggdb -std=c99 $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(OBJS) $(LIBRARIES) -lmingw32 -o $(OBJ_NAME)
 	@echo Wet Clay is ready.
 

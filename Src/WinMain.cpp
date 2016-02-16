@@ -1,3 +1,4 @@
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -6,7 +7,7 @@
 #define GLEW_STATIC
 #include "OpenGL/glew.h"
 
-#include "App.c"
+#include "App.cpp"
 
 bool running = true;
 bool isFullscreen = false;
