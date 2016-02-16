@@ -1,7 +1,6 @@
 #define GLEW_STATIC
 #include "glew.h"
 #include "wglew.h"
-#include "glut.h"
 
 #include "cimport.h"               // Assimp Plain-C interface
 #include "scene.h"                 // Assimp Output data structure
@@ -173,12 +172,12 @@ bool CreateEmptyTexture( OpenGLTexture* texture, const uint16_t width, const uin
 }
 
 void CreateFrameBuffer( OpenGLTexture* texture ) {
+    const GLuint iData[6] = { 0, 1, 2, 2, 3, 0 };
+    const GLfloat vData[4 * 3] = {-0.8f, -0.8f, 0.0f, 
+                            0.8f, -0.8f, 0.0f,
+                            0.8f, 0.8f, 0.0f, 
+                            -0.8f, 0.8f, 0.0f };
     const GLfloat uvData[4 * 2] = { 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f };
-    const GLuint iData[4] = { 3, 2, 1, 0 };
-    GLfloat vData[4 * 3] = { 0.0f, 0.0f, 0.0f, 
-                            (float)texture->width, 0.0f, 0.0f,
-                            (float)texture->width, (float)texture->height, 0.0f, 
-                            0.0f, (float)texture->height, 0.0f };
 
     //Create VBO
     glGenBuffers( 1, &framebuffVBO );
@@ -188,11 +187,11 @@ void CreateFrameBuffer( OpenGLTexture* texture ) {
     //Create IBO
     glGenBuffers( 1, &framebuffIBO );
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, framebuffIBO );
-    glBufferData( GL_ELEMENT_ARRAY_BUFFER, 4 * sizeof(GLuint), &iData, GL_STATIC_DRAW );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, 6 * sizeof(GLuint), &iData, GL_STATIC_DRAW );
 
     //Create UV Buffer
     glGenBuffers( 1, &framebuffUVBuff );
-    glBindBuffer( GL_ARRAY_BUFFER, &framebuffUVBuff );
+    glBindBuffer( GL_ARRAY_BUFFER, framebuffUVBuff );
     glBufferData( GL_ARRAY_BUFFER, 2 * 4 * sizeof(GLfloat), &uvData, GL_STATIC_DRAW );
 
     glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 
@@ -218,108 +217,13 @@ void RenderFramebufferTexture( OpenGLTexture* texture ) {
     glBindTexture( GL_TEXTURE_2D, texture->textureID );
 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, framebuffIBO );    //Bind index data
-    glDrawElements( GL_QUADS, 4, GL_UNSIGNED_INT, NULL );     //Render da quad
+    glDrawElements( GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL );     //Render da quad
 
     //clear shader
     glUseProgram( (GLuint)NULL );
 
     //Unbind textures
     glBindTexture( GL_TEXTURE_2D, 0 );
-}
-
-bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
-    // Start the import on the given file with some example postprocessing
-    // Usually - if speed is not the most important aspect for you - you'll t
-    // probably to request more postprocessing than we do in this example.
-    unsigned int myFlags = 
-    aiProcess_CalcTangentSpace         | // calculate tangents and bitangents if possible
-    aiProcess_JoinIdenticalVertices    | // join identical vertices/ optimize indexing
-    aiProcess_Triangulate              | // Ensure all verticies are triangulated (each 3 vertices are triangle)
-    aiProcess_ImproveCacheLocality     | // improve the cache locality of the output vertices
-    aiProcess_FindDegenerates          | // remove degenerated polygons from the import
-    aiProcess_FindInvalidData          | // detect invalid model data, such as invalid normal vectors
-    aiProcess_TransformUVCoords        | // preprocess UV transformations (scaling, translation ...)
-    aiProcess_LimitBoneWeights         | // limit bone weights to 4 per vertex
-    0;
-
-    const struct aiScene* scene = aiImportFile( fileName, myFlags );
-
-    // If the import failed, report it
-    if( !scene ) {
-        printf( "Failed to import %s\n", fileName );
-        return false;
-    }
-
-    // Now we can access the file's contents
-    uint16_t numMeshes = scene->mNumMeshes;
-    printf( "Loaded file: %s\n", fileName );
-    printf( "%d Meshes in file\n", numMeshes );
-    if(numMeshes == 0) {
-        return false;
-    }
-
-    //Read data for each mesh
-    for( uint8_t i = 0; i < numMeshes; i++ ) {
-        const struct aiMesh* mesh = scene->mMeshes[i];
-        printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
-
-        //Read vertex data
-        uint16_t vertexCount = mesh->mNumVertices;
-        data->uvData = calloc( 1, vertexCount * sizeof(GLfloat) * 2);
-        data->vertexData = calloc( 1, vertexCount * sizeof(GLfloat) * 3 );    //Allocate space for vertex buffer
-        //printf("Vertex Pointer data: %p\n", data->vertexData );
-        for( uint16_t j = 0; j < vertexCount; j++ ) {
-            data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
-            data->vertexData[j * 3 + 1] = mesh->mVertices[j].z * 50.0f;
-            data->vertexData[j * 3 + 2] = mesh->mVertices[j].y * 50.0f;
-
-            data->uvData[j * 2 + 0] = mesh->mTextureCoords[0][j].x;
-            data->uvData[j * 2 + 1] = mesh->mTextureCoords[0][j].y;
-            //printf("UV Data: %f, %f\n", data->uvData[j * 2 + 0], data->uvData[j * 2 + 1]);
-            //printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
-        }
-        data->vertexCount = vertexCount;
-
-        //Read index data
-        uint16_t indexCount = mesh->mNumFaces * 3;
-        data->indexData = calloc( 1, indexCount * sizeof(GLuint) );    //Allocate space for index buffer
-        //printf("Index Pointer data: %p\n", data->indexData );
-        for( uint16_t j = 0; j < mesh->mNumFaces; j++ ) {
-            const struct aiFace face = mesh->mFaces[j];
-            data->indexData[j * 3 + 0] = face.mIndices[0];
-            data->indexData[j * 3 + 1] = face.mIndices[1];
-            data->indexData[j * 3 + 2] = face.mIndices[2];
-            //printf( "Index Set: %d, %d, %d\n", data->indexData[j * 3 + 0], data->indexData[j * 3 + 1], data->indexData[j * 3 + 2]);
-        }
-        data->indexCount = indexCount;
-    }
-
-    // We're done. Release all resources associated with this import
-    aiReleaseImport( scene );
-    return true; 
-}
-
-void CreateRenderMesh(OpenGLMesh* renderMesh, MeshData* meshData) {
-    //Create VBO
-    glGenBuffers( 1, &renderMesh->vbo );
-    glBindBuffer( GL_ARRAY_BUFFER, renderMesh->vbo );
-    glBufferData( GL_ARRAY_BUFFER, 3 * meshData->vertexCount * sizeof(GLfloat), meshData->vertexData, GL_STATIC_DRAW );
-
-    //Create IBO
-    glGenBuffers( 1, &renderMesh->ibo );
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, renderMesh->ibo );
-    glBufferData( GL_ELEMENT_ARRAY_BUFFER, meshData->indexCount * sizeof(GLuint), meshData->indexData, GL_STATIC_DRAW );
-
-    //Create UV Buffer
-    glGenBuffers( 1, &renderMesh->uvBuffer );
-    glBindBuffer( GL_ARRAY_BUFFER, renderMesh->uvBuffer );
-    glBufferData( GL_ARRAY_BUFFER, 2 * meshData->vertexCount * sizeof(GLfloat), meshData->uvData, GL_STATIC_DRAW );
-
-    glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint)NULL );
-
-    renderMesh->elementCount = meshData->indexCount;
-    //printf("Created render mesh\n");
 }
 
 void printShaderLog( GLuint shader ) {
@@ -476,6 +380,101 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     glDeleteShader( fragShader );
 }
 
+bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
+    // Start the import on the given file with some example postprocessing
+    // Usually - if speed is not the most important aspect for you - you'll t
+    // probably to request more postprocessing than we do in this example.
+    unsigned int myFlags = 
+    aiProcess_CalcTangentSpace         | // calculate tangents and bitangents if possible
+    aiProcess_JoinIdenticalVertices    | // join identical vertices/ optimize indexing
+    aiProcess_Triangulate              | // Ensure all verticies are triangulated (each 3 vertices are triangle)
+    aiProcess_ImproveCacheLocality     | // improve the cache locality of the output vertices
+    aiProcess_FindDegenerates          | // remove degenerated polygons from the import
+    aiProcess_FindInvalidData          | // detect invalid model data, such as invalid normal vectors
+    aiProcess_TransformUVCoords        | // preprocess UV transformations (scaling, translation ...)
+    aiProcess_LimitBoneWeights         | // limit bone weights to 4 per vertex
+    0;
+
+    const struct aiScene* scene = aiImportFile( fileName, myFlags );
+
+    // If the import failed, report it
+    if( !scene ) {
+        printf( "Failed to import %s\n", fileName );
+        return false;
+    }
+
+    // Now we can access the file's contents
+    uint16_t numMeshes = scene->mNumMeshes;
+    printf( "Loaded file: %s\n", fileName );
+    printf( "%d Meshes in file\n", numMeshes );
+    if(numMeshes == 0) {
+        return false;
+    }
+
+    //Read data for each mesh
+    for( uint8_t i = 0; i < numMeshes; i++ ) {
+        const struct aiMesh* mesh = scene->mMeshes[i];
+        printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
+
+        //Read vertex data
+        uint16_t vertexCount = mesh->mNumVertices;
+        data->uvData = calloc( 1, vertexCount * sizeof(GLfloat) * 2);
+        data->vertexData = calloc( 1, vertexCount * sizeof(GLfloat) * 3 );    //Allocate space for vertex buffer
+        //printf("Vertex Pointer data: %p\n", data->vertexData );
+        for( uint16_t j = 0; j < vertexCount; j++ ) {
+            data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
+            data->vertexData[j * 3 + 1] = mesh->mVertices[j].z * 50.0f;
+            data->vertexData[j * 3 + 2] = mesh->mVertices[j].y * 50.0f;
+
+            data->uvData[j * 2 + 0] = mesh->mTextureCoords[0][j].x;
+            data->uvData[j * 2 + 1] = mesh->mTextureCoords[0][j].y;
+            //printf("UV Data: %f, %f\n", data->uvData[j * 2 + 0], data->uvData[j * 2 + 1]);
+            //printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
+        }
+        data->vertexCount = vertexCount;
+
+        //Read index data
+        uint16_t indexCount = mesh->mNumFaces * 3;
+        data->indexData = calloc( 1, indexCount * sizeof(GLuint) );    //Allocate space for index buffer
+        //printf("Index Pointer data: %p\n", data->indexData );
+        for( uint16_t j = 0; j < mesh->mNumFaces; j++ ) {
+            const struct aiFace face = mesh->mFaces[j];
+            data->indexData[j * 3 + 0] = face.mIndices[0];
+            data->indexData[j * 3 + 1] = face.mIndices[1];
+            data->indexData[j * 3 + 2] = face.mIndices[2];
+            //printf( "Index Set: %d, %d, %d\n", data->indexData[j * 3 + 0], data->indexData[j * 3 + 1], data->indexData[j * 3 + 2]);
+        }
+        data->indexCount = indexCount;
+    }
+
+    // We're done. Release all resources associated with this import
+    aiReleaseImport( scene );
+    return true; 
+}
+
+void CreateRenderMesh(OpenGLMesh* renderMesh, MeshData* meshData) {
+    //Create VBO
+    glGenBuffers( 1, &renderMesh->vbo );
+    glBindBuffer( GL_ARRAY_BUFFER, renderMesh->vbo );
+    glBufferData( GL_ARRAY_BUFFER, 3 * meshData->vertexCount * sizeof(GLfloat), meshData->vertexData, GL_STATIC_DRAW );
+
+    //Create IBO
+    glGenBuffers( 1, &renderMesh->ibo );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, renderMesh->ibo );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, meshData->indexCount * sizeof(GLuint), meshData->indexData, GL_STATIC_DRAW );
+
+    //Create UV Buffer
+    glGenBuffers( 1, &renderMesh->uvBuffer );
+    glBindBuffer( GL_ARRAY_BUFFER, renderMesh->uvBuffer );
+    glBufferData( GL_ARRAY_BUFFER, 2 * meshData->vertexCount * sizeof(GLfloat), meshData->uvData, GL_STATIC_DRAW );
+
+    glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint)NULL );
+
+    renderMesh->elementCount = meshData->indexCount;
+    //printf("Created render mesh\n");
+}
+
 void RenderMesh( OpenGLMesh* mesh, ShaderProgram* program ) {
     //Flush errors
     //while( glGetError() != GL_NO_ERROR ){};
@@ -513,7 +512,7 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     //Initialize clear color
     glClearColor( 0.1f, 0.1f, 0.1f, 1.0f );
 
-    glEnable( GL_DEPTH_TEST );
+    //glEnable( GL_DEPTH_TEST );
     //Configure Texturing, setting some nice perspective correction
     //glEnable( GL_TEXTURE_2D );
     //glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
@@ -539,7 +538,7 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     //SetOrthoProjection( &cameraMatrix, -halfWidth, halfWidth, halfHeight, -halfHeight, -halfWidth, halfWidth );
 
     //Initialize framebuffer
-    CreateEmptyTexture( &frameBufferTexture, 1024, 1024 );
+    CreateEmptyTexture( &frameBufferTexture, screen_w, screen_h );
     CreateFrameBuffer( &frameBufferTexture );
     glGenFramebuffers( 1, &frameBufferPtr );
 
@@ -582,17 +581,17 @@ bool Init() {
 }
 
 void Render() {
-    //glBindFramebuffer( GL_FRAMEBUFFER, frameBufferPtr );
-    //glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBufferTexture.textureID, 0 );
+    glBindFramebuffer( GL_FRAMEBUFFER, frameBufferPtr );
+    glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBufferTexture.textureID, 0 );
 
     //Clear color buffer & depth buffer
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     RenderMesh( &renderMesh, &myProgram );
 
-    //glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+    glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
-    //RenderFramebufferTexture( &frameBufferTexture );
+    RenderFramebufferTexture( &frameBufferTexture );
 }
 
 bool Update() {

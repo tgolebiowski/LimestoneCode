@@ -19,7 +19,7 @@ COMPILER_FLAGS = -Wall -ggdb -std=c99
 
 #SDLFLAGS = -lSDL2main -lSDL2 $(sdl2-config --libs --cflags)
 #LINKER_FLAGS specifies the libraries we're linking against 
-GLFLAGS = -lglu32 -lglew32 -lfreeglut_static -lopengl32
+GLFLAGS = -lglu32 -lglew32 -lopengl32
 LINKER_FLAGS = -lmingw32 $(GLFLAGS) -lassimpd -lwinmm -lgdi32
 
 # Put this at the end of linker flags to supress console output: -Wl,--subsystem,windows
