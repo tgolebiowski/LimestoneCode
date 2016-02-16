@@ -2,8 +2,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
+
 #define GLEW_STATIC
-#include "glew.h"
+#include "OpenGL/glew.h"
 
 #include "App.c"
 
@@ -129,6 +130,11 @@ bool CreateClayWindow() {
 }
 
 int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow ) {
+	AllocConsole(); //create a console
+	freopen("conin$","r",stdin);
+	freopen("conout$","w",stdout);
+	freopen("conout$","w",stderr);
+
 	appInfo.appInstance = hInstance;
 	CreateClayWindow();
 	Init();
@@ -157,6 +163,10 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 		}
 
 	} while( running );
+
+	printf("Exitting\n");
+
+	FreeConsole();
 
 	return Msg.wParam;
 }

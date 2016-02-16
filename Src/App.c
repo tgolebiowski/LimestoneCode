@@ -1,10 +1,10 @@
 #define GLEW_STATIC
-#include "glew.h"
-#include "wglew.h"
+#include "OpenGL/glew.h"
+#include "OpenGL/wglew.h"
 
-#include "cimport.h"               // Assimp Plain-C interface
-#include "scene.h"                 // Assimp Output data structure
-#include "postprocess.h"           // Assimp Post processing flags
+#include "assimp/cimport.h"               // Assimp Plain-C interface
+#include "assimp/scene.h"                 // Assimp Output data structure
+#include "assimp/postprocess.h"           // Assimp Post processing flags
 
 #include "Math3D.c"
 
@@ -15,8 +15,8 @@
 typedef struct OpenGLTexture {
     GLuint textureID;
     GLenum pixelFormat;
-    uint16_t width;
-    uint16_t height;
+    int width;
+    int height;
     GLuint* data;
 }OpenGLTexture;
 
@@ -79,7 +79,7 @@ static ShaderProgram framebufferShader;
 
 bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     //Load data from file
-    uint8_t n;
+    int n;
     unsigned char* data = stbi_load( fileName, &texData->width, &texData->height, &n, 0 );
     if( data == NULL ) {
         printf( "Could not load file: %s\n", fileName );
@@ -130,7 +130,7 @@ bool CreateEmptyTexture( OpenGLTexture* texture, const uint16_t width, const uin
     }
 
     size_t spaceNeeded = sizeof(GLuint) * width * height;
-    if( ( texture->data = malloc( spaceNeeded ) ) == NULL) {
+    if( ( texture->data = (GLuint*)malloc( spaceNeeded ) ) == NULL) {
         return false;
     }
     memset( texture->data, 0, spaceNeeded );
@@ -263,7 +263,7 @@ void LoadShaderSrc(const char* fileName, char** srcPtr){
     //Reset to beginning
     fseek( file, 0, SEEK_SET );
     //Allocate space for src
-    *srcPtr = calloc( fileSize + 1, sizeof( GLchar ) );
+    *srcPtr = (char*)calloc( fileSize + 1, sizeof( GLchar ) );
     //Actually read data into allocated space
     fread( *srcPtr , 1, fileSize, file );
     //Close source file
@@ -332,6 +332,8 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
         printf( "Shader Program Linked Successfully\n");
     }
 
+
+    //Now we're going to cache all the uniforms and attributes in the shader
     uintptr_t nameBufferOffset = 0;
     GLint total = -1;
     glGetProgramiv( program->programID, GL_ACTIVE_UNIFORMS, &total ); 
@@ -481,7 +483,7 @@ void RenderMesh( OpenGLMesh* mesh, ShaderProgram* program ) {
 
     //Bind Shader
     glUseProgram( program->programID );
-    glUniformMatrix4fv( glGetUniformLocation(program->programID, "modelMatrix"), 1, false, &mesh->m.m[0] );
+    glUniformMatrix4fv( glGetUniformLocation(program->programID, "modelMatrix"), 1, false, (const float*)&mesh->m.m[0] );
 
     //Set vertex data
     glBindBuffer( GL_ARRAY_BUFFER, mesh->vbo );
