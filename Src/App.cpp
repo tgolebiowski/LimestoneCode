@@ -1,3 +1,5 @@
+#include <map>
+
 #define GLEW_STATIC
 #include "OpenGL/glew.h"
 #include "OpenGL/wglew.h"
@@ -12,15 +14,15 @@
 #define STBI_ONLY_PNG
 #include "stb_image.h"
 
-typedef struct OpenGLTexture {
+struct OpenGLTexture {
     GLuint textureID;
     GLenum pixelFormat;
     int width;
     int height;
     GLuint* data;
-}OpenGLTexture;
+};
 
-typedef struct ShaderProgram {
+struct ShaderProgram {
     GLuint programID;
 
     uint8_t uniformCount;
@@ -36,30 +38,46 @@ typedef struct ShaderProgram {
     GLchar* samplerNames[4];
 
     GLchar uniformNameBuffer[256];
-}ShaderProgram;
+};
 
-typedef struct ShaderTextureSet {
+struct ShaderTextureSet {
     uint8_t count;
     ShaderProgram* associatedShader;
     GLuint shaderSamplerPtrs[4];
     GLuint texturePtrs[4];
-}ShaderTextureSet;
+};
 
-typedef struct OpenGLMesh {
+struct OpenGLMesh {
 	Matrix4 m;
 	GLuint elementCount;
 	GLuint vbo;
 	GLuint ibo;
     GLuint uvBuffer;
-}OpenGLMesh;
+};
 
-typedef struct MeshData {
+struct Bone {
+    Matrix4 transformMatrix;
+    Bone* parentBone;
+    Bone* childrenBones[4];
+    uint8_t childCount;
+    char name[32];
+};
+
+struct Skeleton {
+    Bone allBones[32];
+    uint8_t boneCount;
+};
+
+struct MeshData {
 	GLfloat* vertexData;
     GLfloat* uvData;
+    GLfloat* boneInfluenceData;
+    GLint* influencedByBone;
 	GLuint* indexData;
+    Skeleton* skeleton;
 	uint16_t indexCount;
 	uint16_t vertexCount;
-}MeshData;
+};
 
 static Matrix4 spinMatrix;
 //static Matrix4 cameraMatrix;
@@ -237,7 +255,7 @@ void printShaderLog( GLuint shader ) {
         glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &maxLength );
         
         //Allocate string
-        GLchar infoLog[ maxLength ];
+        GLchar infoLog[ 256 ];
         
         //Get info log
         glGetShaderInfoLog( shader, maxLength, &infoLogLength, infoLog );
@@ -383,6 +401,21 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     glDeleteShader( fragShader );
 }
 
+aiNode* getNodeByName( aiNode* node, char* name ) {
+    if(strcmp(node->mName.data, name) == 0) {
+        return node;
+    }
+
+    for( uint8_t i = 0; i < node->mNumChildren; i++ ) {
+        aiNode* childTraverse = getNodeByName(node->mChildren[i], name);
+        if( childTraverse != NULL) {
+            return childTraverse;
+        }
+    }
+
+    return NULL;
+}
+
 bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     // Start the import on the given file with some example postprocessing
     // Usually - if speed is not the most important aspect for you - you'll t
@@ -416,8 +449,11 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
     //Read data for each mesh
     for( uint8_t i = 0; i < numMeshes; i++ ) {
-        const struct aiMesh* mesh = scene->mMeshes[i];
+        const aiMesh* mesh = scene->mMeshes[i];
         printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
+        if(mesh->HasBones()) {
+            printf( "This mesh also has %d bones\n", mesh->mNumBones );
+        }
 
         //Read vertex data
         uint16_t vertexCount = mesh->mNumVertices;
@@ -428,11 +464,11 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
             data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
             data->vertexData[j * 3 + 1] = mesh->mVertices[j].z * 50.0f;
             data->vertexData[j * 3 + 2] = mesh->mVertices[j].y * 50.0f;
+            //printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
 
             data->uvData[j * 2 + 0] = mesh->mTextureCoords[0][j].x;
             data->uvData[j * 2 + 1] = mesh->mTextureCoords[0][j].y;
             //printf("UV Data: %f, %f\n", data->uvData[j * 2 + 0], data->uvData[j * 2 + 1]);
-            //printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
         }
         data->vertexCount = vertexCount;
 
@@ -448,7 +484,101 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
             //printf( "Index Set: %d, %d, %d\n", data->indexData[j * 3 + 0], data->indexData[j * 3 + 1], data->indexData[j * 3 + 2]);
         }
         data->indexCount = indexCount;
+
+
+        if( mesh->HasBones() ) {
+            const int MAXNUMBONES = 4;
+            //Allocate space for skeleton data
+            data->skeleton = (Skeleton*)calloc( 1, sizeof(Skeleton) );
+            //Assume all bones are part of one armature
+            data->skeleton->boneCount = mesh->mNumBones;
+            //Allocate array of bones weights for each vertex
+            data->boneInfluenceData = (GLfloat*)calloc( 1, vertexCount * sizeof(GLfloat) * MAXNUMBONES );
+            //And Allocate array of which bones are doing the influencing
+            data->influencedByBone = (GLint*)calloc( 1, vertexCount * sizeof(GLint) * MAXNUMBONES );
+
+            //A map and comparator, for tracking which nodes in the heirarchy are related to which bones
+            struct strcompare{
+                bool operator() (const char* lhs, const char* rhs) const {
+                    return (strcmp(lhs, rhs) < 0);
+                }
+            };
+            std::map<char*, aiNode*, strcompare> nodesByName;
+            std::map<char*, Bone*, strcompare> bonesByName;
+
+            //Gotta calloc cause C++ doesn't have non-const defined arrays :/
+            uint8_t* bonesInfluencingEachVert = (uint8_t*)calloc( vertexCount, sizeof(uint8_t) );
+
+            for( uint8_t j = 0; j < data->skeleton->boneCount; j++ ) {
+                const aiBone* bone = mesh->mBones[j];
+                const uint16_t numVertsAffected = bone->mNumWeights;
+                Bone* myBone = &data->skeleton->allBones[j];
+
+                memcpy( &myBone->name, &bone->mName.data, bone->mName.length * sizeof(char) );
+                printf( "Copying info for bone: %s, affects %d verts\n", myBone->name, numVertsAffected );
+
+                //Insert this bones node in the map, for creating hierarchy later
+                aiNode* boneNode = getNodeByName( scene->mRootNode, myBone->name );
+                nodesByName.insert( {myBone->name, boneNode} );
+                bonesByName.insert( {myBone->name, myBone} );
+
+                //Set weight data for verticies affected by this bone
+                for( uint16_t k = 0; k < numVertsAffected; k++ ) {
+                    const aiVertexWeight weightInfo = bone->mWeights[k];
+                    //Index into the arrays that hold data, each 4 consecutive indicies corresponds to one vertex
+                    //So vertex ID * MAXNUMBONES + num of bones that have already influenced to point = index
+                    const uint16_t indexToWeightData = MAXNUMBONES * weightInfo.mVertexId + bonesInfluencingEachVert[weightInfo.mVertexId];
+
+                    data->boneInfluenceData[indexToWeightData] = weightInfo.mWeight;
+                    data->influencedByBone[indexToWeightData] = j;
+                    bonesInfluencingEachVert[weightInfo.mVertexId]++;
+                    assert(bonesInfluencingEachVert[weightInfo.mVertexId] <= 4);
+                }
+            }
+            free( bonesInfluencingEachVert );
+
+            //Now build up heirarchy info
+            for( uint8_t j = 0; j < data->skeleton->boneCount; j++ ) {
+                Bone* bone = &data->skeleton->allBones[j];
+                //Do this so theres a crash if the bone wasn't added to the list earlier
+                aiNode* correspondingNode = nodesByName.find( bone->name )->second;
+
+                printf( "Building hierarchy data for bone: %s\n", bone->name );
+
+                //First do the parent (maybe)
+                aiNode* parentNode = correspondingNode->mParent;
+                auto node_it = nodesByName.find( parentNode->mName.data );
+                if( node_it != nodesByName.end() ) {
+                    //If the parent node is in the list
+                    auto bone_it = bonesByName.find( parentNode->mName.data );
+                    bone->parentBone = bone_it->second;
+                    printf("Parent Set, parent bone name %s, parent node name %s\n", bone->parentBone->name, parentNode->mName.data);
+                } else {
+                    printf("No parent found for bone %s\n", bone->name);
+                    bone->parentBone = NULL;
+                }
+
+                //Now do the children
+                for( uint8_t k = 0; k < correspondingNode->mNumChildren; k++ ) {
+                    aiNode* childNode = correspondingNode->mChildren[k];
+                    auto childBone_it = bonesByName.find( childNode->mName.data );
+                    if( childBone_it != bonesByName.end() ) {
+                        Bone* childBone = childBone_it->second;
+                        bone->childrenBones[bone->childCount] = childBone;
+                        bone->childCount++;
+                    }
+                }
+                printf( "%d children found for this bone\n", bone->childCount );
+            }
+
+        } else {
+            data->boneInfluenceData = NULL;
+            data->skeleton = NULL;
+            printf( "No bone info\n" );
+        }
     }
+
+
 
     // We're done. Release all resources associated with this import
     aiReleaseImport( scene );
@@ -562,7 +692,7 @@ bool Init() {
 
     LoadTextureFromFile( &myTexture, "Data/Textures/pink_texture.png" );
     LoadTextureFromFile( &otherTexture, "Data/Textures/green_texture.png" );
-    LoadMeshFromFile( &tinyMeshData, "Data/Pointy.fbx" );
+    LoadMeshFromFile( &tinyMeshData, "Data/Wiggley.dae" );
     CreateRenderMesh( &renderMesh, &tinyMeshData );
     CreateShader( &myProgram, "Data/Shaders/Vert.vert", "Data/Shaders/Frag.frag" );
     CreateShader( &framebufferShader, "Data/Shaders/Framebuffer.vert", "Data/Shaders/Framebuffer.frag" );
@@ -573,7 +703,10 @@ bool Init() {
     myTextureSet.shaderSamplerPtrs[0] = myProgram.samplerPtrs[0];
     myTextureSet.shaderSamplerPtrs[1] = myProgram.samplerPtrs[1];
 
-    Identity( &renderMesh.m );
+    SetScale( &renderMesh.m, 0.5f, 0.5f, 0.5f );
+    SetTranslation( &renderMesh.m, 0.0f, -200.0f, 0.0f );
+
+    //Identity( &renderMesh.m );
     const float spinSpeed = 3.1415926 / 64.0f;
     SetRotation( &spinMatrix, 0.0f, 1.0f, 0.0f, spinSpeed );
 
@@ -598,6 +731,6 @@ void Render() {
 }
 
 bool Update() {
-    renderMesh.m = MultMatrix( renderMesh.m, spinMatrix );
+    //renderMesh.m = MultMatrix( renderMesh.m, spinMatrix );
     return true;
 }
