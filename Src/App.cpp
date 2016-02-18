@@ -1,8 +1,5 @@
-#include <map>
 
-#define GLEW_STATIC
-#include "OpenGL/glew.h"
-#include "OpenGL/wglew.h"
+#include <map>
 
 #include "assimp/cimport.h"               // Assimp Plain-C interface
 #include "assimp/scene.h"                 // Assimp Output data structure
@@ -124,16 +121,6 @@ bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST ); // Use nearest filtering all the time
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
 
-    //Create Texture in Memory, parameters in order:
-    //1 - Which Texture binding
-    //2 - # of MipMaps
-    //3 - # of components per pixel, 4 means RGBA, 3 means RGB & so on
-    //4 - Texture Width
-    //5 - Texture Height
-    //6 - OpenGL Reference says this value must be 0 :I great library
-    //7 - How are pixels organized
-    //8 - size of each component
-    //9 - ptr to texture data
     glTexImage2D( GL_TEXTURE_2D, 0, n, texData->width, texData->height, 0, texData->pixelFormat, GL_UNSIGNED_BYTE, data );
 
     glBindTexture( GL_TEXTURE_2D, 0 );
@@ -268,46 +255,21 @@ void printShaderLog( GLuint shader ) {
     }
 }
 
-void LoadShaderSrc(const char* fileName, GLchar** srcPtr){
-    FILE* file;
-    errno_t e = fopen_s(&file, fileName, "r" );
-    if( file == NULL || e != 0) {
-        printf( "Could not load shader source file %s\n", fileName );
-        return;
-    }
-    //Seek till end of file, and get size
-    fseek( file, 0, SEEK_END );
-    uint16_t fileSize = ftell( file );
-    printf( "Opened shader src file %s, length is: %d\n", fileName, fileSize );
-    //Reset to beginning
-    fseek( file, 0, SEEK_SET );
-    //Allocate space for src
-    *srcPtr = (char*)calloc( fileSize + 1, sizeof( GLchar ) );
-    //Actually read data into allocated space
-    fread( *srcPtr , 1, fileSize, file );
-    //Close source file
-    fclose(file);
-}
-
 void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char* fragShaderFile) {
-    GLuint vertexShader;
-    GLuint fragShader;
-    GLchar* vertexShaderSrc;
-    GLchar* fragShaderSrc;
+    const size_t shaderSrcBufferLength = 1024;
+    GLchar shaderSrcBuffer[shaderSrcBufferLength];
+    memset(&shaderSrcBuffer, 0, sizeof(GLchar) * shaderSrcBufferLength );
+    const GLchar* bufferPtr = (GLchar*)&shaderSrcBuffer;
 
-    //Create program
     program->programID = glCreateProgram();
 
-    //Create vertex shader component
-    vertexShader = glCreateShader( GL_VERTEX_SHADER );
-    //Bind source to program
-    LoadShaderSrc( vertShaderFile, &vertexShaderSrc );
-    glShaderSource( vertexShader, 1, &vertexShaderSrc, NULL );
-    free( vertexShaderSrc );
+    GLuint vertexShader = glCreateShader( GL_VERTEX_SHADER );
+    //TODO: Error handling on this
+    uint16_t readReturnCode = ReadShaderSrcFileFromDisk( vertShaderFile, (GLchar*)&shaderSrcBuffer, shaderSrcBufferLength );
+    assert(readReturnCode == 0);
+    glShaderSource( vertexShader, 1, &bufferPtr, NULL );
 
-    //Compile Vertex Shader
     glCompileShader( vertexShader );
-    //Check for errors
     GLint compiled = GL_FALSE;
     glGetShaderiv( vertexShader, GL_COMPILE_STATUS, &compiled );
     if( compiled != GL_TRUE ) {
@@ -315,16 +277,17 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
         printShaderLog( vertexShader );
     } else {
         printf( "Vertex Shader %s compiled\n", vertShaderFile );
-        //Actually attach it if it compiled
         glAttachShader( program->programID, vertexShader );
     }
 
+    memset(&shaderSrcBuffer, 0, sizeof(char) * shaderSrcBufferLength );
+
     //Create fragment shader component
-    fragShader = glCreateShader( GL_FRAGMENT_SHADER );
-    //Load source and bind to GL program
-    LoadShaderSrc( fragShaderFile, &fragShaderSrc );
-    glShaderSource( fragShader, 1, &fragShaderSrc, NULL );
-    free( fragShaderSrc );
+    GLuint fragShader = glCreateShader( GL_FRAGMENT_SHADER );
+    //TODO: Error handling on this
+    readReturnCode = ReadShaderSrcFileFromDisk( fragShaderFile, (GLchar*)&shaderSrcBuffer, shaderSrcBufferLength );
+    assert(readReturnCode == 0);
+    glShaderSource( fragShader, 1, &bufferPtr, NULL );
 
     //Compile fragment source
     glCompileShader( fragShader );
@@ -350,7 +313,6 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     } else {
         printf( "Shader Program Linked Successfully\n");
     }
-
 
     //Now we're going to cache all the uniforms and attributes in the shader
     uintptr_t nameBufferOffset = 0;
@@ -396,7 +358,6 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     program->texCoordAttribute = glGetAttribLocation( program->programID, "texCoord" );
 
     glUseProgram(0);
-
     glDeleteShader( vertexShader ); 
     glDeleteShader( fragShader );
 }
@@ -506,8 +467,8 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
             std::map<char*, aiNode*, strcompare> nodesByName;
             std::map<char*, Bone*, strcompare> bonesByName;
 
-            //Gotta calloc cause C++ doesn't have non-const defined arrays :/
-            uint8_t* bonesInfluencingEachVert = (uint8_t*)calloc( vertexCount, sizeof(uint8_t) );
+            uint8_t bonesInfluencingEachVert [512];
+            memset( &bonesInfluencingEachVert, 0, sizeof(uint8_t) * 512 );
 
             for( uint8_t j = 0; j < data->skeleton->boneCount; j++ ) {
                 const aiBone* bone = mesh->mBones[j];
@@ -518,7 +479,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
                 printf( "Copying info for bone: %s, affects %d verts\n", myBone->name, numVertsAffected );
 
                 //Insert this bones node in the map, for creating hierarchy later
-                aiNode* boneNode = getNodeByName( scene->mRootNode, myBone->name );
+                aiNode* boneNode = scene->mRootNode->FindNode( &myBone->name[0] );
                 nodesByName.insert( {myBone->name, boneNode} );
                 bonesByName.insert( {myBone->name, myBone} );
 
@@ -535,7 +496,6 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
                     assert(bonesInfluencingEachVert[weightInfo.mVertexId] <= 4);
                 }
             }
-            free( bonesInfluencingEachVert );
 
             //Now build up heirarchy info
             for( uint8_t j = 0; j < data->skeleton->boneCount; j++ ) {
@@ -687,12 +647,15 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     return true;
 }
 
-bool Init() {
-    if( InitOpenGLRenderer( 640, 480 ) == false ) return false;
+void GameInit() {
+    if( InitOpenGLRenderer( 640, 480 ) == false ) {
+        printf("Failed to init OpenGL renderer\n");
+        return;
+    }
 
     LoadTextureFromFile( &myTexture, "Data/Textures/pink_texture.png" );
     LoadTextureFromFile( &otherTexture, "Data/Textures/green_texture.png" );
-    LoadMeshFromFile( &tinyMeshData, "Data/Wiggley.dae" );
+    LoadMeshFromFile( &tinyMeshData, "Data/Pointy.fbx" );
     CreateRenderMesh( &renderMesh, &tinyMeshData );
     CreateShader( &myProgram, "Data/Shaders/Vert.vert", "Data/Shaders/Frag.frag" );
     CreateShader( &framebufferShader, "Data/Shaders/Framebuffer.vert", "Data/Shaders/Framebuffer.frag" );
@@ -702,6 +665,10 @@ bool Init() {
     myTextureSet.texturePtrs[1] = otherTexture.textureID;
     myTextureSet.shaderSamplerPtrs[0] = myProgram.samplerPtrs[0];
     myTextureSet.shaderSamplerPtrs[1] = myProgram.samplerPtrs[1];
+
+    //for(int i = 0; i < renderMesh->skeleton->boneCount; i++) {
+        //Identity( &renderMesh.skeleton->boneTransforms[i] );
+    //}
 
     SetScale( &renderMesh.m, 0.5f, 0.5f, 0.5f );
     SetTranslation( &renderMesh.m, 0.0f, -200.0f, 0.0f );
@@ -713,7 +680,7 @@ bool Init() {
     //memset( &cameraMatrix.m[0], 0.0f, sizeof(float) * 16 );
 
     printf("Init went well\n");
-    return true;
+    return;
 }
 
 void Render() {

@@ -1,5 +1,3 @@
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -7,23 +5,46 @@
 #define GLEW_STATIC
 #include "OpenGL/glew.h"
 
+#include "App.h"
 #include "App.cpp"
 
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
 bool running = true;
-bool isFullscreen = false;
+bool isFullScreen = false;
 
 uint16_t SCREEN_WIDTH = 640;
 uint16_t SCREEN_HEIGHT = 480;
 uint16_t mSecsPerFrame = 1000 / 60;
 
-typedef struct AppInfo {
+struct AppInfo {
 	HINSTANCE appInstance;
 	HWND hwnd;
 	WNDCLASSEX wc;
 	HDC deviceContext;
 	HGLRC openglRenderContext;
-}AppInfo;
+};
 static AppInfo appInfo;
+
+int16_t ReadShaderSrcFileFromDisk(const char* fileName, GLchar* buffer, uint16_t bufferLen) {
+	FILE* file;
+    errno_t e = fopen_s(&file, fileName, "r" );
+    if( file == NULL || e != 0) {
+        printf( "Could not load text file %s\n", fileName );
+        return -1;
+    }
+    fseek( file, 0, SEEK_END );
+    size_t fileSize = ftell( file );
+    if(fileSize >= bufferLen) {
+    	return fileSize;
+    }
+
+    fseek( file, 0, SEEK_SET );
+    fread( buffer , 1, fileSize, file );
+    fclose( file );
+    return 0;
+}
 
 LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 	switch (uMsg) {
@@ -50,7 +71,14 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 	return DefWindowProc(hWnd,uMsg,wParam,lParam);
 }
 
-bool CreateClayWindow() {
+int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow ) {
+	AllocConsole(); //create a console
+	freopen("conin$","r",stdin);
+	freopen("conout$","w",stdout);
+	freopen("conout$","w",stderr);
+
+	appInfo.appInstance = hInstance;
+
 	const char WindowName[] = "Wet Clay";
 
 	appInfo.wc.cbSize = sizeof(WNDCLASSEX);
@@ -69,7 +97,7 @@ bool CreateClayWindow() {
 	if(!RegisterClassEx(&appInfo.wc)) {
 		printf( "Failed to register class\n" );
 		running = false;
-		return false;
+		return -1;
 	}
 
 	// center position of the window
@@ -79,16 +107,15 @@ bool CreateClayWindow() {
 	// set up the window for a windowed application by default
 	//long wndStyle = WS_OVERLAPPEDWINDOW;
  
-	if (isFullscreen)	// create a full-screen application if requested
-	{
-		//wndStyle = WS_POPUP;
+	if( isFullScreen ) {
 		posx = 0;
 		posy = 0;
- 
+
 		// change resolution before the window is created
 		//SysSetDisplayMode(width, height, SCRDEPTH);
 		//TODO: implement
 	}
+
  
 	// at this point WM_CREATE message is sent/received
 	// the WM_CREATE branch inside WinProc function will execute here
@@ -118,7 +145,7 @@ bool CreateClayWindow() {
 	appInfo.openglRenderContext = wglCreateContext( appInfo.deviceContext );
 	if( wglMakeCurrent ( appInfo.deviceContext, appInfo.openglRenderContext ) == false ) {
 		printf( "Couldn't make GL context current.\n" );
-		return false;
+		return -1;
 	}
 
 	glewInit();
@@ -127,18 +154,7 @@ bool CreateClayWindow() {
 	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
 	UpdateWindow( appInfo.hwnd );
 
-	return true;
-}
-
-int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow ) {
-	AllocConsole(); //create a console
-	freopen("conin$","r",stdin);
-	freopen("conout$","w",stdout);
-	freopen("conout$","w",stderr);
-
-	appInfo.appInstance = hInstance;
-	CreateClayWindow();
-	Init();
+	GameInit();
 
 	MSG Msg;
 	do {
@@ -152,7 +168,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 		startTime = GetTickCount();
 
 		if(running) {
-			Update();
+			running = Update();
 			Render();
 			SwapBuffers( appInfo.deviceContext );
 		}
