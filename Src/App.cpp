@@ -1,15 +1,15 @@
 
 #include <map>
 
-#include "assimp/cimport.h"               // Assimp Plain-C interface
-#include "assimp/scene.h"                 // Assimp Output data structure
-#include "assimp/postprocess.h"           // Assimp Post processing flags
+#include "assimp\cimport.h"               // Assimp Plain-C interface
+#include "assimp\scene.h"                 // Assimp Output data structure
+#include "assimp\postprocess.h"           // Assimp Post processing flags
 
 #include "Math3D.cpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
-#include "stb_image.h"
+#include "stb\stb_image.h"
 
 struct OpenGLTexture {
     GLuint textureID;
@@ -22,19 +22,18 @@ struct OpenGLTexture {
 struct ShaderProgram {
     GLuint programID;
 
-    uint8_t uniformCount;
-    GLuint uniformPtrs[8];
-    GLenum uniformTypes[8];
-    GLchar* uniformNames[8];
+    GLint modelMatrixUniformPtr;
 
-    GLuint positionAttribute;
-    GLuint texCoordAttribute;
+    GLint positionAttribute;
+    GLint texCoordAttribute;
+
+    GLint isArmatureAnimatedUniform;
+    GLint skeletonUniform;
+    GLint boneWeightsAttribute;
+    GLint boneIndiciesAttribute;
 
     uint8_t samplerCount;
-    GLuint samplerPtrs[4];
-    GLchar* samplerNames[4];
-
-    GLchar uniformNameBuffer[256];
+    GLint samplerPtrs[4];
 };
 
 struct ShaderTextureSet {
@@ -44,16 +43,8 @@ struct ShaderTextureSet {
     GLuint texturePtrs[4];
 };
 
-struct OpenGLMesh {
-	Matrix4 m;
-	GLuint elementCount;
-	GLuint vbo;
-	GLuint ibo;
-    GLuint uvBuffer;
-};
-
 struct Bone {
-    Matrix4 transformMatrix;
+    Matrix4* transformMatrix;
     Bone* parentBone;
     Bone* childrenBones[4];
     uint8_t childCount;
@@ -61,26 +52,49 @@ struct Bone {
 };
 
 struct Skeleton {
-    Bone allBones[32];
+    #define MAXBONECOUNT 32
+    Bone allBones[MAXBONECOUNT];
+    Matrix4 boneTransforms[MAXBONECOUNT];
     uint8_t boneCount;
 };
 
-struct MeshData {
-	GLfloat* vertexData;
-    GLfloat* uvData;
-    GLfloat* boneInfluenceData;
-    GLint* influencedByBone;
-	GLuint* indexData;
+struct OpenGLMeshBinding {
+	GLuint vertexCount;
+	GLuint vbo;
+	GLuint ibo;
+    GLuint uvBuffer;
+
+    Matrix4* modelMatrix;
+
+    bool isArmatureAnimated;
     Skeleton* skeleton;
-	uint16_t indexCount;
-	uint16_t vertexCount;
+    GLuint boneWeightBuffer;
+    GLuint boneIndexBuffer;
 };
+
+struct MeshData {
+    #define MAXVERTCOUNT 600
+    #define MAXBONEPERVERT 4
+    Matrix4 modelMatrix;
+    uint16_t indexCount;
+    uint16_t vertexCount;
+    GLfloat vertexData [MAXVERTCOUNT * 3];
+    GLfloat uvData[MAXVERTCOUNT * 2];
+
+    bool hasSkeletonInfo;
+    Skeleton* skeleton;
+    GLfloat boneWeightData[MAXVERTCOUNT * MAXBONEPERVERT];
+    GLuint boneIndexData[MAXVERTCOUNT * MAXBONEPERVERT];
+    GLuint indexData [600];
+};
+
+static Skeleton mySkeley;
+static MeshData tinyMeshData;
 
 static Matrix4 spinMatrix;
 //static Matrix4 cameraMatrix;
 static ShaderProgram myProgram;
-static MeshData tinyMeshData;
-static OpenGLMesh renderMesh;
+static OpenGLMeshBinding renderMesh;
 static OpenGLTexture myTexture;
 static OpenGLTexture otherTexture;
 static ShaderTextureSet myTextureSet;
@@ -91,6 +105,8 @@ static GLuint framebuffVBO;
 static GLuint framebuffIBO;
 static GLuint framebuffUVBuff;
 static ShaderProgram framebufferShader;
+
+static MemorySlab memory;
 
 bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     //Load data from file
@@ -282,14 +298,12 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
 
     memset(&shaderSrcBuffer, 0, sizeof(char) * shaderSrcBufferLength );
 
-    //Create fragment shader component
     GLuint fragShader = glCreateShader( GL_FRAGMENT_SHADER );
     //TODO: Error handling on this
     readReturnCode = ReadShaderSrcFileFromDisk( fragShaderFile, (GLchar*)&shaderSrcBuffer, shaderSrcBufferLength );
     assert(readReturnCode == 0);
     glShaderSource( fragShader, 1, &bufferPtr, NULL );
 
-    //Compile fragment source
     glCompileShader( fragShader );
     //Check for errors
     compiled = GL_FALSE;
@@ -303,7 +317,6 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
         glAttachShader( program->programID, fragShader );
     }
 
-    //Link program
     glLinkProgram( program->programID );
     //Check for errors
     compiled = GL_TRUE;
@@ -314,67 +327,26 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
         printf( "Shader Program Linked Successfully\n");
     }
 
-    //Now we're going to cache all the uniforms and attributes in the shader
-    uintptr_t nameBufferOffset = 0;
-    GLint total = -1;
-    glGetProgramiv( program->programID, GL_ACTIVE_UNIFORMS, &total ); 
-    program->uniformCount = 0;
-    program->samplerCount = 0;
-
     glUseProgram(program->programID);
 
-    for(uint8_t i = 0; i < total; ++i)  {
-        //Allocate space for searching
-        GLint name_len = -1;
-        GLsizei size = -1;
-        GLenum type = GL_ZERO;
-        char name[100];
-
-        //Get uniform info
-        glGetActiveUniform( program->programID, i, sizeof(name)-1, &name_len, &size, &type, &name[0] );
-        name[name_len] = 0;
-
-        if( type == GL_SAMPLER_2D ) {
-            GLuint samplerLocation = glGetUniformLocation( program->programID, &name[0] );
-            glUniform1i( samplerLocation, program->samplerCount);
-            program->samplerNames[program->samplerCount] = &program->uniformNameBuffer[nameBufferOffset];
-            program->samplerPtrs[program->samplerCount] = samplerLocation;
-            printf( "Got info for Sampler Uniform: %s, ptr %d, bound to unit %d\n", name, samplerLocation, program->samplerCount );
-            program->samplerCount++;
-        }else {
-            //Copy info into program struct
-            //Get uniform ptr
-            program->uniformPtrs[program->uniformCount] = glGetUniformLocation( program->programID, &name[0] );
-            program->uniformNames[program->uniformCount] = &program->uniformNameBuffer[nameBufferOffset];   //Set ptr to name
-            printf( "Got info for Shader Uniform: %s, type: %d, size: %d, ptr %d\n", name, type, size, program->uniformPtrs[program->uniformCount] );
-            program->uniformCount++;
-        }
-
-        memcpy(&program->uniformNameBuffer[nameBufferOffset], &name[0], name_len * sizeof(char));
-        nameBufferOffset += name_len + 1;
-    }
+    program->modelMatrixUniformPtr = glGetUniformLocation( program->programID, "modelMatrix" );
+    program->isArmatureAnimatedUniform = glGetUniformLocation( program->programID, "isSkeletalAnimated" );
+    program->skeletonUniform = glGetUniformLocation( program->programID, "skeleton" );
 
     program->positionAttribute = glGetAttribLocation( program->programID, "position" );
     program->texCoordAttribute = glGetAttribLocation( program->programID, "texCoord" );
+    program->boneWeightsAttribute = glGetAttribLocation( program->programID, "boneWeights" );
+    program->boneIndiciesAttribute = glGetAttribLocation( program->programID, "boneIndicies" );
+
+    program->samplerPtrs[0] = glGetUniformLocation( program->programID, "tex1" );
+    program->samplerPtrs[1] = glGetUniformLocation( program->programID, "tex2" );
+    glUniform1i( program->samplerPtrs[0], 0 );
+    glUniform1i( program->samplerPtrs[1], 1 );
+    program->samplerCount = 2;
 
     glUseProgram(0);
     glDeleteShader( vertexShader ); 
     glDeleteShader( fragShader );
-}
-
-aiNode* getNodeByName( aiNode* node, char* name ) {
-    if(strcmp(node->mName.data, name) == 0) {
-        return node;
-    }
-
-    for( uint8_t i = 0; i < node->mNumChildren; i++ ) {
-        aiNode* childTraverse = getNodeByName(node->mChildren[i], name);
-        if( childTraverse != NULL) {
-            return childTraverse;
-        }
-    }
-
-    return NULL;
 }
 
 bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
@@ -404,7 +376,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     uint16_t numMeshes = scene->mNumMeshes;
     printf( "Loaded file: %s\n", fileName );
     printf( "%d Meshes in file\n", numMeshes );
-    if(numMeshes == 0) {
+    if( numMeshes == 0 ) {
         return false;
     }
 
@@ -412,15 +384,12 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     for( uint8_t i = 0; i < numMeshes; i++ ) {
         const aiMesh* mesh = scene->mMeshes[i];
         printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
-        if(mesh->HasBones()) {
+        if( mesh->HasBones() ) {
             printf( "This mesh also has %d bones\n", mesh->mNumBones );
         }
 
         //Read vertex data
         uint16_t vertexCount = mesh->mNumVertices;
-        data->uvData = (GLfloat*)calloc( 1, vertexCount * sizeof(GLfloat) * 2);
-        data->vertexData = (GLfloat*)calloc( 1, vertexCount * sizeof(GLfloat) * 3 );    //Allocate space for vertex buffer
-        //printf("Vertex Pointer data: %p\n", data->vertexData );
         for( uint16_t j = 0; j < vertexCount; j++ ) {
             data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
             data->vertexData[j * 3 + 1] = mesh->mVertices[j].z * 50.0f;
@@ -435,7 +404,6 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
         //Read index data
         uint16_t indexCount = mesh->mNumFaces * 3;
-        data->indexData = (GLuint*)calloc( 1, indexCount * sizeof(GLuint) );    //Allocate space for index buffer
         //printf("Index Pointer data: %p\n", data->indexData );
         for( uint16_t j = 0; j < mesh->mNumFaces; j++ ) {
             const struct aiFace face = mesh->mFaces[j];
@@ -449,14 +417,9 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
         if( mesh->HasBones() ) {
             const int MAXNUMBONES = 4;
-            //Allocate space for skeleton data
-            data->skeleton = (Skeleton*)calloc( 1, sizeof(Skeleton) );
-            //Assume all bones are part of one armature
+            data->hasSkeletonInfo = true;
+            data->skeleton = &mySkeley;
             data->skeleton->boneCount = mesh->mNumBones;
-            //Allocate array of bones weights for each vertex
-            data->boneInfluenceData = (GLfloat*)calloc( 1, vertexCount * sizeof(GLfloat) * MAXNUMBONES );
-            //And Allocate array of which bones are doing the influencing
-            data->influencedByBone = (GLint*)calloc( 1, vertexCount * sizeof(GLint) * MAXNUMBONES );
 
             //A map and comparator, for tracking which nodes in the heirarchy are related to which bones
             struct strcompare{
@@ -474,6 +437,8 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
                 const aiBone* bone = mesh->mBones[j];
                 const uint16_t numVertsAffected = bone->mNumWeights;
                 Bone* myBone = &data->skeleton->allBones[j];
+                myBone->transformMatrix = &data->skeleton->boneTransforms[j];
+                Identity( myBone->transformMatrix );
 
                 memcpy( &myBone->name, &bone->mName.data, bone->mName.length * sizeof(char) );
                 printf( "Copying info for bone: %s, affects %d verts\n", myBone->name, numVertsAffected );
@@ -490,8 +455,8 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
                     //So vertex ID * MAXNUMBONES + num of bones that have already influenced to point = index
                     const uint16_t indexToWeightData = MAXNUMBONES * weightInfo.mVertexId + bonesInfluencingEachVert[weightInfo.mVertexId];
 
-                    data->boneInfluenceData[indexToWeightData] = weightInfo.mWeight;
-                    data->influencedByBone[indexToWeightData] = j;
+                    data->boneWeightData[indexToWeightData] = weightInfo.mWeight;
+                    data->boneIndexData[indexToWeightData] = j;
                     bonesInfluencingEachVert[weightInfo.mVertexId]++;
                     assert(bonesInfluencingEachVert[weightInfo.mVertexId] <= 4);
                 }
@@ -532,8 +497,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
             }
 
         } else {
-            data->boneInfluenceData = NULL;
-            data->skeleton = NULL;
+            data->hasSkeletonInfo = false;
             printf( "No bone info\n" );
         }
     }
@@ -545,36 +509,49 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     return true; 
 }
 
-void CreateRenderMesh(OpenGLMesh* renderMesh, MeshData* meshData) {
-    //Create VBO
+void CreateRenderMesh(OpenGLMeshBinding* renderMesh, MeshData* meshData) {
+    renderMesh->modelMatrix = &meshData->modelMatrix;
+
     glGenBuffers( 1, &renderMesh->vbo );
     glBindBuffer( GL_ARRAY_BUFFER, renderMesh->vbo );
     glBufferData( GL_ARRAY_BUFFER, 3 * meshData->vertexCount * sizeof(GLfloat), meshData->vertexData, GL_STATIC_DRAW );
 
-    //Create IBO
     glGenBuffers( 1, &renderMesh->ibo );
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, renderMesh->ibo );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, meshData->indexCount * sizeof(GLuint), meshData->indexData, GL_STATIC_DRAW );
 
-    //Create UV Buffer
     glGenBuffers( 1, &renderMesh->uvBuffer );
     glBindBuffer( GL_ARRAY_BUFFER, renderMesh->uvBuffer );
     glBufferData( GL_ARRAY_BUFFER, 2 * meshData->vertexCount * sizeof(GLfloat), meshData->uvData, GL_STATIC_DRAW );
 
+    renderMesh->isArmatureAnimated = meshData->hasSkeletonInfo;
+    if( meshData->hasSkeletonInfo ) {
+        printf("Added skeleton info to GL mesh\n");
+        renderMesh->skeleton = meshData->skeleton;
+
+        glGenBuffers(1, &renderMesh->boneWeightBuffer );
+        glBindBuffer( GL_ARRAY_BUFFER, renderMesh->boneWeightBuffer );
+        glBufferData( GL_ARRAY_BUFFER, MAXBONEPERVERT * meshData->vertexCount * sizeof(GLfloat), meshData->boneWeightData, GL_STATIC_DRAW );
+
+        glGenBuffers(1, &renderMesh->boneIndexBuffer );
+        glBindBuffer( GL_ARRAY_BUFFER, renderMesh->boneIndexBuffer );
+        glBufferData( GL_ARRAY_BUFFER, MAXBONEPERVERT * meshData->vertexCount * sizeof(GLuint), meshData->boneIndexData, GL_STATIC_DRAW );
+    }
+
     glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint)NULL );
 
-    renderMesh->elementCount = meshData->indexCount;
-    //printf("Created render mesh\n");
+    renderMesh->vertexCount = meshData->indexCount;
 }
 
-void RenderMesh( OpenGLMesh* mesh, ShaderProgram* program ) {
+void RenderMesh( OpenGLMeshBinding* mesh, ShaderProgram* program ) {
     //Flush errors
     //while( glGetError() != GL_NO_ERROR ){};
 
     //Bind Shader
     glUseProgram( program->programID );
-    glUniformMatrix4fv( glGetUniformLocation(program->programID, "modelMatrix"), 1, false, (const float*)&mesh->m.m[0] );
+    glUniformMatrix4fv( program->modelMatrixUniformPtr, 1, false, (const float*)mesh->modelMatrix->m[0] );
+    glUniform1i( program->isArmatureAnimatedUniform, (int)mesh->isArmatureAnimated );
 
     //Set vertex data
     glBindBuffer( GL_ARRAY_BUFFER, mesh->vbo );
@@ -586,12 +563,24 @@ void RenderMesh( OpenGLMesh* mesh, ShaderProgram* program ) {
     glEnableVertexAttribArray( program->texCoordAttribute );
     glVertexAttribPointer( program->texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
 
+    if( mesh->isArmatureAnimated ) {
+        glUniformMatrix4fv( program->skeletonUniform, MAXBONECOUNT, GL_FALSE, &mesh->skeleton->boneTransforms[0].m[0][0] );
+
+        glBindBuffer( GL_ARRAY_BUFFER, mesh->boneWeightBuffer );
+        glEnableVertexAttribArray( program->boneWeightsAttribute );
+        glVertexAttribIPointer( program->boneWeightsAttribute, MAXBONEPERVERT, GL_FLOAT, 0, 0 );
+
+        glBindBuffer( GL_ARRAY_BUFFER, mesh->boneIndexBuffer );
+        glEnableVertexAttribArray( program->boneIndiciesAttribute );
+        glVertexAttribIPointer( program->boneIndiciesAttribute, MAXBONEPERVERT, GL_UNSIGNED_INT, 0, 0 );
+    }
+
     glBindTexture( GL_TEXTURE_2D, myTextureSet.texturePtrs[0] );
     glActiveTexture( GL_TEXTURE1 );
     glBindTexture( GL_TEXTURE_2D, myTextureSet.texturePtrs[1] );
 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, mesh->ibo );                            //Bind index data
-    glDrawElements( GL_TRIANGLES, mesh->elementCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
+    glDrawElements( GL_TRIANGLES, mesh->vertexCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
 
     //Unbind textures
     glBindTexture( GL_TEXTURE_2D, 0 );
@@ -605,7 +594,7 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     //Initialize clear color
     glClearColor( 0.1f, 0.1f, 0.1f, 1.0f );
 
-    //glEnable( GL_DEPTH_TEST );
+    glEnable( GL_DEPTH_TEST );
     //Configure Texturing, setting some nice perspective correction
     //glEnable( GL_TEXTURE_2D );
     //glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
@@ -647,7 +636,9 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     return true;
 }
 
-void GameInit() {
+void GameInit( MemorySlab slab ) {
+    memory = slab;
+    printf( "Got a slab with the size: %d bytes\n", memory.slabSize );
     if( InitOpenGLRenderer( 640, 480 ) == false ) {
         printf("Failed to init OpenGL renderer\n");
         return;
@@ -655,7 +646,7 @@ void GameInit() {
 
     LoadTextureFromFile( &myTexture, "Data/Textures/pink_texture.png" );
     LoadTextureFromFile( &otherTexture, "Data/Textures/green_texture.png" );
-    LoadMeshFromFile( &tinyMeshData, "Data/Pointy.fbx" );
+    LoadMeshFromFile( &tinyMeshData, "Data/Wiggley.dae" );
     CreateRenderMesh( &renderMesh, &tinyMeshData );
     CreateShader( &myProgram, "Data/Shaders/Vert.vert", "Data/Shaders/Frag.frag" );
     CreateShader( &framebufferShader, "Data/Shaders/Framebuffer.vert", "Data/Shaders/Framebuffer.frag" );
@@ -670,11 +661,11 @@ void GameInit() {
         //Identity( &renderMesh.skeleton->boneTransforms[i] );
     //}
 
-    SetScale( &renderMesh.m, 0.5f, 0.5f, 0.5f );
-    SetTranslation( &renderMesh.m, 0.0f, -200.0f, 0.0f );
+    SetScale( renderMesh.modelMatrix, 0.5f, 0.5f, 0.5f );
+    SetTranslation( renderMesh.modelMatrix, 0.0f, -200.0f, 0.0f );
 
     //Identity( &renderMesh.m );
-    const float spinSpeed = 3.1415926 / 64.0f;
+    const float spinSpeed = 3.1415926 / 128.0f;
     SetRotation( &spinMatrix, 0.0f, 1.0f, 0.0f, spinSpeed );
 
     //memset( &cameraMatrix.m[0], 0.0f, sizeof(float) * 16 );
@@ -684,6 +675,7 @@ void GameInit() {
 }
 
 void Render() {
+    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     glBindFramebuffer( GL_FRAMEBUFFER, frameBufferPtr );
     glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBufferTexture.textureID, 0 );
 
@@ -698,6 +690,6 @@ void Render() {
 }
 
 bool Update() {
-    //renderMesh.m = MultMatrix( renderMesh.m, spinMatrix );
+    *renderMesh.modelMatrix = MultMatrix( *renderMesh.modelMatrix, spinMatrix );
     return true;
 }

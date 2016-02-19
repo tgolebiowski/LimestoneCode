@@ -75,7 +75,7 @@ void Identity(Matrix4* m) {
 }
 
 void SetScale(Matrix4* mat4, const float x, const float y, const float z) {
-	memset( &mat4->m[0][0], 0, 16 * sizeof(float) );
+	memset( &mat4->m, 0, 16 * sizeof(float) );
 	mat4->m[0][0] = x;
 	mat4->m[1][1] = y;
 	mat4->m[2][2] = z;

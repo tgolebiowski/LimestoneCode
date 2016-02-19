@@ -76,6 +76,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	freopen("conin$","r",stdin);
 	freopen("conout$","w",stdout);
 	freopen("conout$","w",stderr);
+	printf( "Program Started, console initialized\n" );
 
 	appInfo.appInstance = hInstance;
 
@@ -154,7 +155,11 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
 	UpdateWindow( appInfo.hwnd );
 
-	GameInit();
+	MemorySlab gameSlab;
+	gameSlab.slabSize = MEGABYTES(32);
+	gameSlab.slabStart = VirtualAlloc( NULL, gameSlab.slabSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
+	assert( gameSlab.slabStart != NULL );
+	GameInit( gameSlab );
 
 	MSG Msg;
 	do {
