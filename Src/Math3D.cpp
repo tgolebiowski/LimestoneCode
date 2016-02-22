@@ -163,6 +163,10 @@ Matrix4 MultMatrix(const Matrix4 m, const Matrix4 m2) {
 	return r;
 }
 
+inline Matrix4 operator * ( const Matrix4 m1, const Matrix4 m2 ) {
+	return MultMatrix(m1, m2);
+}
+
 /*------------------------------------------------------------------------------------
 	                                QUATERNIONS
 -------------------------------------------------------------------------------------*/
@@ -175,7 +179,7 @@ Quaternion MultQuats (const Quaternion lQ, const Quaternion rQ) {
 	return quat;
 }
 
-Quaternion FromAngleAxis(const float angle, const float axisX, const float axisY, const float axisZ) {
+Quaternion FromAngleAxis(const float axisX, const float axisY, const float axisZ, const float angle) {
 	Quaternion quat;
 	float halfAngle = ( 0.5 * angle );
 	float fSin = sin(halfAngle);

@@ -372,7 +372,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
             data->vertexData[j * 3 + 2] = mesh->mVertices[j].y * 50.0f;
             //printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
 
-            if( mesh->GetNumUVChannels() > 0 ) {
+            if( mesh->GetNumUVChannels() != 0 ) {
                 data->uvData[j * 2 + 0] = mesh->mTextureCoords[0][j].x;
                 data->uvData[j * 2 + 1] = mesh->mTextureCoords[0][j].y;
                 //printf("UV Data: %f, %f\n", data->uvData[j * 2 + 0], data->uvData[j * 2 + 1]);
@@ -440,6 +440,20 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
                 }
             }
 
+            // for( uint8_t j = 0; j < data->vertexCount; j++ ) {
+            //     float weight1 = data->boneWeightData[ MAXBONECOUNT * j + 0];
+            //     float weight2 = data->boneWeightData[ MAXBONECOUNT * j + 1];
+            //     float weight3 = data->boneWeightData[ MAXBONECOUNT * j + 2];
+            //     float weight4 = data->boneWeightData[ MAXBONECOUNT * j + 3];
+            //     float netWeight = weight1 + weight2 + weight3 +weight4;
+            //     if( netWeight != 1.0f ) {
+            //         data->boneWeightData[ MAXBONECOUNT * j + 0] /= netWeight;
+            //         data->boneWeightData[ MAXBONECOUNT * j + 1] /= netWeight;
+            //         data->boneWeightData[ MAXBONECOUNT * j + 2] /= netWeight;
+            //         data->boneWeightData[ MAXBONECOUNT * j + 3] /= netWeight;
+            //     }
+            // }
+
             for( uint8_t j = 0; j < data->skeleton->boneCount; j++ ) {
                 Bone* bone = &data->skeleton->allBones[j];
                 aiNode* correspondingNode = nodesByName.find( bone->name )->second;
@@ -486,9 +500,11 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
         for( uint8_t i = 0; i < bonesInAnimation; i++ ) {
             const aiNodeAnim* boneAnimation = anim->mChannels[i];
 
+            printf( "Animation Info, node: %s\n", boneAnimation->mNodeName.data );
             Bone* bone = NULL;
             for( uint8_t j = 0; j < data->skeleton->boneCount; j++ ) {
-                if( strcmp( data->skeleton->allBones[j].name, boneAnimation->mNodeName.data ) ) {
+                int result = strcmp( data->skeleton->allBones[j].name, boneAnimation->mNodeName.data );
+                if( result == 0 ) {
                     bone = &data->skeleton->allBones[j];
                     break;
                 }
@@ -496,8 +512,8 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
             if( bone != NULL ) {
                 printf("Animation info found for bone: %s\n", bone->name );
-
                 BoneKey* key = &sPose->keys[bone->boneIndex];
+                key->boneAffected = bone;
 
                 aiVector3D veckey1 = boneAnimation->mPositionKeys[0].mValue;
                 aiQuaternion quatKey1 = boneAnimation->mRotationKeys[0].mValue;
@@ -529,7 +545,15 @@ void SetSkeletonTransform( ArmatureKeyframe* key, Skeleton* skeleton ) {
 
     struct N {
         static void _SetBoneTransformRecursively( ArmatureKeyframe* key, Bone* bone, Matrix4 parentMatrix ) {
-            *bone->transformMatrix = MultMatrix( key->keys[bone->boneIndex].computedMatrix, parentMatrix );
+            BoneKey* bKey = &key->keys[bone->boneIndex];
+
+            Matrix4 scaleMatrix, rotationMatrix, translationMatrix;
+            SetScale( &scaleMatrix, bKey->scale.x, bKey->scale.y, bKey->scale.z );
+            rotationMatrix = MatrixFromQuat( bKey->rotation );
+            SetTranslation( &translationMatrix, bKey->translation.x, bKey->translation.y, bKey->translation.z );
+
+            Matrix4 netMatrix = translationMatrix * rotationMatrix * scaleMatrix;
+            *bone->transformMatrix = netMatrix * parentMatrix;
 
             for( uint8_t i = 0; i < bone->childCount; i++ ) {
                 _SetBoneTransformRecursively( key, bone->childrenBones[i], *bone->transformMatrix );
@@ -537,9 +561,15 @@ void SetSkeletonTransform( ArmatureKeyframe* key, Skeleton* skeleton ) {
         }
     };
 
-    Matrix4 m;
-    Identity( &m );
-    N::_SetBoneTransformRecursively( key, skeleton->rootBone, m );
+    Matrix4 i;
+    Identity( &i );
+    N::_SetBoneTransformRecursively( key, skeleton->rootBone, i );
+
+    // for( int i = 0; i < skeleton->boneCount; i++ ) {
+    //     BoneKey bKey = key->keys[i];
+    //     if(bKey.boneAffected != NULL)
+    //         *bKey.boneAffected->transformMatrix = bKey.computedMatrix;
+    // }
 }
 
 void CreateRenderMesh(OpenGLMeshBinding* renderMesh, MeshData* meshData) {
@@ -698,12 +728,12 @@ void GameInit( MemorySlab slab ) {
 
     }
 
-    SetScale( renderMesh.modelMatrix, 0.5f, 0.5f, 0.5f );
-    SetTranslation( renderMesh.modelMatrix, 0.0f, -200.0f, 0.0f );
+    SetScale( renderMesh.modelMatrix, 0.33f, 0.33f, 0.33f );
+    SetTranslation( renderMesh.modelMatrix, 0.0f, -150.0f, 0.0f );
 
     //Identity( &renderMesh.m );
     const float spinSpeed = 3.1415926 / 128.0f;
-    SetRotation( &spinMatrix, 0.0f, 1.0f, 0.0f, spinSpeed );
+    spinMatrix = MatrixFromQuat( FromAngleAxis( 0.0f, 1.0f, 0.0f, spinSpeed ) );
 
     //memset( &cameraMatrix.m[0], 0.0f, sizeof(float) * 16 );
 
