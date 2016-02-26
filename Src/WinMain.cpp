@@ -156,7 +156,8 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	gameSlab.slabSize = MEGABYTES(32);
 	gameSlab.slabStart = VirtualAlloc( NULL, gameSlab.slabSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
 	assert( gameSlab.slabStart != NULL );
-	GameInit();
+	
+	GameInit( &gameSlab );
 
 	MSG Msg;
 	do {
@@ -171,7 +172,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 
 		if(running) {
 			running = Update( &gameSlab );
-			Render();
+			Render( &gameSlab );
 			SwapBuffers( appInfo.deviceContext );
 		}
 

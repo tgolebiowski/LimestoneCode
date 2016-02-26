@@ -13,8 +13,6 @@ typedef uint32_t uint32;
 typedef int32_t int32;
 typedef uint64_t uint64;
 typedef int64_t int64;
-typedef float real32;
-typedef double real64;
 
 //TODO: Remove STL depedencies, also, putting the map include after the Math3D include breaks memsets in Math3D
 #include <map>
@@ -39,8 +37,8 @@ int16 ReadShaderSrcFileFromDisk(const char* fileName, GLchar* buffer, uint16 buf
 	STUFF THE GAME PROVIDES THE OS
  ----------------------------------*/
 bool Update( MemorySlab* gameMemory );
-void Render();
-void GameInit();
+void Render( MemorySlab* gameMemory );
+void GameInit( MemorySlab* gameMemory );
 
 #define APP_H
 #endif

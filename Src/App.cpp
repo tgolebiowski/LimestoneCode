@@ -63,6 +63,12 @@ struct OpenGLFramebuffer {
 static OpenGLFramebuffer myFramebuffer;
 static ShaderProgram framebufferShader;
 
+struct GameMemory {
+    MeshData lineData;
+    OpenGLMeshBinding lineMesh;
+    ShaderProgram lineShader;
+};
+
 bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     //Load data from file
     int n;
@@ -633,7 +639,7 @@ void RenderMesh( OpenGLMeshBinding* mesh, ShaderProgram* program, ShaderTextureS
     glActiveTexture( GL_TEXTURE1 );
     glBindTexture( GL_TEXTURE_2D, textureSet.texturePtrs[1] );
 
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, mesh->ibo );                            //Bind index data
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, mesh->ibo );                           //Bind index data
     glDrawElements( GL_TRIANGLES, mesh->vertexCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
 
     //Unbind textures
@@ -644,8 +650,20 @@ void RenderMesh( OpenGLMeshBinding* mesh, ShaderProgram* program, ShaderTextureS
     glUseProgram( (GLuint)NULL );
 }
 
-void RenderLine( float* lineVertexBuffer, uint16 vertexCount ) {
+void RenderLineMesh( OpenGLMeshBinding* lineMesh, ShaderProgram* lineShader ) {
+    //Bind Shader
+    glUseProgram( lineShader->programID );
 
+    //Set vertex data
+    glBindBuffer( GL_ARRAY_BUFFER, lineMesh->vbo );
+    glEnableVertexAttribArray( lineShader->positionAttribute );
+    glVertexAttribPointer( lineShader->positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, lineMesh->ibo );                           //Bind index data
+    glDrawElements( GL_LINE_STRIP, lineMesh->vertexCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
+
+    //clear shader
+    glUseProgram( (GLuint)NULL );
 }
 
 bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
@@ -688,22 +706,42 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     return true;
 }
 
-void GameInit() {
+void GameInit( MemorySlab* gameMemory ) {
     if( InitOpenGLRenderer( 640, 480 ) == false ) {
         printf("Failed to init OpenGL renderer\n");
         return;
     }
 
+    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
+    CreateShader( &gMem->lineShader, "Data/Shaders/Line.vert", "Data/Shaders/Line.frag" );
+
+    GLfloat vertexData [9] = {-300.0f, -200.0f, 1.0f, 20.0f, -100.0f, 0.0f, 300.0f, 200.0f, -1.0f };
+    GLuint indexData[3] = { 0, 1, 2 };
+    MeshData* lineData = &gMem->lineData;
+    GLfloat* linevertexData = (GLfloat*)&lineData->vertexData;
+    GLuint* lineindexData = (GLuint*)&lineData->indexData;
+    memcpy( linevertexData, &vertexData, sizeof(GLfloat) * 9 );
+    memcpy( lineindexData, &indexData, sizeof(GLuint) * 3 );
+    lineData->vertexCount = 3;
+    lineData->indexCount = 3;
+
+    OpenGLMeshBinding* lineMesh = &gMem->lineMesh;
+    CreateRenderMesh( lineMesh, lineData );
+
     printf("Init went well\n");
     return;
 }
 
-void Render() {
+void Render( MemorySlab* gameMemory ) {
+    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
+
     glClear( GL_DEPTH_BUFFER_BIT );
     glBindFramebuffer( GL_FRAMEBUFFER, myFramebuffer.framebufferPtr );
     glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, myFramebuffer.framebufferTexture.textureID, 0 );
 
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    RenderLineMesh( &gMem->lineMesh, &gMem->lineShader );
 
     glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
