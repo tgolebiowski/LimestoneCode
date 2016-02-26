@@ -22,6 +22,18 @@ struct Skeleton {
     Bone* rootBone;
 };
 
+struct BoneKey {
+    Bone* boneAffected;
+    Vec3 scale;
+    Quaternion rotation;
+    Vec3 translation;
+};
+
+struct ArmatureKeyframe {
+    Skeleton* skeleton;
+    BoneKey keys[MAXBONECOUNT];
+};
+
 struct MeshData {
     #define MAXVERTCOUNT 600
     #define MAXBONEPERVERT 4
@@ -35,15 +47,15 @@ struct MeshData {
     Skeleton* skeleton;
     GLfloat boneWeightData[MAXVERTCOUNT * MAXBONEPERVERT];
     GLuint boneIndexData[MAXVERTCOUNT * MAXBONEPERVERT];
-    GLuint indexData [600];
+    GLuint indexData [MAXVERTCOUNT * 3];
 };
 
 /*-------------------------------------
 IMPLEMENTATIONS SPECIFIC TO THE RENDERER
 ---------------------------------------*/
-void InitRenderer();
+//void InitRenderer();
 //void* CreateRenderableMesh( MeshData* genericMeshData );
-void RenderMesh( void* rendererSpecificMesh );
+//void RenderMesh( void* rendererSpecificMesh );
 
 #define CLAY_RENDERER
 #endif

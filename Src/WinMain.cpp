@@ -116,21 +116,19 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 		//SysSetDisplayMode(width, height, SCRDEPTH);
 		//TODO: implement
 	}
-
  
 	// at this point WM_CREATE message is sent/received
 	// the WM_CREATE branch inside WinProc function will execute here
 	appInfo.hwnd = CreateWindowEx(0, WindowName, "Wet Clay App", WS_BORDER, posx, posy, SCREEN_WIDTH, SCREEN_HEIGHT, NULL, NULL, appInfo.appInstance, NULL);
-
 
 	PIXELFORMATDESCRIPTOR pfd = {
 		sizeof(PIXELFORMATDESCRIPTOR),
 		1,
 	    PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
 		PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
-		32,                        //Colordepth of the framebuffer.
+		32,                       //Colordepth of the framebuffer.
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		24,                        //Number of bits for the depthbuffer
+		24,                       //Number of bits for the depthbuffer
 	    8,                        //Number of bits for the stencilbuffer
 		0,                        //Number of Aux buffers in the framebuffer.
 		PFD_MAIN_PLANE,

@@ -53,19 +53,6 @@ struct OpenGLMeshBinding {
     GLuint boneIndexBuffer;
 };
 
-struct BoneKey {
-    Bone* boneAffected;
-    Vec3 scale;
-    Quaternion rotation;
-    Vec3 translation;
-    Matrix4 computedMatrix;
-};
-
-struct ArmatureKeyframe {
-    Skeleton* skeleton;
-    BoneKey keys[MAXBONECOUNT];
-};
-
 static Skeleton mySkeley;
 static MeshData tinyMeshData;
 static ArmatureKeyframe debugPose;
@@ -84,6 +71,10 @@ static GLuint framebuffVBO;
 static GLuint framebuffIBO;
 static GLuint framebuffUVBuff;
 static ShaderProgram framebufferShader;
+
+MeshData pyMesh;
+OpenGLMeshBinding pyRender;
+Matrix4 translationM, scaleM, spinM, extraScale;
 
 static MemorySlab memory;
 
@@ -248,7 +239,7 @@ void printShaderLog( GLuint shader ) {
 }
 
 void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char* fragShaderFile) {
-    const size_t shaderSrcBufferLength = 1024;
+    const size_t shaderSrcBufferLength = 1200;
     GLchar shaderSrcBuffer[shaderSrcBufferLength];
     memset(&shaderSrcBuffer, 0, sizeof(GLchar) * shaderSrcBufferLength );
     const GLchar* bufferPtr = (GLchar*)&shaderSrcBuffer;
@@ -325,14 +316,35 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     glDeleteShader( fragShader );
 }
 
+void LoadMeshViaAssimp( MeshData* data, const char* fileName ) {
+    unsigned int myFlags = 
+    //aiProcess_GenSmoothNormals         |
+    //aiProcess_JoinIdenticalVertices    | // join identical vertices/ optimize indexing
+    //aiProcess_ImproveCacheLocality     | // improve the cache locality of the output vertices
+    //aiProcess_FindDegenerates          | // remove degenerated polygons from the import
+    //aiProcess_FindInvalidData          | // detect invalid model data, such as invalid normal vectors
+    aiProcess_TransformUVCoords        | // preprocess UV transformations (scaling, translation ...)
+    //aiProcess_LimitBoneWeights         | // limit bone weights to 4 per vertex
+    0;
+
+    const struct aiScene* scene = aiImportFile( fileName, myFlags );
+
+    // If the import failed, report it
+    if( !scene ) {
+        printf( "Failed to open %s\n", fileName );
+        return;
+    }
+
+    //for( uint8_t i = 0; i < )
+}
+
 bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     // Start the import on the given file with some example postprocessing
     // Usually - if speed is not the most important aspect for you - you'll t
     // probably to request more postprocessing than we do in this example.
     unsigned int myFlags = 
-    aiProcess_CalcTangentSpace         | // calculate tangents and bitangents if possible
+    aiProcess_GenSmoothNormals         |
     aiProcess_JoinIdenticalVertices    | // join identical vertices/ optimize indexing
-    aiProcess_Triangulate              | // Ensure all verticies are triangulated (each 3 vertices are triangle)
     aiProcess_ImproveCacheLocality     | // improve the cache locality of the output vertices
     aiProcess_FindDegenerates          | // remove degenerated polygons from the import
     aiProcess_FindInvalidData          | // detect invalid model data, such as invalid normal vectors
@@ -351,25 +363,25 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     // Now we can access the file's contents
     uint16_t numMeshes = scene->mNumMeshes;
     printf( "Loaded file: %s\n", fileName );
-    printf( "%d Meshes in file\n", numMeshes );
     if( numMeshes == 0 ) {
         return false;
     }
+    printf( "%d Meshes in file\n", numMeshes );
+
+    //uint16_t indexIndirectionList[ MAXVERTCOUNT ];
+    //memset( &indexIndirectionList, 0, sizeof(uint16_t) * MAXVERTCOUNT );
 
     //Read data for each mesh
     for( uint8_t i = 0; i < numMeshes; i++ ) {
         const aiMesh* mesh = scene->mMeshes[i];
         printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
-        if( mesh->HasBones() ) {
-            printf( "This mesh also has %d bones\n", mesh->mNumBones );
-        }
 
-        //Read vertex data
+        static float highest_y = 0.0f;
         uint16_t vertexCount = mesh->mNumVertices;
         for( uint16_t j = 0; j < vertexCount; j++ ) {
-            data->vertexData[j * 3 + 0] = mesh->mVertices[j].x * 50.0f;
-            data->vertexData[j * 3 + 1] = mesh->mVertices[j].z * 50.0f;
-            data->vertexData[j * 3 + 2] = mesh->mVertices[j].y * 50.0f;
+            data->vertexData[j * 3 + 0] = mesh->mVertices[j].x;
+            data->vertexData[j * 3 + 1] = mesh->mVertices[j].z;
+            data->vertexData[j * 3 + 2] = -mesh->mVertices[j].y;
             //printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
 
             if( mesh->GetNumUVChannels() != 0 ) {
@@ -377,10 +389,18 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
                 data->uvData[j * 2 + 1] = mesh->mTextureCoords[0][j].y;
                 //printf("UV Data: %f, %f\n", data->uvData[j * 2 + 0], data->uvData[j * 2 + 1]);
             }
+
+            if( mesh->mVertices[j].z > highest_y ) highest_y = mesh->mVertices[j].z;
         }
         data->vertexCount = vertexCount;
 
-        //Read index data
+        printf( "Highest base y is: %2f\n", highest_y );
+
+        //printf("Unique Data Count: %d\n", uniqueDataCount);
+        //for( auto it = uniqueVertIndexLookup.begin(); it != uniqueVertIndexLookup.end(); it++ ) {
+            //printf("x:%2f y:%2f z:%2f u:%2f v:%2f\n", it->first.x, it->first.y, it->first.z, it->first.u, it->first.v);
+        //}
+
         uint16_t indexCount = mesh->mNumFaces * 3;
         //printf("Index Pointer data: %p\n", data->indexData );
         for( uint16_t j = 0; j < mesh->mNumFaces; j++ ) {
@@ -394,6 +414,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 
 
         if( mesh->HasBones() ) {
+            printf( "This mesh also has %d bones\n", mesh->mNumBones );
             data->hasSkeletonInfo = true;
             data->skeleton = &mySkeley;
             data->skeleton->boneCount = mesh->mNumBones;
@@ -407,8 +428,10 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
             std::map<char*, aiNode*, strcompare> nodesByName;
             std::map<char*, Bone*, strcompare> bonesByName;
 
-            uint8_t bonesInfluencingEachVert [512];
-            memset( &bonesInfluencingEachVert, 0, sizeof(uint8_t) * 512 );
+            uint8_t bonesInfluencingEachVert [ MAXVERTCOUNT * MAXBONEPERVERT ];
+            memset( &bonesInfluencingEachVert, 0, sizeof(uint8_t) * MAXVERTCOUNT * MAXBONEPERVERT );
+            memset( &data->boneWeightData, 0.0f, sizeof(GLfloat) * MAXVERTCOUNT * MAXBONEPERVERT );
+            memset( &data->boneIndexData, 0, sizeof(GLuint) * MAXVERTCOUNT * MAXBONEPERVERT );
 
             for( uint8_t j = 0; j < data->skeleton->boneCount; j++ ) {
                 const aiBone* bone = mesh->mBones[j];
@@ -434,44 +457,30 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
                     const uint16_t indexToWeightData = MAXBONEPERVERT * weightInfo.mVertexId + bonesInfluencingEachVert[weightInfo.mVertexId];
 
                     data->boneWeightData[indexToWeightData] = weightInfo.mWeight;
-                    data->boneIndexData[indexToWeightData] = j;
+                    data->boneIndexData[indexToWeightData] = myBone->boneIndex;
                     bonesInfluencingEachVert[weightInfo.mVertexId]++;
                     assert(bonesInfluencingEachVert[weightInfo.mVertexId] <= 4);
                 }
             }
 
-            // for( uint8_t j = 0; j < data->vertexCount; j++ ) {
-            //     float weight1 = data->boneWeightData[ MAXBONECOUNT * j + 0];
-            //     float weight2 = data->boneWeightData[ MAXBONECOUNT * j + 1];
-            //     float weight3 = data->boneWeightData[ MAXBONECOUNT * j + 2];
-            //     float weight4 = data->boneWeightData[ MAXBONECOUNT * j + 3];
-            //     float netWeight = weight1 + weight2 + weight3 +weight4;
-            //     if( netWeight != 1.0f ) {
-            //         data->boneWeightData[ MAXBONECOUNT * j + 0] /= netWeight;
-            //         data->boneWeightData[ MAXBONECOUNT * j + 1] /= netWeight;
-            //         data->boneWeightData[ MAXBONECOUNT * j + 2] /= netWeight;
-            //         data->boneWeightData[ MAXBONECOUNT * j + 3] /= netWeight;
-            //     }
-            // }
-
             for( uint8_t j = 0; j < data->skeleton->boneCount; j++ ) {
                 Bone* bone = &data->skeleton->allBones[j];
-                aiNode* correspondingNode = nodesByName.find( bone->name )->second;
+                aiNode* correspondingNode = nodesByName.find( &bone->name[0] )->second;
 
-                //printf( "Building hierarchy data for bone: %s\n", bone->name );
+                printf( "Building hierarchy data for bone: %s\n", bone->name );
 
                 aiNode* parentNode = correspondingNode->mParent;
-                auto node_it = nodesByName.find( parentNode->mName.data );
-                if( node_it != nodesByName.end() ) {
-                    auto bone_it = bonesByName.find( parentNode->mName.data );
+                auto bone_it = bonesByName.find( parentNode->mName.data );
+                if( bone_it != bonesByName.end() ) {
                     bone->parentBone = bone_it->second;
-                    //printf("Parent Set, parent bone name %s, parent node name %s\n", bone->parentBone->name, parentNode->mName.data);
+                    printf("Parent Set, parent bone name %s, parent node name %s\n", bone->parentBone->name, parentNode->mName.data);
                 } else {
-                    //printf("No parent found for bone %s\n", bone->name);
+                    printf("No parent found for bone %s\n", bone->name);
                     bone->parentBone = NULL;
                     data->skeleton->rootBone = bone;
                 }
 
+                bone->childCount = 0;
                 for( uint8_t k = 0; k < correspondingNode->mNumChildren; k++ ) {
                     aiNode* childNode = correspondingNode->mChildren[k];
                     auto childBone_it = bonesByName.find( childNode->mName.data );
@@ -481,7 +490,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
                         bone->childCount++;
                     }
                 }
-                //printf( "%d children found for this bone\n", bone->childCount );
+                printf( "%d children found for this bone\n", bone->childCount );
             }
 
         } else {
@@ -491,16 +500,14 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     }
 
     if( scene->HasAnimations() ) {
-        printf( "Animation Info found\n" );
-
         ArmatureKeyframe* sPose = &debugPose;
         sPose->skeleton = data->skeleton;
         const aiAnimation* anim = scene->mAnimations[0];
+
         const uint8_t bonesInAnimation = anim->mNumChannels;
         for( uint8_t i = 0; i < bonesInAnimation; i++ ) {
             const aiNodeAnim* boneAnimation = anim->mChannels[i];
 
-            printf( "Animation Info, node: %s\n", boneAnimation->mNodeName.data );
             Bone* bone = NULL;
             for( uint8_t j = 0; j < data->skeleton->boneCount; j++ ) {
                 int result = strcmp( data->skeleton->allBones[j].name, boneAnimation->mNodeName.data );
@@ -511,7 +518,6 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
             }
 
             if( bone != NULL ) {
-                printf("Animation info found for bone: %s\n", bone->name );
                 BoneKey* key = &sPose->keys[bone->boneIndex];
                 key->boneAffected = bone;
 
@@ -519,18 +525,24 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
                 aiQuaternion quatKey1 = boneAnimation->mRotationKeys[0].mValue;
                 aiVector3D scaleKey1 = boneAnimation->mScalingKeys[0].mValue;
 
-                key->scale = { scaleKey1.x, scaleKey1.y, scaleKey1.z };
+                key->scale = { scaleKey1.x, scaleKey1.z, -scaleKey1.y };
                 key->rotation = { quatKey1.w, quatKey1.x, quatKey1.y, quatKey1.z };
                 key->translation = { veckey1.x, veckey1.y, veckey1.z };
 
-                Matrix4 scaleMat, rotMat, transMat;
-                SetScale( &scaleMat, scaleKey1.x, scaleKey1.y, scaleKey1.z );
-                rotMat = MatrixFromQuat( key->rotation );
-                SetTranslation( &transMat, veckey1.x, veckey1.y, veckey1.z );
-                Matrix4 scaleRotMat = MultMatrix( scaleMat, rotMat );
-                key->computedMatrix = MultMatrix( scaleRotMat, transMat );
+                if(bone->boneIndex == 0) {
+                    Quaternion inverse = key->rotation;
+                    Inverse( &inverse );
+                    key->rotation = MultQuats( key->rotation, inverse );
+                }
+                printf("Bone scale values - x:%2f, y:%2f, z:%2f\n", key->scale.x, key->scale.y, key->scale.z );
+                printf("Bone Quat values - w:%2f, x:%2f, y:%2f, z:%2f\n", key->rotation.w, key->rotation.x, key->rotation.y, key->rotation.z );
+                printf("Bone translate values - x:%2f, y:%2f, z:%2f\n", key->translation.x, key->translation.y, key->translation.z );
 
-                //data->skeleton->boneTransforms[ boneIndex ] = key->computedMatrix;
+                Vec3 axis;
+                float angle;
+                ToAngleAxis( key->rotation, &angle, &axis );
+                angle *= 180.0f / 3.1415926f;
+                printf( "For this quat angle axis is - angle:%2f, axis - x:%2f, y:%2f, z:%2f\n", angle, axis.x, axis.y, axis.z );
             }
         }
     } else {
@@ -542,7 +554,6 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
 }
 
 void SetSkeletonTransform( ArmatureKeyframe* key, Skeleton* skeleton ) {
-
     struct N {
         static void _SetBoneTransformRecursively( ArmatureKeyframe* key, Bone* bone, Matrix4 parentMatrix ) {
             BoneKey* bKey = &key->keys[bone->boneIndex];
@@ -565,11 +576,24 @@ void SetSkeletonTransform( ArmatureKeyframe* key, Skeleton* skeleton ) {
     Identity( &i );
     N::_SetBoneTransformRecursively( key, skeleton->rootBone, i );
 
-    // for( int i = 0; i < skeleton->boneCount; i++ ) {
-    //     BoneKey bKey = key->keys[i];
-    //     if(bKey.boneAffected != NULL)
-    //         *bKey.boneAffected->transformMatrix = bKey.computedMatrix;
-    // }
+    // int8_t stackIndex = -1;
+    // uint8_t childrenTraversed[MAXBONECOUNT];
+    // Bone* boneStack[MAXBONECOUNT];
+
+    // boneStack[0] = skeleton->rootBone;
+    // stackIndex = 0;
+
+    // //while( stackIndex >= 0 ) {
+    //     Bone* currentBone = boneStack[stackIndex];
+    //     BoneKey* bKey = &key->keys[currentBone->boneIndex];
+
+    //     Matrix4 scaleMatrix, rotationMatrix, translationMatrix;
+    //     SetScale( &scaleMatrix, bKey->scale.x, bKey->scale.y, bKey->scale.z );
+    //     rotationMatrix = MatrixFromQuat( bKey->rotation );
+    //     SetTranslation( &translationMatrix, bKey->translation.x, bKey->translation.y, bKey->translation.z );
+
+    //     Matrix4 netMatrix = scaleMatrix * rotationMatrix * translationMatrix;
+    // //}
 }
 
 void CreateRenderMesh(OpenGLMeshBinding* renderMesh, MeshData* meshData) {
@@ -629,11 +653,11 @@ void RenderMesh( OpenGLMeshBinding* mesh, ShaderProgram* program ) {
     glVertexAttribPointer( program->texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
 
     if( mesh->isArmatureAnimated ) {
-        glUniformMatrix4fv( program->skeletonUniform, MAXBONECOUNT, GL_FALSE, &mesh->skeleton->boneTransforms[0].m[0][0] );
+        glUniformMatrix4fv( program->skeletonUniform, MAXBONECOUNT, GL_FALSE, (const float*)&mesh->skeleton->boneTransforms->m[0] );
 
         glBindBuffer( GL_ARRAY_BUFFER, mesh->boneWeightBuffer );
         glEnableVertexAttribArray( program->boneWeightsAttribute );
-        glVertexAttribIPointer( program->boneWeightsAttribute, MAXBONEPERVERT, GL_FLOAT, 0, 0 );
+        glVertexAttribPointer( program->boneWeightsAttribute, MAXBONEPERVERT, GL_FLOAT, false, 0, 0 );
 
         glBindBuffer( GL_ARRAY_BUFFER, mesh->boneIndexBuffer );
         glEnableVertexAttribArray( program->boneIndiciesAttribute );
@@ -656,33 +680,30 @@ void RenderMesh( OpenGLMeshBinding* mesh, ShaderProgram* program ) {
 }
 
 bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
-    //Initialize clear color
-    glClearColor( 0.1f, 0.1f, 0.1f, 1.0f );
-
-    glEnable( GL_DEPTH_TEST );
-    //Configure Texturing, setting some nice perspective correction
-    //glEnable( GL_TEXTURE_2D );
-    //glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
-    //Set Blending
-    glEnable( GL_BLEND );
-    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-    //Configure Back Face Culling
-    glEnable( GL_CULL_FACE );
-    glCullFace( GL_BACK );
+    printf("Vendor: %s\n", glGetString( GL_VENDOR ) );
+    printf("Renderer: %s\n", glGetString( GL_RENDERER ) );
+    printf("GL Version: %s\n", glGetString( GL_VERSION ) );
+    printf("GLSL Version: %s\n", glGetString( GL_SHADING_LANGUAGE_VERSION ) );
 
     GLint k;
     glGetIntegerv( GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &k );
     printf("Max texture units: %d\n", k);
 
-    //Set viewport
+    //Initialize clear color
+    glClearColor( 0.1f, 0.1f, 0.1f, 1.0f );
+
+    glEnable( GL_DEPTH_TEST );
+    //glEnable( GL_BLEND );
+    //glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+    glEnable( GL_CULL_FACE );
+    glCullFace( GL_BACK );
+
     glViewport( 0.0f, 0.0f, screen_w, screen_h );
 
     const float halfHeight = screen_h * 0.5f;
     const float halfWidth = screen_w * 0.5f;
-    //Initialize Projection Matrix
     glMatrixMode(GL_PROJECTION);
     glOrtho( -halfWidth, halfWidth, -halfHeight, halfHeight, -halfWidth, halfWidth );
-    //SetOrthoProjection( &cameraMatrix, -halfWidth, halfWidth, halfHeight, -halfHeight, -halfWidth, halfWidth );
 
     //Initialize framebuffer
     CreateEmptyTexture( &frameBufferTexture, screen_w, screen_h );
@@ -711,12 +732,14 @@ void GameInit( MemorySlab slab ) {
 
     LoadTextureFromFile( &myTexture, "Data/Textures/pink_texture.png" );
     LoadTextureFromFile( &otherTexture, "Data/Textures/green_texture.png" );
-    MeshData* data = (MeshData*)calloc(1, sizeof(MeshData) );
-    LoadMeshFromFile( data, "Data/Wiggley.dae" );
-    CreateRenderMesh( &renderMesh, data );
-    free(data);
+    LoadMeshFromFile( &tinyMeshData, "Data/SkeletonDebug.dae" );
+    CreateRenderMesh( &renderMesh, &tinyMeshData );
     CreateShader( &myProgram, "Data/Shaders/Vert.vert", "Data/Shaders/Frag.frag" );
     CreateShader( &framebufferShader, "Data/Shaders/Framebuffer.vert", "Data/Shaders/Framebuffer.frag" );
+
+    LoadMeshFromFile( &pyMesh, "Data/Sphere.dae" );
+    CreateRenderMesh( &pyRender, &pyMesh );
+
     myTextureSet.count = 2;
     myTextureSet.associatedShader = &myProgram;
     myTextureSet.texturePtrs[0] = myTexture.textureID;
@@ -724,18 +747,15 @@ void GameInit( MemorySlab slab ) {
     myTextureSet.shaderSamplerPtrs[0] = myProgram.samplerPtrs[0];
     myTextureSet.shaderSamplerPtrs[1] = myProgram.samplerPtrs[1];
 
-    for(int i = 0; i < MAXBONECOUNT; i++) {
-
-    }
-
-    SetScale( renderMesh.modelMatrix, 0.33f, 0.33f, 0.33f );
-    SetTranslation( renderMesh.modelMatrix, 0.0f, -150.0f, 0.0f );
+    const float spinSpeed = 3.1415926f / 128.0f;
+    spinMatrix = MatrixFromQuat( FromAngleAxis( 0.0f, 1.0f, 0.0f, spinSpeed ) );
+    SetScale( &scaleM, 40.0f, 40.0f, 40.0f );
+    SetTranslation( &translationM, 0.0f, -50.0f, 0.0f );
+    SetScale( &extraScale, 0.75f, 0.75f, 0.75f );
+    Identity( &spinM );
+    *renderMesh.modelMatrix = scaleM * translationM * spinMatrix;
 
     //Identity( &renderMesh.m );
-    const float spinSpeed = 3.1415926 / 128.0f;
-    spinMatrix = MatrixFromQuat( FromAngleAxis( 0.0f, 1.0f, 0.0f, spinSpeed ) );
-
-    //memset( &cameraMatrix.m[0], 0.0f, sizeof(float) * 16 );
 
     printf("Init went well\n");
     return;
@@ -746,10 +766,14 @@ void Render() {
     glBindFramebuffer( GL_FRAMEBUFFER, frameBufferPtr );
     glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBufferTexture.textureID, 0 );
 
-    //Clear color buffer & depth buffer
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     RenderMesh( &renderMesh, &myProgram );
+    for( int i = 0; i < mySkeley.boneCount; i++ ) {
+        Matrix4 m = mySkeley.boneTransforms[i];
+        *pyRender.modelMatrix = extraScale * m * ( *renderMesh.modelMatrix );
+        //RenderMesh( &pyRender, &myProgram );
+    }
 
     glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
@@ -757,6 +781,7 @@ void Render() {
 }
 
 bool Update() {
-    *renderMesh.modelMatrix = MultMatrix( *renderMesh.modelMatrix, spinMatrix );
+    //*renderMesh.modelMatrix = MultMatrix( *renderMesh.modelMatrix, spinMatrix );
+    spinM = spinM * spinMatrix;
     return true;
 }

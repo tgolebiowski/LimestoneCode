@@ -14,19 +14,28 @@ struct Matrix4 {
 	float m[4][4];
 };
 
+float InvSqrt(float x) {
+	float xhalf = 0.5f * x;
+	int i = *(int*)&x; // store Numbering-point bits in integer
+	i = 0x5f3759d5 - (i >> 1); // initial guess for Newton's method
+	x = *(float*)&i; // convert new bits into Number
+	x = x*(1.5f - xhalf*x*x); // One round of Newton's method
+	return x;
+}
+
 /*-----------------------------------------------------------------------------------
-                                     Vec3
+                                     
 ------------------------------------------------------------------------------------*/
 
-inline Vec3 operator * ( const Vec3 v, const float scalar) {
+Vec3 operator * ( const Vec3 v, const float scalar) {
 	return {v.x * scalar, v.y * scalar, v.z * scalar};
 }
 
-inline Vec3 operator * ( const float scalar, const Vec3 v) {
+Vec3 operator * ( const float scalar, const Vec3 v) {
 	return {v.x * scalar, v.y * scalar, v.z * scalar};
 }
 
-inline Vec3 operator + ( const Vec3 v1, const Vec3 v2 ) {
+Vec3 operator + ( const Vec3 v1, const Vec3 v2 ) {
 	return {v1.x + v2.x, v1.y + v2.y, v1.z + v2.z };
 }
 
@@ -78,6 +87,18 @@ float AngleBetween(const Vec3 v1, const Vec3 v2) {
 /* ----------------------------------------------------------------------------------
                                   MATRICIES
 -----------------------------------------------------------------------------------*/
+Matrix4 Transpose( Matrix4 m ) {
+	Matrix4 t;
+
+	for( int i = 0; i < 4; i++ ) {
+		for( int j = 0; j < 4; j++ ) {
+			t.m[i][j] = m.m[j][i];
+		}
+	}
+
+	return t;
+}
+
 void Identity(Matrix4* m) {
 	memset( &m->m[0][0], 0, 16 * sizeof(float) );
 	m->m[0][0] = 1.0f;
@@ -138,7 +159,7 @@ void SetOrthoProjection(Matrix4* m, const float l, const float r, const float t,
 	m->m[3][3] = 1.0f;
 }
 
-Matrix4 MultMatrix(const Matrix4 m, const Matrix4 m2) {
+inline Matrix4 MultMatrix(const Matrix4 m, const Matrix4 m2) {
 	Matrix4 r;
 	r.m[0][0] = m.m[0][0] * m2.m[0][0] + m.m[0][1] * m2.m[1][0] + m.m[0][2] * m2.m[2][0] + m.m[0][3] * m2.m[3][0];
 	r.m[0][1] = m.m[0][0] * m2.m[0][1] + m.m[0][1] * m2.m[1][1] + m.m[0][2] * m2.m[2][1] + m.m[0][3] * m2.m[3][1];
@@ -190,6 +211,27 @@ Quaternion FromAngleAxis(const float axisX, const float axisY, const float axisZ
 	return quat;
 }
 
+//Code credit to Polycode
+void ToAngleAxis( const Quaternion q, float* angle, Vec3* axis) {
+	float fSqrLength = q.x * q.x + q.y * q.y + q.z * q.z;
+	if ( fSqrLength > 0.0f )
+	{
+		*angle = 2.0f * acos(q.w);
+		float fInvLength = InvSqrt(fSqrLength);
+		axis->x = q.x * fInvLength;
+		axis->y = q.y * fInvLength;
+		axis->z = q.z * fInvLength;
+	}
+	else
+	{
+		// angle is 0 (mod 2*pi), so any axis will do
+		*angle = 0.0f;
+		axis->x = 1.0;
+		axis->y = 0.0;
+		axis->z = 0.0;
+	}
+}
+
 void Inverse(Quaternion* quat) {
 	float fNorm = quat->w * quat->w + quat->x * quat->x + quat->y * quat->y + quat->z * quat->z;
 	float fInvNorm = 1.0f/fNorm;
@@ -200,20 +242,14 @@ void Inverse(Quaternion* quat) {
 }
 
 Vec3 ApplyTo( Quaternion q, Vec3 v ) {
+	//Credit to Casey Muratori
 	Vec3 t = CrossProd( {q.x, q.y, q.z }, v ) * 2.0f;
 	return v + t * q.w + CrossProd( {q.x, q.y, q.z}, t );
 }
 
 Matrix4 MatrixFromQuat(const Quaternion quat) {
+	//Credit to Ivan Safrin, code lifted from Polycode
 	Matrix4 matx;
-
-	// 	float qw = quat.w;
-	// float qx = quat.x;
-	// float qy = quat.y;
-	// float qz = quat.z;
-	// float n = 1.0f / sqrt( qw * qw + qx * qx + qy * qy + qz * qz );
-
-	// matx.m[0][0] = 1.0f - 2.0f*qy*qy - 2.0f*qz*qz;
 
 	float fTx  = 2.0*quat.x;
 	float fTy  = 2.0*quat.y;
