@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdbool.h>
-#include <stdint.h>
 
 #define GLEW_STATIC
 #include "OpenGL/glew.h"
@@ -157,7 +156,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	gameSlab.slabSize = MEGABYTES(32);
 	gameSlab.slabStart = VirtualAlloc( NULL, gameSlab.slabSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
 	assert( gameSlab.slabStart != NULL );
-	GameInit( gameSlab );
+	GameInit();
 
 	MSG Msg;
 	do {
@@ -171,7 +170,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 		startTime = GetTickCount();
 
 		if(running) {
-			running = Update();
+			running = Update( &gameSlab );
 			Render();
 			SwapBuffers( appInfo.deviceContext );
 		}

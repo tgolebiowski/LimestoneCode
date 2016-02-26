@@ -53,30 +53,15 @@ struct OpenGLMeshBinding {
     GLuint boneIndexBuffer;
 };
 
-static Skeleton mySkeley;
-static MeshData tinyMeshData;
-static ArmatureKeyframe debugPose;
-
-static Matrix4 spinMatrix;
-//static Matrix4 cameraMatrix;
-static ShaderProgram myProgram;
-static OpenGLMeshBinding renderMesh;
-static OpenGLTexture myTexture;
-static OpenGLTexture otherTexture;
-static ShaderTextureSet myTextureSet;
-
-static GLuint frameBufferPtr;
-static OpenGLTexture frameBufferTexture;
-static GLuint framebuffVBO;
-static GLuint framebuffIBO;
-static GLuint framebuffUVBuff;
+struct OpenGLFramebuffer {
+    GLuint framebufferPtr;
+    OpenGLTexture framebufferTexture;
+    GLuint framebuffVBO;
+    GLuint framebuffIBO;
+    GLuint framebuffUVBuff;
+};
+static OpenGLFramebuffer myFramebuffer;
 static ShaderProgram framebufferShader;
-
-MeshData pyMesh;
-OpenGLMeshBinding pyRender;
-Matrix4 translationM, scaleM, spinM, extraScale;
-
-static MemorySlab memory;
 
 bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     //Load data from file
@@ -162,49 +147,51 @@ bool CreateEmptyTexture( OpenGLTexture* texture, const uint16_t width, const uin
     return true;
 }
 
-void CreateFrameBuffer( OpenGLTexture* texture ) {
+void CreateFrameBuffer( OpenGLFramebuffer* buffer ) {
+    CreateEmptyTexture( &buffer->framebufferTexture, 640, 480 );
+
+    glGenFramebuffers( 1, &buffer->framebufferPtr );   
+
     const GLuint iData[6] = { 0, 1, 2, 2, 3, 0 };
-    const GLfloat vData[4 * 3] = {-0.8f, -0.8f, 0.0f, 
-                            0.8f, -0.8f, 0.0f,
-                            0.8f, 0.8f, 0.0f, 
-                            -0.8f, 0.8f, 0.0f };
+    const GLfloat vData[4 * 3] = {-1.0f, -1.0f, 0.0f, 
+                            1.0f, -1.0f, 0.0f,
+                            1.0f, 1.0f, 0.0f, 
+                            -1.0f, 1.0f, 0.0f };
     const GLfloat uvData[4 * 2] = { 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f };
 
     //Create VBO
-    glGenBuffers( 1, &framebuffVBO );
-    glBindBuffer( GL_ARRAY_BUFFER, framebuffVBO );
+    glGenBuffers( 1, &buffer->framebuffVBO );
+    glBindBuffer( GL_ARRAY_BUFFER, buffer->framebuffVBO );
     glBufferData( GL_ARRAY_BUFFER, 3 * 4 * sizeof(GLfloat), &vData, GL_STATIC_DRAW );
 
     //Create IBO
-    glGenBuffers( 1, &framebuffIBO );
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, framebuffIBO );
+    glGenBuffers( 1, &buffer->framebuffIBO );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, buffer->framebuffIBO );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, 6 * sizeof(GLuint), &iData, GL_STATIC_DRAW );
 
     //Create UV Buffer
-    glGenBuffers( 1, &framebuffUVBuff );
-    glBindBuffer( GL_ARRAY_BUFFER, framebuffUVBuff );
+    glGenBuffers( 1, &buffer->framebuffUVBuff );
+    glBindBuffer( GL_ARRAY_BUFFER, buffer->framebuffUVBuff );
     glBufferData( GL_ARRAY_BUFFER, 2 * 4 * sizeof(GLfloat), &uvData, GL_STATIC_DRAW );
 
     glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint)NULL );
 }
 
-void RenderFramebufferTexture( OpenGLTexture* texture ) {
-    glBindTexture( GL_TEXTURE_2D, texture->textureID );
-
+void RenderFramebuffer( OpenGLFramebuffer* framebuffer ) {
     glUseProgram( framebufferShader.programID );
 
-    glBindBuffer( GL_ARRAY_BUFFER, framebuffVBO );
+    glBindBuffer( GL_ARRAY_BUFFER, framebuffer->framebuffVBO );
     glEnableVertexAttribArray( framebufferShader.positionAttribute );
     glVertexAttribPointer( framebufferShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
-    glBindBuffer( GL_ARRAY_BUFFER, framebuffUVBuff );
+    glBindBuffer( GL_ARRAY_BUFFER, framebuffer->framebuffUVBuff );
     glEnableVertexAttribArray( framebufferShader.texCoordAttribute );
     glVertexAttribPointer( framebufferShader.texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
 
-    glBindTexture( GL_TEXTURE_2D, texture->textureID );
+    glBindTexture( GL_TEXTURE_2D, framebuffer->framebufferTexture.textureID );
 
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, framebuffIBO );    //Bind index data
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, framebuffer->framebuffIBO );    //Bind index data
     glDrawElements( GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL );     //Render da quad
 
     //clear shader
@@ -316,29 +303,7 @@ void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char
     glDeleteShader( fragShader );
 }
 
-void LoadMeshViaAssimp( MeshData* data, const char* fileName ) {
-    unsigned int myFlags = 
-    //aiProcess_GenSmoothNormals         |
-    //aiProcess_JoinIdenticalVertices    | // join identical vertices/ optimize indexing
-    //aiProcess_ImproveCacheLocality     | // improve the cache locality of the output vertices
-    //aiProcess_FindDegenerates          | // remove degenerated polygons from the import
-    //aiProcess_FindInvalidData          | // detect invalid model data, such as invalid normal vectors
-    aiProcess_TransformUVCoords        | // preprocess UV transformations (scaling, translation ...)
-    //aiProcess_LimitBoneWeights         | // limit bone weights to 4 per vertex
-    0;
-
-    const struct aiScene* scene = aiImportFile( fileName, myFlags );
-
-    // If the import failed, report it
-    if( !scene ) {
-        printf( "Failed to open %s\n", fileName );
-        return;
-    }
-
-    //for( uint8_t i = 0; i < )
-}
-
-bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
+bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* animKey, const char* fileName ) {
     // Start the import on the given file with some example postprocessing
     // Usually - if speed is not the most important aspect for you - you'll t
     // probably to request more postprocessing than we do in this example.
@@ -416,7 +381,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
         if( mesh->HasBones() ) {
             printf( "This mesh also has %d bones\n", mesh->mNumBones );
             data->hasSkeletonInfo = true;
-            data->skeleton = &mySkeley;
+            data->skeleton = skeleton;
             data->skeleton->boneCount = mesh->mNumBones;
 
             //A map and comparator, for tracking which nodes in the heirarchy are related to which bones
@@ -500,7 +465,7 @@ bool LoadMeshFromFile( MeshData* data, const char* fileName ) {
     }
 
     if( scene->HasAnimations() ) {
-        ArmatureKeyframe* sPose = &debugPose;
+        ArmatureKeyframe* sPose = animKey;
         sPose->skeleton = data->skeleton;
         const aiAnimation* anim = scene->mAnimations[0];
 
@@ -624,7 +589,7 @@ void CreateRenderMesh(OpenGLMeshBinding* renderMesh, MeshData* meshData) {
         glBindBuffer( GL_ARRAY_BUFFER, renderMesh->boneIndexBuffer );
         glBufferData( GL_ARRAY_BUFFER, MAXBONEPERVERT * meshData->vertexCount * sizeof(GLuint), meshData->boneIndexData, GL_STATIC_DRAW );
 
-        SetSkeletonTransform( &debugPose, &mySkeley );
+        //SetSkeletonTransform( key,  );
     }
 
     glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 
@@ -633,13 +598,13 @@ void CreateRenderMesh(OpenGLMeshBinding* renderMesh, MeshData* meshData) {
     renderMesh->vertexCount = meshData->indexCount;
 }
 
-void RenderMesh( OpenGLMeshBinding* mesh, ShaderProgram* program ) {
+void RenderMesh( OpenGLMeshBinding* mesh, ShaderProgram* program, ShaderTextureSet textureSet ) {
     //Flush errors
     //while( glGetError() != GL_NO_ERROR ){};
 
     //Bind Shader
     glUseProgram( program->programID );
-    glUniformMatrix4fv( program->modelMatrixUniformPtr, 1, false, (const float*)mesh->modelMatrix->m[0] );
+    glUniformMatrix4fv( program->modelMatrixUniformPtr, 1, false, (float*)mesh->modelMatrix->m[0] );
     glUniform1i( program->isArmatureAnimatedUniform, (int)mesh->isArmatureAnimated );
 
     //Set vertex data
@@ -653,7 +618,7 @@ void RenderMesh( OpenGLMeshBinding* mesh, ShaderProgram* program ) {
     glVertexAttribPointer( program->texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
 
     if( mesh->isArmatureAnimated ) {
-        glUniformMatrix4fv( program->skeletonUniform, MAXBONECOUNT, GL_FALSE, (const float*)&mesh->skeleton->boneTransforms->m[0] );
+        glUniformMatrix4fv( program->skeletonUniform, MAXBONECOUNT, GL_FALSE, (float*)&mesh->skeleton->boneTransforms->m[0] );
 
         glBindBuffer( GL_ARRAY_BUFFER, mesh->boneWeightBuffer );
         glEnableVertexAttribArray( program->boneWeightsAttribute );
@@ -664,9 +629,9 @@ void RenderMesh( OpenGLMeshBinding* mesh, ShaderProgram* program ) {
         glVertexAttribIPointer( program->boneIndiciesAttribute, MAXBONEPERVERT, GL_UNSIGNED_INT, 0, 0 );
     }
 
-    glBindTexture( GL_TEXTURE_2D, myTextureSet.texturePtrs[0] );
+    glBindTexture( GL_TEXTURE_2D, textureSet.texturePtrs[0] );
     glActiveTexture( GL_TEXTURE1 );
-    glBindTexture( GL_TEXTURE_2D, myTextureSet.texturePtrs[1] );
+    glBindTexture( GL_TEXTURE_2D, textureSet.texturePtrs[1] );
 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, mesh->ibo );                            //Bind index data
     glDrawElements( GL_TRIANGLES, mesh->vertexCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
@@ -679,11 +644,15 @@ void RenderMesh( OpenGLMeshBinding* mesh, ShaderProgram* program ) {
     glUseProgram( (GLuint)NULL );
 }
 
+void RenderLine( float* lineVertexBuffer, uint16 vertexCount ) {
+
+}
+
 bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
-    printf("Vendor: %s\n", glGetString( GL_VENDOR ) );
-    printf("Renderer: %s\n", glGetString( GL_RENDERER ) );
-    printf("GL Version: %s\n", glGetString( GL_VERSION ) );
-    printf("GLSL Version: %s\n", glGetString( GL_SHADING_LANGUAGE_VERSION ) );
+    printf( "Vendor: %s\n", glGetString( GL_VENDOR ) );
+    printf( "Renderer: %s\n", glGetString( GL_RENDERER ) );
+    printf( "GL Version: %s\n", glGetString( GL_VERSION ) );
+    printf( "GLSL Version: %s\n", glGetString( GL_SHADING_LANGUAGE_VERSION ) );
 
     GLint k;
     glGetIntegerv( GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &k );
@@ -693,8 +662,6 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     glClearColor( 0.1f, 0.1f, 0.1f, 1.0f );
 
     glEnable( GL_DEPTH_TEST );
-    //glEnable( GL_BLEND );
-    //glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
     glEnable( GL_CULL_FACE );
     glCullFace( GL_BACK );
 
@@ -706,9 +673,8 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     glOrtho( -halfWidth, halfWidth, -halfHeight, halfHeight, -halfWidth, halfWidth );
 
     //Initialize framebuffer
-    CreateEmptyTexture( &frameBufferTexture, screen_w, screen_h );
-    CreateFrameBuffer( &frameBufferTexture );
-    glGenFramebuffers( 1, &frameBufferPtr );
+    CreateFrameBuffer( &myFramebuffer );
+    CreateShader( &framebufferShader, "Data/Shaders/Framebuffer.vert", "Data/Shaders/Framebuffer.frag" );
 
     //Check for error
     GLenum error = glGetError();
@@ -722,40 +688,11 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     return true;
 }
 
-void GameInit( MemorySlab slab ) {
-    memory = slab;
-    printf( "Got a slab with the size: %d bytes\n", memory.slabSize );
+void GameInit() {
     if( InitOpenGLRenderer( 640, 480 ) == false ) {
         printf("Failed to init OpenGL renderer\n");
         return;
     }
-
-    LoadTextureFromFile( &myTexture, "Data/Textures/pink_texture.png" );
-    LoadTextureFromFile( &otherTexture, "Data/Textures/green_texture.png" );
-    LoadMeshFromFile( &tinyMeshData, "Data/SkeletonDebug.dae" );
-    CreateRenderMesh( &renderMesh, &tinyMeshData );
-    CreateShader( &myProgram, "Data/Shaders/Vert.vert", "Data/Shaders/Frag.frag" );
-    CreateShader( &framebufferShader, "Data/Shaders/Framebuffer.vert", "Data/Shaders/Framebuffer.frag" );
-
-    LoadMeshFromFile( &pyMesh, "Data/Sphere.dae" );
-    CreateRenderMesh( &pyRender, &pyMesh );
-
-    myTextureSet.count = 2;
-    myTextureSet.associatedShader = &myProgram;
-    myTextureSet.texturePtrs[0] = myTexture.textureID;
-    myTextureSet.texturePtrs[1] = otherTexture.textureID;
-    myTextureSet.shaderSamplerPtrs[0] = myProgram.samplerPtrs[0];
-    myTextureSet.shaderSamplerPtrs[1] = myProgram.samplerPtrs[1];
-
-    const float spinSpeed = 3.1415926f / 128.0f;
-    spinMatrix = MatrixFromQuat( FromAngleAxis( 0.0f, 1.0f, 0.0f, spinSpeed ) );
-    SetScale( &scaleM, 40.0f, 40.0f, 40.0f );
-    SetTranslation( &translationM, 0.0f, -50.0f, 0.0f );
-    SetScale( &extraScale, 0.75f, 0.75f, 0.75f );
-    Identity( &spinM );
-    *renderMesh.modelMatrix = scaleM * translationM * spinMatrix;
-
-    //Identity( &renderMesh.m );
 
     printf("Init went well\n");
     return;
@@ -763,25 +700,17 @@ void GameInit( MemorySlab slab ) {
 
 void Render() {
     glClear( GL_DEPTH_BUFFER_BIT );
-    glBindFramebuffer( GL_FRAMEBUFFER, frameBufferPtr );
-    glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, frameBufferTexture.textureID, 0 );
+    glBindFramebuffer( GL_FRAMEBUFFER, myFramebuffer.framebufferPtr );
+    glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, myFramebuffer.framebufferTexture.textureID, 0 );
 
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    RenderMesh( &renderMesh, &myProgram );
-    for( int i = 0; i < mySkeley.boneCount; i++ ) {
-        Matrix4 m = mySkeley.boneTransforms[i];
-        *pyRender.modelMatrix = extraScale * m * ( *renderMesh.modelMatrix );
-        //RenderMesh( &pyRender, &myProgram );
-    }
-
     glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
-    RenderFramebufferTexture( &frameBufferTexture );
+    RenderFramebuffer( &myFramebuffer );
 }
 
-bool Update() {
-    //*renderMesh.modelMatrix = MultMatrix( *renderMesh.modelMatrix, spinMatrix );
-    spinM = spinM * spinMatrix;
+bool Update( MemorySlab* gameMemory ) {
+
     return true;
 }

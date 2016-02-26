@@ -56,6 +56,7 @@ IMPLEMENTATIONS SPECIFIC TO THE RENDERER
 //void InitRenderer();
 //void* CreateRenderableMesh( MeshData* genericMeshData );
 //void RenderMesh( void* rendererSpecificMesh );
+void RenderLine( float* lineVertexBuffer, uint16 vertexCount );
 
 #define CLAY_RENDERER
 #endif
