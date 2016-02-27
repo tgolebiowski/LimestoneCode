@@ -16,12 +16,9 @@ typedef int64_t int64;
 
 //TODO: Remove STL depedencies, also, putting the map include after the Math3D include breaks memsets in Math3D
 #include <map>
-#include <set>
-#include <utility>
 #include "Math3D.cpp"
 #include "ClayRenderer.h"
 
-// Structs needed by the game the OS needs to "fill out"
 struct MemorySlab {
 	void* slabStart;
 	uint64 slabSize;
@@ -32,6 +29,9 @@ struct MemorySlab {
 ----------------------------------*/
 ///Return 0 on success, required buffer length if buffer is too small, or -1 on other OS failure
 int16 ReadShaderSrcFileFromDisk(const char* fileName, GLchar* buffer, uint16 bufferLen);
+
+///Set inputted values to Normalized Window Coordinates (0,0 is center, ranges go from -1 to +1)
+void GetMousePosition( float* x, float* y );
 
 /* --------------------------------
 	STUFF THE GAME PROVIDES THE OS

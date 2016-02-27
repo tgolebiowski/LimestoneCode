@@ -64,10 +64,89 @@ static OpenGLFramebuffer myFramebuffer;
 static ShaderProgram framebufferShader;
 
 struct GameMemory {
-    MeshData lineData;
-    OpenGLMeshBinding lineMesh;
     ShaderProgram lineShader;
+    float vertexData[9];
+    uint32 indexData[3];
+    float x, y;
 };
+
+static ShaderProgram primitiveShader;
+
+//THIS IS FOR DEBUGGING PURPOSES ONLY, DON'T SHIP WITH THIS, BAD PROGRAMMING PRACTICE
+void RenderLineStrip( GLfloat* stripVertBuffer, uint32* indexBuffer, uint16 bufferCount ) {
+    glUseProgram( primitiveShader.programID );
+
+    const float identityM[16] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                                  0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+    glUniformMatrix4fv( primitiveShader.modelMatrixUniformPtr, 1, false, (float*)&identityM );
+
+    GLuint lineVBO;
+    glGenBuffers( 1, &lineVBO );
+    glBindBuffer( GL_ARRAY_BUFFER, lineVBO );
+    glBufferData( GL_ARRAY_BUFFER, 3 * bufferCount * sizeof(GLfloat), stripVertBuffer, GL_STATIC_DRAW );
+    glEnableVertexAttribArray( primitiveShader.positionAttribute );
+    glVertexAttribPointer( primitiveShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+    GLuint lineIBO;
+    glGenBuffers( 1, &lineIBO );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, lineIBO );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, bufferCount * sizeof(GLuint), (GLuint*)indexBuffer, GL_STATIC_DRAW );
+
+    glDrawElements( GL_LINE_STRIP, bufferCount, GL_UNSIGNED_INT, NULL );
+
+    glDeleteBuffers( 1, &lineVBO );
+    glDeleteBuffers( 1, &lineIBO );
+    glUseProgram( (GLuint)NULL );
+    glBindBuffer( GL_ARRAY_BUFFER, 0 );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
+}
+
+//THIS IS FOR DEBUGGING PURPOSES ONLY, DON'T SHIP WITH THIS, BAD PROGRAMMING PRACTICE
+void RenderCircle( Vec3 position, float radius ) {
+    const GLfloat circlePoints[13 * 3] = { 0.0f, 0.0f, 0.0f, 
+                                    1.0f, 0.0f, 0.0f, 
+                                    0.866f, 0.5f, 0.0f,
+                                    0.5f, 0.866f, 0.0f,
+                                    0.0f, 1.0f, 0.0f,
+                                    -0.5f, 0.866f, 0.0f,
+                                    -0.866f, 0.5f, 0.0f,
+                                    -1.0f, 0.0f, 0.0f,
+                                    -0.866f, -0.5f, 0.0f,
+                                    -0.5f, -0.866f, 0.0f,
+                                    0.0f, -1.0f, 0.0f,
+                                    0.5f, -0.866f, 0.0f,
+                                    0.866f, -0.5f, 0.0f };
+
+    const GLuint circleIndicies[14] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1 };
+
+    glUseProgram( primitiveShader.programID );
+
+    Matrix4 translateMatrix, scaleMatrix, netMatrix;
+    SetTranslation( &translateMatrix, position.x, position.y, position.z );
+    SetScale( &scaleMatrix, radius, radius, radius );
+    netMatrix = scaleMatrix * translateMatrix;
+    glUniformMatrix4fv( primitiveShader.modelMatrixUniformPtr, 1, false, (float*)&netMatrix.m[0] );
+
+    GLuint circleVBO;
+    glGenBuffers( 1, &circleVBO );
+    glBindBuffer( GL_ARRAY_BUFFER, circleVBO );
+    glBufferData( GL_ARRAY_BUFFER, 3 * 13 * sizeof(GLfloat), (GLfloat*)&circlePoints, GL_STATIC_DRAW );
+    glEnableVertexAttribArray( primitiveShader.positionAttribute );
+    glVertexAttribPointer( primitiveShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+    GLuint circleIBO;
+    glGenBuffers( 1, &circleIBO );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, circleIBO );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, 14 * sizeof(GLuint), (GLuint*)&circleIndicies, GL_STATIC_DRAW );
+
+    glDrawElements( GL_TRIANGLE_FAN, 14, GL_UNSIGNED_INT, NULL );  
+
+    glDeleteBuffers( 1, &circleVBO );
+    glDeleteBuffers( 1, &circleIBO );
+    glUseProgram( (GLuint)NULL );
+    glBindBuffer( GL_ARRAY_BUFFER, 0 );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
+}
 
 bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     //Load data from file
@@ -650,22 +729,6 @@ void RenderMesh( OpenGLMeshBinding* mesh, ShaderProgram* program, ShaderTextureS
     glUseProgram( (GLuint)NULL );
 }
 
-void RenderLineMesh( OpenGLMeshBinding* lineMesh, ShaderProgram* lineShader ) {
-    //Bind Shader
-    glUseProgram( lineShader->programID );
-
-    //Set vertex data
-    glBindBuffer( GL_ARRAY_BUFFER, lineMesh->vbo );
-    glEnableVertexAttribArray( lineShader->positionAttribute );
-    glVertexAttribPointer( lineShader->positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, lineMesh->ibo );                           //Bind index data
-    glDrawElements( GL_LINE_STRIP, lineMesh->vertexCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
-
-    //clear shader
-    glUseProgram( (GLuint)NULL );
-}
-
 bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
     printf( "Vendor: %s\n", glGetString( GL_VENDOR ) );
     printf( "Renderer: %s\n", glGetString( GL_RENDERER ) );
@@ -713,20 +776,12 @@ void GameInit( MemorySlab* gameMemory ) {
     }
 
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
-    CreateShader( &gMem->lineShader, "Data/Shaders/Line.vert", "Data/Shaders/Line.frag" );
+    CreateShader( &primitiveShader, "Data/Shaders/Line.vert", "Data/Shaders/Line.frag" );
 
-    GLfloat vertexData [9] = {-300.0f, -200.0f, 1.0f, 20.0f, -100.0f, 0.0f, 300.0f, 200.0f, -1.0f };
-    GLuint indexData[3] = { 0, 1, 2 };
-    MeshData* lineData = &gMem->lineData;
-    GLfloat* linevertexData = (GLfloat*)&lineData->vertexData;
-    GLuint* lineindexData = (GLuint*)&lineData->indexData;
-    memcpy( linevertexData, &vertexData, sizeof(GLfloat) * 9 );
-    memcpy( lineindexData, &indexData, sizeof(GLuint) * 3 );
-    lineData->vertexCount = 3;
-    lineData->indexCount = 3;
-
-    OpenGLMeshBinding* lineMesh = &gMem->lineMesh;
-    CreateRenderMesh( lineMesh, lineData );
+    const float localVert[9] = {-300.0f, -200.0f, 1.0f, 20.0f, -100.0f, 0.0f, 300.0f, 200.0f, -1.0f };
+    const uint32 localIndex[3] = { 0, 1, 2 };
+    memcpy(&gMem->vertexData, &localVert, 9 * sizeof(float) );
+    memcpy(&gMem->indexData, &localIndex, 3 * sizeof(uint32) );
 
     printf("Init went well\n");
     return;
@@ -741,7 +796,8 @@ void Render( MemorySlab* gameMemory ) {
 
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    RenderLineMesh( &gMem->lineMesh, &gMem->lineShader );
+    RenderLineStrip( (float*)&gMem->vertexData, (uint32*)&gMem->indexData, 3 );
+    RenderCircle( {gMem->x, gMem->y, 0.0f}, 8.0f );
 
     glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
@@ -749,6 +805,18 @@ void Render( MemorySlab* gameMemory ) {
 }
 
 bool Update( MemorySlab* gameMemory ) {
+    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
+
+    float x, y;
+    GetMousePosition( &x, &y );
+    if( x < -1.0f || x > 1.0f ) x = 0.0f;
+    if( y < -1.0f || y > 1.0f ) y = 0.0f;
+
+    x *= (640 / 2);
+    y *= (480 / 2);
+
+    gMem->x = x;
+    gMem->y = y;
 
     return true;
 }

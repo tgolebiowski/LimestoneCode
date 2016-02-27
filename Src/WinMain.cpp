@@ -23,6 +23,9 @@ struct AppInfo {
 	WNDCLASSEX wc;
 	HDC deviceContext;
 	HGLRC openglRenderContext;
+	LPRECT windowRect;
+	int windowPosX;
+	int windowPosY;
 };
 static AppInfo appInfo;
 
@@ -43,6 +46,13 @@ int16_t ReadShaderSrcFileFromDisk(const char* fileName, GLchar* buffer, uint16_t
     fread( buffer , 1, fileSize, file );
     fclose( file );
     return 0;
+}
+
+void GetMousePosition( float* x, float * y ) {
+	POINT mousePosition;
+	GetCursorPos( &mousePosition );
+	*x = ((float)(mousePosition.x - appInfo.windowPosX)) / ( (float)SCREEN_WIDTH / 2.0f ) - 1.0f;
+	*y = (((float)(mousePosition.y - appInfo.windowPosY)) / ( (float)SCREEN_HEIGHT / 2.0f ) - 1.0f) * -1.0f;
 }
 
 LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
@@ -101,15 +111,15 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	}
 
 	// center position of the window
-	int posx = (GetSystemMetrics(SM_CXSCREEN) / 2) - (SCREEN_WIDTH / 2);
-	int posy = (GetSystemMetrics(SM_CYSCREEN) / 2) - (SCREEN_HEIGHT / 2);
+	appInfo.windowPosX = (GetSystemMetrics(SM_CXSCREEN) / 2) - (SCREEN_WIDTH / 2);
+	appInfo.windowPosY = (GetSystemMetrics(SM_CYSCREEN) / 2) - (SCREEN_HEIGHT / 2);
  
 	// set up the window for a windowed application by default
 	//long wndStyle = WS_OVERLAPPEDWINDOW;
  
 	if( isFullScreen ) {
-		posx = 0;
-		posy = 0;
+		appInfo.windowPosX = 0;
+		appInfo.windowPosY = 0;
 
 		// change resolution before the window is created
 		//SysSetDisplayMode(width, height, SCRDEPTH);
@@ -118,7 +128,10 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
  
 	// at this point WM_CREATE message is sent/received
 	// the WM_CREATE branch inside WinProc function will execute here
-	appInfo.hwnd = CreateWindowEx(0, WindowName, "Wet Clay App", WS_BORDER, posx, posy, SCREEN_WIDTH, SCREEN_HEIGHT, NULL, NULL, appInfo.appInstance, NULL);
+	appInfo.hwnd = CreateWindowEx(0, WindowName, "Wet Clay App", WS_BORDER, appInfo.windowPosX, appInfo.windowPosY, 
+		SCREEN_WIDTH, SCREEN_HEIGHT, NULL, NULL, appInfo.appInstance, NULL);
+
+	GetClientRect( appInfo.hwnd, appInfo.windowRect );
 
 	PIXELFORMATDESCRIPTOR pfd = {
 		sizeof(PIXELFORMATDESCRIPTOR),
@@ -156,7 +169,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	gameSlab.slabSize = MEGABYTES(32);
 	gameSlab.slabStart = VirtualAlloc( NULL, gameSlab.slabSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
 	assert( gameSlab.slabStart != NULL );
-	
+
 	GameInit( &gameSlab );
 
 	MSG Msg;
