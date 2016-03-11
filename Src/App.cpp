@@ -434,47 +434,30 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
     }
     printf( "%d Meshes in file\n", numMeshes );
 
-    //uint16_t indexIndirectionList[ MAXVERTCOUNT ];
-    //memset( &indexIndirectionList, 0, sizeof(uint16_t) * MAXVERTCOUNT );
-
     //Read data for each mesh
     for( uint8_t i = 0; i < numMeshes; i++ ) {
         const aiMesh* mesh = scene->mMeshes[i];
         printf( "Mesh %d: %d Vertices, %d Faces\n", i, mesh->mNumVertices, mesh->mNumFaces );
 
-        static float highest_y = 0.0f;
         uint16_t vertexCount = mesh->mNumVertices;
         for( uint16_t j = 0; j < vertexCount; j++ ) {
             data->vertexData[j * 3 + 0] = mesh->mVertices[j].x;
             data->vertexData[j * 3 + 1] = mesh->mVertices[j].z;
             data->vertexData[j * 3 + 2] = -mesh->mVertices[j].y;
-            //printf( "Vertex Data %d: %f, %f, %f\n", j, data->vertexData[j * 3 + 0], data->vertexData[j * 3 + 1], data->vertexData[j * 3 + 2]);
 
             if( mesh->GetNumUVChannels() != 0 ) {
                 data->uvData[j * 2 + 0] = mesh->mTextureCoords[0][j].x;
                 data->uvData[j * 2 + 1] = mesh->mTextureCoords[0][j].y;
-                //printf("UV Data: %f, %f\n", data->uvData[j * 2 + 0], data->uvData[j * 2 + 1]);
             }
-
-            if( mesh->mVertices[j].z > highest_y ) highest_y = mesh->mVertices[j].z;
         }
         data->vertexCount = vertexCount;
 
-        printf( "Highest base y is: %2f\n", highest_y );
-
-        //printf("Unique Data Count: %d\n", uniqueDataCount);
-        //for( auto it = uniqueVertIndexLookup.begin(); it != uniqueVertIndexLookup.end(); it++ ) {
-            //printf("x:%2f y:%2f z:%2f u:%2f v:%2f\n", it->first.x, it->first.y, it->first.z, it->first.u, it->first.v);
-        //}
-
         uint16_t indexCount = mesh->mNumFaces * 3;
-        //printf("Index Pointer data: %p\n", data->indexData );
         for( uint16_t j = 0; j < mesh->mNumFaces; j++ ) {
             const struct aiFace face = mesh->mFaces[j];
             data->indexData[j * 3 + 0] = face.mIndices[0];
             data->indexData[j * 3 + 1] = face.mIndices[1];
             data->indexData[j * 3 + 2] = face.mIndices[2];
-            //printf( "Index Set: %d, %d, %d\n", data->indexData[j * 3 + 0], data->indexData[j * 3 + 1], data->indexData[j * 3 + 2]);
         }
         data->indexCount = indexCount;
 
@@ -504,6 +487,13 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
                 const uint16_t numVertsAffected = bone->mNumWeights;
                 Bone* myBone = &data->skeleton->allBones[j];
                 myBone->boneIndex = j;
+                memcpy( &myBone->name, &bone->mName.data, bone->mName.length * sizeof(char) );
+
+                //Insert this bones node in the map, for creating hierarchy later
+                aiNode* boneNode = scene->mRootNode->FindNode( &myBone->name[0] );
+                nodesByName.insert( {myBone->name, boneNode} );
+                bonesByName.insert( {myBone->name, myBone} );
+
                 myBone->transformMatrix = &data->skeleton->boneTransforms[j];
                 SetToIdentity( myBone->transformMatrix );
 
@@ -511,29 +501,15 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
                 aiVector3t<float> bindPosition;
                 aiQuaterniont<float> bindRotation;
                 bone->mOffsetMatrix.Decompose( bindScale, bindRotation, bindPosition );
-                myBone->bindPosition = { bindPosition.x, -bindPosition.z, bindPosition.y };
-                myBone->bindScale = { bindScale.x, bindScale.z, bindScale.y };
 
+                //TODO: figure out how to not deal with Blender-Collada Bullshit
                 float a;
                 Vec3 v;
                 ToAngleAxis( { bindRotation.w, bindRotation.x, bindRotation.y, bindRotation.z }, &a, &v );
                 if( myBone->boneIndex == 0) a = 0.0f;
-                float temp = v.x;
-                v.x = v.z;
-                v.z = temp;
-                myBone->bindRotation = FromAngleAxis( v.x, v.y, v.z, a );
-
-                printf( "Bind position-- x:%2f, y:%2f, z:%2f\n", bindPosition.x, bindPosition.y, bindPosition.z );
-                printf( "Bind rotation-- x:%2f, y:%2f, z:%2f, angle:%2f\n", v.x, v.y, v.z, a );
-                printf( "Bind scale-- x:%2f, y:%2f, z:%2f\n", bindScale.x, bindScale.y, bindScale.z );
-
-                memcpy( &myBone->name, &bone->mName.data, bone->mName.length * sizeof(char) );
-                printf( "Copying info for bone: %s, affects %d verts\n", myBone->name, numVertsAffected );
-
-                //Insert this bones node in the map, for creating hierarchy later
-                aiNode* boneNode = scene->mRootNode->FindNode( &myBone->name[0] );
-                nodesByName.insert( {myBone->name, boneNode} );
-                bonesByName.insert( {myBone->name, myBone} );
+                myBone->bindRotation = FromAngleAxis( v.z, v.y, v.x, a );
+                myBone->bindPosition = { bindPosition.x, -bindPosition.z, bindPosition.y };
+                myBone->bindScale = { bindScale.x, bindScale.z, bindScale.y };
 
                 //Set weight data for verticies affected by this bone
                 for( uint16_t k = 0; k < numVertsAffected; k++ ) {
@@ -552,16 +528,11 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
             for( uint8_t j = 0; j < data->skeleton->boneCount; j++ ) {
                 Bone* bone = &data->skeleton->allBones[j];
                 aiNode* correspondingNode = nodesByName.find( &bone->name[0] )->second;
-
-                printf( "Building hierarchy data for bone: %s\n", bone->name );
-
                 aiNode* parentNode = correspondingNode->mParent;
                 auto bone_it = bonesByName.find( parentNode->mName.data );
                 if( bone_it != bonesByName.end() ) {
                     bone->parentBone = bone_it->second;
-                    printf("Parent Set, parent bone name %s, parent node name %s\n", bone->parentBone->name, parentNode->mName.data);
                 } else {
-                    printf("No parent found for bone %s\n", bone->name);
                     bone->parentBone = NULL;
                     data->skeleton->rootBone = bone;
                 }
@@ -576,15 +547,13 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
                         bone->childCount++;
                     }
                 }
-                printf( "%d children found for this bone\n", bone->childCount );
             }
 
             struct N {
                 static void SetBindMatxs( Bone* bone, Mat4 parentBindMatrix ) {
                     Mat4 bindTranslationMat, bindRotationMat, bindScaleMat;
 
-                    SetToIdentity( &bindTranslationMat );
-                    SetToIdentity( &bindScaleMat );
+                    SetToIdentity( &bindTranslationMat ); SetToIdentity( &bindScaleMat );
                     bindRotationMat = MatrixFromQuat( bone->bindRotation );
                     SetScale( &bindScaleMat, bone->bindScale.x, bone->bindScale.y, bone->bindScale.z );
                     SetTranslation( &bindTranslationMat, bone->bindPosition.x, bone->bindPosition.y, bone->bindPosition.z );
@@ -592,7 +561,6 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
                     Mat4 netMatrix = bindScaleMat * bindRotationMat * bindTranslationMat;
                     bone->bindMatrix = parentBindMatrix * netMatrix;
                     bone->inverseBindMatrix = InverseMatrix( bone->bindMatrix );
-                    *bone->transformMatrix = bone->inverseBindMatrix;
 
                     for( uint8 childBoneIndex = 0; childBoneIndex < bone->childCount; childBoneIndex++ ) {
                         SetBindMatxs( bone->childrenBones[childBoneIndex], bone->bindMatrix );
@@ -611,6 +579,7 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
     }
 
     if( scene->HasAnimations() ) {
+        printf("This file also has an animation\n");
         ArmatureKeyframe* sPose = animKey;
         sPose->skeleton = data->skeleton;
         const aiAnimation* anim = scene->mAnimations[0];
@@ -640,18 +609,10 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
                 key->rotation = { quatKey1.w, quatKey1.x, quatKey1.y, quatKey1.z };
                 key->translation = { veckey1.x, veckey1.y, veckey1.z };
 
+                //TODO: figure out a fix for Blender-Collada Bullshit
                 if(bone->boneIndex == 0) {
                     key->rotation = { 0.0f, 0.0f, 0.0f, 0.0f };
                 }
-
-                printf("Bone scale values - x:%.2f, y:%.2f, z:%.2f\n", key->scale.x, key->scale.y, key->scale.z );
-                printf("Bone translate values - x:%.2f, y:%.2f, z:%.2f\n", key->translation.x, key->translation.y, key->translation.z );
-
-                Vec3 axis;
-                float angle;
-                ToAngleAxis( key->rotation, &angle, &axis );
-                angle *= 180.0f / 3.1415926f;
-                printf( "Bone Rotation - angle:%.2f, axis - x:%.2f, y:%.2f, z:%.2f\n", angle, axis.x, axis.y, axis.z );
             }
         }
     } else {
