@@ -15,7 +15,7 @@ bool isFullScreen = false;
 
 uint16 SCREEN_WIDTH = 640;
 uint16 SCREEN_HEIGHT = 480;
-uint16 mSecsPerFrame = 1000 / 60;
+DWORD mSecsPerFrame = 1000 / 60;
 
 struct AppInfo {
 	HINSTANCE appInstance;
@@ -191,8 +191,10 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 
 		endTime = GetTickCount();
 		DWORD computeTime = endTime - startTime;
-		if(computeTime < mSecsPerFrame ) {
+		if(computeTime <= mSecsPerFrame ) {
 			Sleep(mSecsPerFrame - computeTime);
+		} else {
+			printf("Didn't sleep, compute was %ld, target: %ld \n", computeTime, mSecsPerFrame );
 		}
 
 	} while( running );

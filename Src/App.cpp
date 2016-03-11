@@ -151,6 +151,7 @@ struct GameMemory {
     ShaderProgram lineShader;
 };
 
+static Mat4 rotationM_Mat;
 static MeshData meshData1;
 
 static OpenGLMeshBinding meshBinding1;
@@ -426,6 +427,28 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
         return false;
     }
 
+    aiMatrix4x4t<float> rootTransform = scene->mRootNode->mTransformation;
+    aiVector3t<float> tScale;
+    aiVector3t<float> tPosition;
+    aiQuaterniont<float> tRotation;
+    rootTransform.Decompose( tScale, tRotation, tPosition );
+
+    float ang;
+    Vec3 ax;
+    ToAngleAxis( {tRotation.w, tRotation.x, tRotation.y, tRotation.z}, &ang, &ax );
+    Mat4 rootSMat, rootTMat, rootRMat;
+    SetToIdentity( &rootSMat ); SetToIdentity( &rootTMat ); SetToIdentity( &rootRMat );
+    SetRotation( &rootRMat, ax.z, ax.y, ax.x, ang );
+    SetTranslation( &rootTMat, tPosition.x, tPosition.y, tPosition.z );
+    SetScale( &rootSMat, tScale.x, tScale.y, tScale.z );
+    Mat4 rootTransformMat = rootSMat * rootRMat * rootTMat;
+    Mat4 rootInverseTransform = InverseMatrix( rootTransformMat );
+
+    // printf( "Transform data for%s\n", scene->mRootNode->mName.data );
+    // printf( "Position x:%.3f, y:%.3f, z:%.3f\n", tPosition.x, tPosition.y, tPosition.z );
+    // printf( "Scale x:%.3f, y:%.3f, z:%.3f\n", tScale.x, tScale.y, tScale.z );
+    // printf( "Rotation -- Angle:%.3f -- Axis: x:%.3f, y:%.3f, z:%.3f\n", ang, ax.x, ax.y, ax.z );
+
     // Now we can access the file's contents
     uint16_t numMeshes = scene->mNumMeshes;
     printf( "Loaded file: %s\n", fileName );
@@ -502,14 +525,23 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
                 aiQuaterniont<float> bindRotation;
                 bone->mOffsetMatrix.Decompose( bindScale, bindRotation, bindPosition );
 
-                //TODO: figure out how to not deal with Blender-Collada Bullshit
                 float a;
                 Vec3 v;
                 ToAngleAxis( { bindRotation.w, bindRotation.x, bindRotation.y, bindRotation.z }, &a, &v );
-                if( myBone->boneIndex == 0) a = 0.0f;
                 myBone->bindRotation = FromAngleAxis( v.z, v.y, v.x, a );
-                myBone->bindPosition = { bindPosition.x, -bindPosition.z, bindPosition.y };
-                myBone->bindScale = { bindScale.x, bindScale.z, bindScale.y };
+                myBone->bindPosition = { bindPosition.x, -bindPosition.y, bindPosition.z };
+                myBone->bindScale = { bindScale.x, bindScale.y, bindScale.z };
+
+                //Debug Print info, I expect I will need this again eventually
+                // printf("Bind Data %s\n", myBone->name);
+                // printf("Translation --"); PrintVec( myBone->bindPosition );
+                // printf("\nScale --"); PrintVec( myBone->bindScale );
+                // float angle;
+                // Vec3 axis;
+                // ToAngleAxis( myBone->bindRotation, &angle, &axis);
+                // printf("\nRotation -- Angle: %.3f ", angle); PrintVec(axis);
+                // printf("\n");
+
 
                 //Set weight data for verticies affected by this bone
                 for( uint16_t k = 0; k < numVertsAffected; k++ ) {
@@ -570,7 +602,7 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
 
             Mat4 i;
             SetToIdentity( &i ) ;
-            N::SetBindMatxs( data->skeleton->rootBone, i );
+            N::SetBindMatxs( data->skeleton->rootBone, rootInverseTransform );
 
         } else {
             data->hasSkeletonInfo = false;
@@ -605,13 +637,15 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
                 aiQuaternion quatKey1 = boneAnimation->mRotationKeys[0].mValue;
                 aiVector3D scaleKey1 = boneAnimation->mScalingKeys[0].mValue;
 
-                key->scale = { scaleKey1.x, scaleKey1.y, scaleKey1.z };
-                key->rotation = { quatKey1.w, quatKey1.x, quatKey1.y, quatKey1.z };
-                key->translation = { veckey1.x, veckey1.y, veckey1.z };
-
-                //TODO: figure out a fix for Blender-Collada Bullshit
                 if(bone->boneIndex == 0) {
-                    key->rotation = { 0.0f, 0.0f, 0.0f, 0.0f };
+                    key->scale = { scaleKey1.x * (1.0f / tScale.x), scaleKey1.y * (1.0f / tScale.y), scaleKey1.z * (1.0f / tScale.z)};
+                    key->translation = { veckey1.x - tPosition.x, veckey1.y - tPosition.y, veckey1.z - tPosition.z };
+                    key->rotation = MultQuats( { quatKey1.w, quatKey1.x, quatKey1.y, quatKey1.z }, 
+                                                InverseQuat( { tRotation.w, tRotation.x, tRotation.y, tRotation.z } ) );
+                } else {
+                    key->scale = { scaleKey1.x, scaleKey1.y, scaleKey1.z };
+                    key->rotation = { quatKey1.w, quatKey1.x, quatKey1.y, quatKey1.z };
+                    key->translation = { veckey1.x, veckey1.y, veckey1.z };
                 }
             }
         }
@@ -634,9 +668,17 @@ void SetSkeletonTransform( ArmatureKeyframe* key, Skeleton* skeleton ) {
             SetScale( &scaleMatrix, bKey->scale.x, bKey->scale.y, bKey->scale.z );
             SetTranslation( &translationMatrix, bKey->translation.x, bKey->translation.y, bKey->translation.z );
 
-            Mat4 netMatrix = translationMatrix * rotationMatrix * scaleMatrix ;
+            Mat4 netMatrix = scaleMatrix * rotationMatrix * translationMatrix;
             *bone->transformMatrix = bKey->boneAffected->inverseBindMatrix * netMatrix;
-            //SetToIdentity( bone->transformMatrix );
+
+            // printf("Animation Data %s\n", bKey->boneAffected->name);
+            // printf("Translation --"); PrintVec(bKey->translation);
+            // printf("\nScale --"); PrintVec(bKey->scale);
+            // float angle;
+            // Vec3 axis;
+            // ToAngleAxis( bKey->rotation, &angle, &axis);
+            // printf("\nRotation -- Angle: %.3f ", angle); PrintVec(axis);
+            // printf("\n");
 
             for( uint8_t i = 0; i < bone->childCount; i++ ) {
                 _SetBoneTransformRecursively( key, bone->childrenBones[i], *bone->transformMatrix );
@@ -803,6 +845,9 @@ void GameInit( MemorySlab* gameMemory ) {
     CreateShader( &shader1, "Data/Shaders/Vert.vert", "Data/Shaders/Frag.frag" );
     SetToIdentity( &meshData1.modelMatrix );
     SetTranslation( &meshData1.modelMatrix, 0.0f, -1.0f, 0.0f );
+    SetToIdentity( &rotationM_Mat );
+    SetRotation( &rotationM_Mat, 0.0f, 1.0f, 0.0f, PI / 128.0f);
+    //meshData1.modelMatrix = meshData1.modelMatrix * rotationM_Mat;
 
     LoadMeshFromFile( &meshData1, &skeleton1, &frame1, "Data/SkeletonDebug.dae" );
     CreateRenderMesh( &meshBinding1, &meshData1 );
@@ -821,6 +866,7 @@ void GameInit( MemorySlab* gameMemory ) {
 bool Update( MemorySlab* gameMemory ) {
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
 
+    meshData1.modelMatrix = meshData1.modelMatrix * rotationM_Mat;
     //UpdateAI( &gMem->aiMem );
 
     return true;

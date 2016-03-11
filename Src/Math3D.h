@@ -33,7 +33,7 @@ float InvSqrt(float x) {
 
 void PrintVec( Vec3 v ) {
 	#include <stdio.h>
-	printf("x:%2f, y:%2f, z:%2f", v.x, v.y, v.z );
+	printf("x:%.3f, y:%.3f, z:%.3f", v.x, v.y, v.z );
 }
 
 void Normalize( Vec3* v ) {
@@ -94,10 +94,10 @@ float AngleBetween( Vec3 v1, Vec3 v2) {
 ---------------------------------------------------------------------*/
 
 void PrintMat4( Mat4 m ) {
-	printf("Row 1: %2f, %2f, %2f, %2f\n", m[0][0], m[0][1], m[0][2], m[0][3] );
-	printf("Row 2: %2f, %2f, %2f, %2f\n", m[1][0], m[1][1], m[1][2], m[1][3] );
-	printf("Row 3: %2f, %2f, %2f, %2f\n", m[2][0], m[2][1], m[2][2], m[2][3] );
-	printf("Row 4: %2f, %2f, %2f, %2f\n", m[3][0], m[3][1], m[3][2], m[3][3] );
+	printf("Row 1: %.2f, %.2f, %.2f, %.2f\n", m[0][0], m[0][1], m[0][2], m[0][3] );
+	printf("Row 2: %.2f, %.2f, %.2f, %.2f\n", m[1][0], m[1][1], m[1][2], m[1][3] );
+	printf("Row 3: %.2f, %.2f, %.2f, %.2f\n", m[2][0], m[2][1], m[2][2], m[2][3] );
+	printf("Row 4: %.2f, %.2f, %.2f, %.2f\n", m[3][0], m[3][1], m[3][2], m[3][3] );
 }
 
 void SetToIdentity(Mat4* m) {
