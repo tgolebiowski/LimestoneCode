@@ -1,0 +1,3 @@
+struct PoolInfo {
+	void* 
+};

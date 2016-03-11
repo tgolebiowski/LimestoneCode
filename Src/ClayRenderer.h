@@ -7,7 +7,15 @@ GENERIC STRUCTS FOR THE GAME APP TO USE
 
 struct Bone {
     uint8_t boneIndex;
-    Matrix4* transformMatrix;
+    
+    Vec3 bindPosition;
+    Vec3 bindScale;
+    Quat bindRotation;
+
+    Mat4 bindMatrix;
+    Mat4 inverseBindMatrix;
+
+    Mat4* transformMatrix;
     Bone* parentBone;
     Bone* childrenBones[4];
     uint8_t childCount;
@@ -17,7 +25,7 @@ struct Bone {
 struct Skeleton {
     #define MAXBONECOUNT 32
     Bone allBones[MAXBONECOUNT];
-    Matrix4 boneTransforms[MAXBONECOUNT];
+    Mat4 boneTransforms[MAXBONECOUNT];
     uint8_t boneCount;
     Bone* rootBone;
 };
@@ -25,7 +33,7 @@ struct Skeleton {
 struct BoneKey {
     Bone* boneAffected;
     Vec3 scale;
-    Quaternion rotation;
+    Quat rotation;
     Vec3 translation;
 };
 
@@ -37,7 +45,7 @@ struct ArmatureKeyframe {
 struct MeshData {
     #define MAXVERTCOUNT 600
     #define MAXBONEPERVERT 4
-    Matrix4 modelMatrix;
+    Mat4 modelMatrix;
     uint16_t indexCount;
     uint16_t vertexCount;
     GLfloat vertexData [MAXVERTCOUNT * 3];
@@ -48,6 +56,9 @@ struct MeshData {
     GLfloat boneWeightData[MAXVERTCOUNT * MAXBONEPERVERT];
     GLuint boneIndexData[MAXVERTCOUNT * MAXBONEPERVERT];
     GLuint indexData [MAXVERTCOUNT * 3];
+
+    bool hasAnimationInfo;
+    ArmatureKeyframe debugFrame;
 };
 
 /*-------------------------------------

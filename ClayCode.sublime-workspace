@@ -1,0 +1,1229 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"orth",
+				"orthoHeight	float"
+			],
+			[
+				"oth",
+				"orthoWidth	float"
+			],
+			[
+				"scree",
+				"screenAspectRatio	float"
+			],
+			[
+				"mesh",
+				"meshData1	MeshData"
+			],
+			[
+				"mes",
+				"meshData1	MeshData"
+			],
+			[
+				"OpenGL",
+				"OpenGLTexture	struct"
+			],
+			[
+				"sa",
+				"samplerPtrs	int [4]"
+			],
+			[
+				"Shader",
+				"ShaderTextureSet	struct"
+			],
+			[
+				"C",
+				"CreateEmptyTexture(OpenGLTexture *texture, const int width, const int height)	bool"
+			],
+			[
+				"ne",
+				"neighbors	MapNode *[8]"
+			],
+			[
+				"gen2",
+				"gen2Influence	const float"
+			],
+			[
+				"ge1",
+				"gen1Influence	const float"
+			],
+			[
+				"base",
+				"baseInfluence	const float"
+			],
+			[
+				"gen2Neig",
+				"gen2NeighborCount	uint8"
+			],
+			[
+				"g1N",
+				"g1Neighbor	MapNode*"
+			],
+			[
+				"g1",
+				"g1_N_Index	uint8"
+			],
+			[
+				"gen1",
+				"gen1Neighbors	MapNode*[]"
+			],
+			[
+				"this",
+				"thisDist	DistanceOrderNode*"
+			],
+			[
+				"a_",
+				"a_head	AngleOrderNode*"
+			],
+			[
+				"dist",
+				"distanceFromTarget	float"
+			],
+			[
+				"dis",
+				"distanceFromTarget	float"
+			],
+			[
+				"path",
+				"pathEdges	Edge [16]"
+			],
+			[
+				"p",
+				"pathCount	int"
+			],
+			[
+				"ent",
+				"entities	Entity*"
+			],
+			[
+				"enti",
+				"entities	Entity*"
+			],
+			[
+				"MAP",
+				"MAP_HORZ_SEGS	macro"
+			],
+			[
+				"n_",
+				"n_index	int"
+			],
+			[
+				"n_n",
+				"n_node	MapNode*"
+			],
+			[
+				"aiM",
+				"aiMap	AIMap"
+			],
+			[
+				"tar",
+				"target	Vec2"
+			],
+			[
+				"vecT",
+				"vecToNode	Vec3"
+			],
+			[
+				"targe",
+				"targetNode	MapNode*"
+			],
+			[
+				"targ",
+				"targetNode	MapNode*"
+			],
+			[
+				"mapYM",
+				"mapYMin	float"
+			],
+			[
+				"mi",
+				"mapXMin	float"
+			],
+			[
+				"inc",
+				"indecies	uint32[]"
+			],
+			[
+				"c",
+				"count	int"
+			],
+			[
+				"Rend",
+				"RenderAI(AITestMem *aiMem)	void"
+			],
+			[
+				"in",
+				"inv_len	float"
+			],
+			[
+				"pathC",
+				"pathCount"
+			],
+			[
+				"mapXM",
+				"mapXMin"
+			],
+			[
+				"sc",
+				"screen_y"
+			],
+			[
+				"scre",
+				"screen_x"
+			],
+			[
+				"mapX",
+				"mapXMax"
+			],
+			[
+				"en",
+				"entities"
+			],
+			[
+				"AI",
+				"AI_Entity"
+			],
+			[
+				"neigh",
+				"neighborIndex"
+			],
+			[
+				"map",
+				"mapXStep"
+			],
+			[
+				"MA",
+				"MAP_VERT_SEGS"
+			],
+			[
+				"AIM",
+				"AIMap"
+			],
+			[
+				"mag",
+				"magMem"
+			],
+			[
+				"ma",
+				"maxRepelLen"
+			],
+			[
+				"sqr",
+				"sqrdLen"
+			],
+			[
+				"uint",
+				"uint8"
+			],
+			[
+				"neg",
+				"negPoints"
+			],
+			[
+				"negP",
+				"negPointCount"
+			],
+			[
+				"anti",
+				"antiP_Index"
+			],
+			[
+				"antiP",
+				"antiP_Index"
+			],
+			[
+				"return",
+				"returnVec"
+			],
+			[
+				"curre",
+				"current_y"
+			],
+			[
+				"cur",
+				"current_x"
+			],
+			[
+				"end",
+				"endFlag"
+			],
+			[
+				"curr",
+				"current_y"
+			],
+			[
+				"ui",
+				"uint32"
+			],
+			[
+				"retur",
+				"returnVec"
+			],
+			[
+				"inv",
+				"invSqr"
+			],
+			[
+				"r_sqrd",
+				"r_sqrd_neg"
+			],
+			[
+				"win",
+				"windowPosY"
+			],
+			[
+				"app",
+				"appInfo"
+			],
+			[
+				"uin",
+				"uint16"
+			],
+			[
+				"Render",
+				"RenderLineStrip"
+			],
+			[
+				"buffer",
+				"bufferCount"
+			],
+			[
+				"buff",
+				"bufferCount"
+			],
+			[
+				"circl",
+				"circleVBO"
+			],
+			[
+				"glGe",
+				"glGenBuffers"
+			],
+			[
+				"primiti",
+				"primitiveShader"
+			],
+			[
+				"primi",
+				"primitiveShader"
+			],
+			[
+				"Shad",
+				"ShaderProgram"
+			],
+			[
+				"prim",
+				"primitiveRenderData"
+			],
+			[
+				"circ",
+				"circleIndicies"
+			],
+			[
+				"pri",
+				"primitiveRenderData"
+			],
+			[
+				"scale",
+				"scaleMatrix"
+			],
+			[
+				"transl",
+				"translateMatrix"
+			],
+			[
+				"iden",
+				"identityM"
+			],
+			[
+				"SCRE",
+				"SCREEN_HEIGHT"
+			],
+			[
+				"SCREE",
+				"SCREEN_WIDTH"
+			],
+			[
+				"windowPo",
+				"windowPosY"
+			],
+			[
+				"verte",
+				"vertexData"
+			],
+			[
+				"Open",
+				"OpenGLMeshBinding"
+			],
+			[
+				"Create",
+				"CreateShader"
+			],
+			[
+				"Frame",
+				"framebufferShader"
+			],
+			[
+				"Textureset",
+				"ShaderTextureSet"
+			],
+			[
+				"int",
+				"int16_t"
+			],
+			[
+				"rotati",
+				"rotation"
+			],
+			[
+				"tra",
+				"translation"
+			],
+			[
+				"trans",
+				"translation"
+			],
+			[
+				"spinM",
+				"spinMatrix"
+			],
+			[
+				"rota",
+				"rotation"
+			],
+			[
+				"ro",
+				"rotation"
+			],
+			[
+				"boneI",
+				"boneIndex"
+			],
+			[
+				"uniq",
+				"uniqueDataCount"
+			],
+			[
+				"indi",
+				"indirectIndex"
+			],
+			[
+				"un",
+				"uniqueVertLookup"
+			],
+			[
+				"uni",
+				"uniqueDataCount"
+			],
+			[
+				"ret",
+				"returnValue"
+			],
+			[
+				"index",
+				"indexIndirectionList"
+			],
+			[
+				"mVe",
+				"mVertices"
+			],
+			[
+				"MAX",
+				"MAXVERTCOUNT"
+			],
+			[
+				"boneA",
+				"boneAnimation"
+			],
+			[
+				"bone",
+				"boneAffected"
+			],
+			[
+				"boneIndex",
+				"boneIndexData"
+			],
+			[
+				"boneWei",
+				"boneWeightData"
+			],
+			[
+				"child",
+				"childCount"
+			],
+			[
+				"GL_DEP",
+				"GL_DEPTH_BUFFER_BIT"
+			],
+			[
+				"GL_U",
+				"GL_UNSIGNED_BYTE"
+			],
+			[
+				"Creat",
+				"CreateRenderMesh"
+			],
+			[
+				"tran",
+				"transformMatrix"
+			],
+			[
+				"scal",
+				"scaleM"
+			],
+			[
+				"weigh",
+				"weight4"
+			],
+			[
+				"wei",
+				"weight4"
+			],
+			[
+				"netW",
+				"netWeightSqrd"
+			],
+			[
+				"paren",
+				"parentMatrix"
+			],
+			[
+				"rotatio",
+				"rotationMatrix"
+			],
+			[
+				"Tra",
+				"translationMatrix"
+			],
+			[
+				"rottio",
+				"rotationMatrix"
+			],
+			[
+				"boneInd",
+				"boneIndex"
+			],
+			[
+				"boneWeigh",
+				"boneWeightData"
+			],
+			[
+				"boneW",
+				"boneWeightData"
+			]
+		]
+	},
+	"buffers":
+	[
+		{
+			"file": "Src/App.h",
+			"settings":
+			{
+				"buffer_size": 0,
+				"line_ending": "Windows"
+			}
+		},
+		{
+			"file": "Src/ClayRenderer.h",
+			"settings":
+			{
+				"buffer_size": 0,
+				"line_ending": "Windows"
+			}
+		},
+		{
+			"file": "Src/App.cpp",
+			"settings":
+			{
+				"buffer_size": 0,
+				"line_ending": "Windows"
+			}
+		},
+		{
+			"file": "Data/Shaders/Vert.vert",
+			"settings":
+			{
+				"buffer_size": 0,
+				"line_ending": "Windows"
+			}
+		},
+		{
+			"file": "Data/Shaders/Frag.frag",
+			"settings":
+			{
+				"buffer_size": 0,
+				"line_ending": "Windows"
+			}
+		},
+		{
+			"file": "Src/SweepcircleAI.h",
+			"settings":
+			{
+				"buffer_size": 0,
+				"line_ending": "Windows"
+			}
+		},
+		{
+			"file": "Src/Math3D.cpp",
+			"settings":
+			{
+				"buffer_size": 0,
+				"line_ending": "Windows"
+			}
+		},
+		{
+			"file": "/C/Users/Tom/SpacingFacing/Design_Notes/Design Redux.txt",
+			"settings":
+			{
+				"buffer_size": 0,
+				"line_ending": "Windows"
+			}
+		}
+	],
+	"build_system": "Packages/Makefile/Make.sublime-build",
+	"command_palette":
+	{
+		"height": 392.0,
+		"selected_items":
+		[
+			[
+				"Package Control: ",
+				"Package Control: Enable Package"
+			],
+			[
+				"package install",
+				"Package Control: Install Package"
+			],
+			[
+				"package ins",
+				"Package Control: Install Package"
+			],
+			[
+				"package",
+				"Package Control: Install Package"
+			],
+			[
+				"subli",
+				"Preferences: SublimeClang Settings – Default"
+			],
+			[
+				"sublime",
+				"Set Syntax: SublimeClangErrorPanel"
+			],
+			[
+				"install ",
+				"Package Control: Install Package"
+			],
+			[
+				"ins",
+				"Package Control: Install Package"
+			],
+			[
+				"install",
+				"Package Control: Install Package"
+			],
+			[
+				"remove",
+				"Package Control: Remove Package"
+			],
+			[
+				"insta",
+				"Package Control: Install Package"
+			],
+			[
+				"inst",
+				"Package Control: Install Package"
+			],
+			[
+				"",
+				"Package Control: Remove Package"
+			],
+			[
+				"instal",
+				"Package Control: Install Package"
+			],
+			[
+				"packa",
+				"Preferences: Browse Packages"
+			]
+		],
+		"width": 456.0
+	},
+	"console":
+	{
+		"height": 344.0
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"file_history":
+	[
+		"/C/Users/Tom/WetClay_Library/Src/AITest.cpp",
+		"/C/Users/Tom/AppData/Roaming/Sublime Text 2/Packages/GLSL Validator/GLSLValidator.sublime-settings",
+		"/C/Users/Tom/WetClay_Library/Src/ClayGLRenderer.cpp",
+		"/C/Users/Tom/Poly2013/Core/Contents/Include/PolyMatrix4.h",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/PolyMatrix4.cpp",
+		"/C/Users/Tom/AppData/Roaming/Sublime Text 2/Packages/User/SublimeClang.sublime-settings",
+		"/C/Users/Tom/WetClay_Library/Src/SweepcircleAI.h",
+		"/C/Users/Tom/WetClay_Library/ClayCode.sublime-workspace",
+		"/C/Users/Tom/WetClay_Library/ClayCode.sublime-project",
+		"/C/Users/Tom/WetClay_Library/Src/micropather.h",
+		"/C/Users/Tom/WetClay_Library/Src/micropather.cpp",
+		"/C/Users/Tom/Downloads/MicroPather-master/MicroPather-master/micropather.h",
+		"/C/Users/Tom/WetClay_Library/Data/Shaders/Line.frag",
+		"/C/Users/Tom/AppData/Roaming/Sublime Text 2/Packages/SublimeClang/SublimeClang.sublime-settings",
+		"/C/Users/Tom/WetClay_Library/Data/Shaders/Line.vert",
+		"/C/Users/Tom/Downloads/CPUControl 1.0/cpucontrol.c",
+		"/C/Users/Tom/Downloads/CPUControl 1.0/cpucontrol.h",
+		"/C/Users/Tom/Downloads/Preview for Demo of 28 February 2016/Preview for Demo of 28 February 2016/modules/Pool.jai",
+		"/C/Users/Tom/Downloads/Preview for Demo of 28 February 2016/Preview for Demo of 28 February 2016/traveller/bananas.jai",
+		"/C/Users/Tom/Downloads/Preview for Demo of 28 February 2016/Preview for Demo of 28 February 2016/demo/setup.jai",
+		"/C/Users/Tom/Downloads/Preview for Demo of 28 February 2016/Preview for Demo of 28 February 2016/demo/demo.jai",
+		"/C/Users/Tom/WetClay_Library/Src/WinMain.cpp",
+		"/C/Users/Tom/WetClay_Library/Src/ClayRenderer.h",
+		"/C/Users/Tom/WetClay_Library/Src/PoolAllocator.cpp",
+		"/C/Users/Tom/Downloads/MicroPather-master/MicroPather-master/micropather.cpp",
+		"/C/Users/Tom/Downloads/MicroPather-master/MicroPather-master/readme.md",
+		"/C/Users/Tom/WetClay_Library/Src/MagneticFieldMovement.cpp",
+		"/C/Users/Tom/WetClay_Library/Src/Math3D.cpp",
+		"/C/Users/Tom/WetClay_Library/Data/Shaders/Frag.frag",
+		"/C/Users/Tom/WetClay_Library/Data/Shaders/Vert.vert",
+		"/C/Users/Tom/Poly2013/Core/Contents/Include/PolyGlobals.h",
+		"/C/Users/Tom/WetClay_Library/Data/SkeletonDebug.dae",
+		"/C/Users/Tom/Poly2013/Core/Contents/Include/PolyQuaternion.h",
+		"/C/Users/Tom/WetClay_Library/build.bat",
+		"/C/Users/Tom/Poly2013/Tools/Contents/polybuild/Source/polybuild.cpp",
+		"/C/Users/Tom/Poly2013/Tools/Contents/polybuild/Include/polybuild.h",
+		"/C/Users/Tom/Poly2013/Tools/Contents/polyimport/Include/polyimport.h",
+		"/C/Users/Tom/Poly2013/Tools/Contents/polyimport/Source/polyimport.cpp",
+		"/C/Users/Tom/WetClay_Library/Dependencies/include/stb/stb_image.h",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/PolySkeleton.cpp",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/PolyGLRenderer.cpp",
+		"/C/Users/Tom/WetClay_Library/Src/App.cpp",
+		"/C/Users/Tom/WetClay_Library/Src/App.h",
+		"/C/Users/Tom/WetClay_Library/debug.bat",
+		"/C/Users/Tom/WetClay_Library/startup.bat",
+		"/C/Users/Tom/WetClay_Library/.git/info/exclude",
+		"/C/Users/Tom/WetClay_Library/Src/WinOS.cpp",
+		"/C/Users/Tom/WetClay_Library/Data/Shaders/BoneShaderforLater.txt",
+		"/C/Users/Tom/WetClay_Library/Dependencies/include/assimp/matrix4x4.h",
+		"/C/Users/Tom/WetClay_Library/Dependencies/include/assimp/matrix4x4.inl",
+		"/C/Users/Tom/WetClay_Library/makefile",
+		"/C/Users/Tom/WetClay_Library/Src/WinMain.c",
+		"/C/Users/Tom/WetClay_Library/Src/App.c",
+		"/C/Users/Tom/WetClay_Library/Data/Shaders/Framebuffer.frag",
+		"/C/Users/Tom/WetClay_Library/Data/Shaders/Framebuffer.vert",
+		"/C/Users/Tom/SpacingFacing/Design_Notes/Design Redux.txt",
+		"/C/Users/Tom/Lost_Woods/Design Notes/Another Design Thinkpiece.txt",
+		"/C/Users/Tom/Desktop/AnotherTodoTxt",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/assimp-3.2/assimp-3.2/build/Makefile",
+		"/C/Users/Tom/WetClay_Library/Build.cmd",
+		"/C/Users/Tom/WetClay_Library/Build.bat",
+		"/C/Users/Tom/ClangTest/makefile",
+		"/C/Users/Tom/ClangTest/main.cpp",
+		"/C/Users/Tom/WetClay_Library/Src/Math3D.c",
+		"/C/Users/Tom/ClangTest/main.c",
+		"/C/Users/Tom/Desktop/Companies at job fair",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/27_frame_buffer_objects_and_render_to_texture/27_frame_buffer_objects_and_render_to_texture/LTexture.cpp",
+		"/C/Users/Tom/WetClay_Library/Data/Shaders/FrameBuffer.frag",
+		"/C/Users/Tom/WetClay_Library/Data/Frag.frag",
+		"/C/Users/Tom/WetClay_Library/Data/Vert.vert",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/glsample/glsample.cpp",
+		"/C/Users/Tom/GLSL-Debugger/README.md",
+		"/C/Users/Tom/Downloads/win_flex_bison-latest/UNISTD_ERROR.readme",
+		"/C/Users/Tom/WetClay_Library/Src/NewMain.c",
+		"/C/Users/Tom/Desktop/TODO Adult life",
+		"/C/Users/Tom/Poly2013/Core/Contents/Include/PolyResource.h",
+		"/C/Users/Tom/Poly2013/Core/Contents/Include/PolyGLTexture.h",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/GLee.cpp",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/PolyResource.cpp",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/PolyShader.cpp",
+		"/C/Users/Tom/Poly2013/Core/Contents/Include/PolyShader.h",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/PolyGLTexture.cpp",
+		"/C/Users/Tom/Poly2013/Core/Contents/Include/PolyGLSLShader.h",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/PolyGLSLProgram.cpp",
+		"/C/Users/Tom/Poly2013/Assets/Default asset pack/default/DefaultShaderShadows.frag",
+		"/C/Users/Tom/Poly2013/Assets/Default asset pack/default/DefaultShaderShadows.vert",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/PolySceneMesh.cpp",
+		"/C/Users/Tom/WetClay_Library/Src/Main.c",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/lesson01/Lesson01/Lesson1.cpp",
+		"/C/Users/Tom/MonolithShell/MonolithShell.c",
+		"/C/Users/Tom/WetClay_Library/Src/stb_image.h",
+		"/C/Users/Tom/Poly2013/Release/Windows/Framework/Template/Windows/PolycodeTemplate.cpp",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/PolyWinCore.cpp",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/27_frame_buffer_objects_and_render_to_texture/27_frame_buffer_objects_and_render_to_texture/LTexture.h",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/27_frame_buffer_objects_and_render_to_texture/27_frame_buffer_objects_and_render_to_texture/LUtil.cpp",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/27_frame_buffer_objects_and_render_to_texture/27_frame_buffer_objects_and_render_to_texture/LUtil.h",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/27_frame_buffer_objects_and_render_to_texture/27_frame_buffer_objects_and_render_to_texture/LOpenGL.h",
+		"/C/Users/Tom/WetClay_Library/quicksave/ImporterMain.c",
+		"/C/Users/Tom/WetClay_Library/quicksave/main.c",
+		"/C/Users/Tom/WetClay_Library/quicksave/OpenGLContact.c",
+		"/C/Users/Tom/WetClay_Library/Src/Mesh.c",
+		"/C/Users/Tom/WetClay_Library/Src/main.c",
+		"/C/Users/Tom/WetClay_Library/Src/OpenGLContact.c",
+		"/C/Users/Tom/WetClay_Library/Src/ImporterMain.c",
+		"/C/Users/Tom/SpacingFacing/.git/info/exclude",
+		"/C/Users/Tom/MonolithShell/.git/info/exclude",
+		"/C/Users/Tom/WetClay_Library/Dependencies/include/assimp/vector3.h",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/assimp-3.2/assimp-3.2/packaging/windows-innosetup/howto-build-setup.txt",
+		"/C/Users/Tom/WetClay_Library/Dependencies/include/assimp/scene.h",
+		"/C/Users/Tom/WetClay_Library/Dependencies/include/Assimp/cimport.h",
+		"/C/Users/Tom/WetClay_Library/Dependencies/include/Assimp/scene.h",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/assimp--3.0.1270-full/assimp--3.0.1270-sdk/INSTALL",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/assimp--3.0.1270-full/assimp--3.0.1270-sdk/CMakeLists.txt",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/assimp--3.0.1270-full/assimp--3.0.1270-sdk/README",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/assimp-3.2/assimp-3.2/INSTALL",
+		"/C/Users/Tom/WetClay_Library/main.c",
+		"/C/Users/Tom/WetClay_Library/Math3D.c",
+		"/C/Users/Tom/WetClay_Library/OpenGLContact.c",
+		"/C/Users/Tom/WetClay_Library/Matrix4.c",
+		"/C/Users/Tom/Poly2013/Core/Contents/Include/PolyVector3.h",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/PolyVector3.cpp",
+		"/C/Users/Tom/Poly2013/Core/Contents/Source/PolyQuaternion.cpp",
+		"/C/Users/Tom/WetClay_Library/mm_vec.h",
+		"/C/Users/Tom/WetClay_Library/Dependencies/include/mm_vec.h",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/31_glsl_matrices_color_and_uniforms/31_glsl_matrices_color_and_uniforms/LUtil.cpp",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/31_glsl_matrices_color_and_uniforms/31_glsl_matrices_color_and_uniforms/main.cpp",
+		"/C/Users/Tom/WetClay_Library/MyDownloads/31_glsl_matrices_color_and_uniforms/31_glsl_matrices_color_and_uniforms/LUtil.h",
+		"/C/Users/Tom/WetClay_Library/Vert.vert"
+	],
+	"find":
+	{
+		"height": 34.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+			"DistanceOrderNode",
+			"map.",
+			"aiMem->map",
+			"aiMem->map->",
+			"map.",
+			"build",
+			"MicroPather",
+			");\n",
+			"0.8",
+			"45",
+			"0.707107",
+			"addBone",
+			"SkeletonPose",
+			"quat.",
+			"MAXNUMBONES",
+			"bonesMatrixArrayUniform",
+			"mesh->",
+			"mesh",
+			"boneMatrix.",
+			"boneMatrix",
+			".a",
+			"a",
+			"alloc",
+			"1.0",
+			"0.5",
+			".m[0]",
+			"1",
+			"0",
+			"projectionMatrix",
+			"m",
+			"Get",
+			"glTexEnvf",
+			"sampler_state",
+			"g_szClassName",
+			"HWND",
+			"win32",
+			"vertexData",
+			"->",
+			"mesh",
+			"m2.",
+			" m[",
+			"float",
+			"Number",
+			"m",
+			"m2.",
+			" m2[",
+			" m[",
+			"program.",
+			"quadMesh.",
+			"myProgram.",
+			"program.",
+			"program",
+			"gRenderQuad",
+			"glOrtho",
+			"plugins",
+			"Render",
+			"pointInTri",
+			"];\n",
+			"GPU"
+		],
+		"highlight": true,
+		"in_selection": true,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+			"DistanceEvent",
+			"aiMap.",
+			"map",
+			"aiMem->map.",
+			"map->",
+			"0.99",
+			"ArmatureKeyframe",
+			"q",
+			"skeletonUniform",
+			"aimesh",
+			"aiMesh",
+			"boneMatrix->",
+			"boneMatrix.m",
+			".b",
+			"b",
+			"0.8",
+			"1.0",
+			".m[1]",
+			"2",
+			"1",
+			"pm",
+			"m->m",
+			"mySampler.samplerID",
+			"indexData",
+			".",
+			"aimesh",
+			"m2->",
+			" m->m[",
+			"GLfloat",
+			"float",
+			"matx.m",
+			"m2->",
+			" m2->m[",
+			" m->m[",
+			"program->",
+			"mesh->",
+			"program.",
+			"myProgram.",
+			"myProgram"
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"selected": 0,
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "Src/App.h",
+					"settings":
+					{
+						"buffer_size": 0,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"glslvalidator_configured": true,
+							"glslvalidator_enabled": 1,
+							"syntax": "Packages/C++/C++.tmLanguage"
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 1,
+					"file": "Src/ClayRenderer.h",
+					"settings":
+					{
+						"buffer_size": 0,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"glslvalidator_configured": true,
+							"glslvalidator_enabled": 1,
+							"syntax": "Packages/C++/C++.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 2,
+					"file": "Src/App.cpp",
+					"settings":
+					{
+						"buffer_size": 0,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"glslvalidator_configured": true,
+							"glslvalidator_enabled": 1,
+							"syntax": "Packages/C++/C++.tmLanguage",
+							"tab_size": 4,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 3,
+					"file": "Data/Shaders/Vert.vert",
+					"settings":
+					{
+						"buffer_size": 0,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"glslvalidator_configured": true,
+							"glslvalidator_enabled": 1,
+							"syntax": "Packages/Shader Syntax (GLSL HLSL Cg)/OpenGL SL.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 4,
+					"file": "Data/Shaders/Frag.frag",
+					"settings":
+					{
+						"buffer_size": 0,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Text/Plain text.tmLanguage"
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 5,
+					"file": "Src/SweepcircleAI.h",
+					"settings":
+					{
+						"buffer_size": 0,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/C++/C++.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 6,
+					"file": "Src/Math3D.cpp",
+					"settings":
+					{
+						"buffer_size": 0,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/C++/C++.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 7,
+					"file": "/C/Users/Tom/SpacingFacing/Design_Notes/Design Redux.txt",
+					"settings":
+					{
+						"buffer_size": 0,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"glslvalidator_configured": true,
+							"glslvalidator_enabled": 1,
+							"syntax": "Packages/Text/Plain text.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				}
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 34.0
+	},
+	"input":
+	{
+		"height": 0.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.clang":
+	{
+		"height": 300.0
+	},
+	"output.exec":
+	{
+		"height": 100.0
+	},
+	"replace":
+	{
+		"height": 62.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"show_minimap": true,
+	"show_open_files": false,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 150.0,
+	"status_bar_visible": true
+}

@@ -16,7 +16,7 @@ typedef int64_t int64;
 
 //TODO: Remove STL depedencies, also, putting the map include after the Math3D include breaks memsets in Math3D
 #include <map>
-#include "Math3D.cpp"
+#include "Math3D.h"
 #include "ClayRenderer.h"
 
 struct MemorySlab {

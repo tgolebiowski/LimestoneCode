@@ -45,7 +45,7 @@ struct OpenGLMeshBinding {
 	GLuint ibo;
     GLuint uvBuffer;
 
-    Matrix4* modelMatrix;
+    Mat4* modelMatrix;
 
     bool isArmatureAnimated;
     Skeleton* skeleton;
@@ -62,17 +62,9 @@ struct OpenGLFramebuffer {
 };
 static OpenGLFramebuffer myFramebuffer;
 static ShaderProgram framebufferShader;
-
-struct GameMemory {
-    ShaderProgram lineShader;
-    float vertexData[9];
-    uint32 indexData[3];
-    float x, y;
-};
-
 static ShaderProgram primitiveShader;
 
-//THIS IS FOR DEBUGGING PURPOSES ONLY, DON'T SHIP WITH THIS, BAD PROGRAMMING PRACTICE
+//THIS IS FOR DEBUGGING PURPOSES ONLY, DON'T SHIP WITH THIS, BAD PROGRAMMING PRACTICE WITHIN
 void RenderLineStrip( GLfloat* stripVertBuffer, uint32* indexBuffer, uint16 bufferCount ) {
     glUseProgram( primitiveShader.programID );
 
@@ -92,7 +84,7 @@ void RenderLineStrip( GLfloat* stripVertBuffer, uint32* indexBuffer, uint16 buff
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, lineIBO );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, bufferCount * sizeof(GLuint), (GLuint*)indexBuffer, GL_STATIC_DRAW );
 
-    glDrawElements( GL_LINE_STRIP, bufferCount, GL_UNSIGNED_INT, NULL );
+    glDrawElements( GL_LINES, bufferCount, GL_UNSIGNED_INT, NULL );
 
     glDeleteBuffers( 1, &lineVBO );
     glDeleteBuffers( 1, &lineIBO );
@@ -101,8 +93,8 @@ void RenderLineStrip( GLfloat* stripVertBuffer, uint32* indexBuffer, uint16 buff
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
 }
 
-//THIS IS FOR DEBUGGING PURPOSES ONLY, DON'T SHIP WITH THIS, BAD PROGRAMMING PRACTICE
-void RenderCircle( Vec3 position, float radius ) {
+//THIS IS FOR DEBUGGING PURPOSES ONLY, DON'T SHIP WITH THIS, BAD PROGRAMMING PRACTICE WITHIN
+void RenderCircle( Vec3 position, float radius, Vec3 color ) {
     const GLfloat circlePoints[13 * 3] = { 0.0f, 0.0f, 0.0f, 
                                     1.0f, 0.0f, 0.0f, 
                                     0.866f, 0.5f, 0.0f,
@@ -121,11 +113,16 @@ void RenderCircle( Vec3 position, float radius ) {
 
     glUseProgram( primitiveShader.programID );
 
-    Matrix4 translateMatrix, scaleMatrix, netMatrix;
+    Mat4 translateMatrix, scaleMatrix, netMatrix;
+    SetToIdentity( &translateMatrix );
+    SetToIdentity( &scaleMatrix );
     SetTranslation( &translateMatrix, position.x, position.y, position.z );
     SetScale( &scaleMatrix, radius, radius, radius );
     netMatrix = scaleMatrix * translateMatrix;
-    glUniformMatrix4fv( primitiveShader.modelMatrixUniformPtr, 1, false, (float*)&netMatrix.m[0] );
+    glUniformMatrix4fv( primitiveShader.modelMatrixUniformPtr, 1, false, (float*)&netMatrix );
+
+    GLfloat float4[4] = {color.x, color.y, color.z, 1.0f };
+    glUniform4f( glGetUniformLocation( primitiveShader.programID, "primitiveColor"), color.x, color.y, color.z, 1.0f );
 
     GLuint circleVBO;
     glGenBuffers( 1, &circleVBO );
@@ -147,6 +144,23 @@ void RenderCircle( Vec3 position, float radius ) {
     glBindBuffer( GL_ARRAY_BUFFER, 0 );
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
 }
+
+//#include "AITest.cpp"
+
+struct GameMemory {
+    ShaderProgram lineShader;
+};
+
+static MeshData meshData1;
+
+static OpenGLMeshBinding meshBinding1;
+static Skeleton skeleton1;
+static ArmatureKeyframe frame1;
+
+static ShaderProgram shader1;
+static ShaderTextureSet texSet1;
+static OpenGLTexture texture1;
+
 
 bool LoadTextureFromFile( OpenGLTexture* texData, const char* fileName ) {
     //Load data from file
@@ -251,6 +265,8 @@ void CreateFrameBuffer( OpenGLFramebuffer* buffer ) {
 
     //Create IBO
     glGenBuffers( 1, &buffer->framebuffIBO );
+
+    assert( buffer->framebuffIBO != 0 );
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, buffer->framebuffIBO );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, 6 * sizeof(GLuint), &iData, GL_STATIC_DRAW );
 
@@ -311,7 +327,7 @@ void printShaderLog( GLuint shader ) {
 }
 
 void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char* fragShaderFile) {
-    const size_t shaderSrcBufferLength = 1200;
+    const size_t shaderSrcBufferLength = 1700;
     GLchar shaderSrcBuffer[shaderSrcBufferLength];
     memset(&shaderSrcBuffer, 0, sizeof(GLchar) * shaderSrcBufferLength );
     const GLchar* bufferPtr = (GLchar*)&shaderSrcBuffer;
@@ -489,7 +505,27 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
                 Bone* myBone = &data->skeleton->allBones[j];
                 myBone->boneIndex = j;
                 myBone->transformMatrix = &data->skeleton->boneTransforms[j];
-                Identity( myBone->transformMatrix );
+                SetToIdentity( myBone->transformMatrix );
+
+                aiVector3t<float> bindScale;
+                aiVector3t<float> bindPosition;
+                aiQuaterniont<float> bindRotation;
+                bone->mOffsetMatrix.Decompose( bindScale, bindRotation, bindPosition );
+                myBone->bindPosition = { bindPosition.x, -bindPosition.z, bindPosition.y };
+                myBone->bindScale = { bindScale.x, bindScale.z, bindScale.y };
+
+                float a;
+                Vec3 v;
+                ToAngleAxis( { bindRotation.w, bindRotation.x, bindRotation.y, bindRotation.z }, &a, &v );
+                if( myBone->boneIndex == 0) a = 0.0f;
+                float temp = v.x;
+                v.x = v.z;
+                v.z = temp;
+                myBone->bindRotation = FromAngleAxis( v.x, v.y, v.z, a );
+
+                printf( "Bind position-- x:%2f, y:%2f, z:%2f\n", bindPosition.x, bindPosition.y, bindPosition.z );
+                printf( "Bind rotation-- x:%2f, y:%2f, z:%2f, angle:%2f\n", v.x, v.y, v.z, a );
+                printf( "Bind scale-- x:%2f, y:%2f, z:%2f\n", bindScale.x, bindScale.y, bindScale.z );
 
                 memcpy( &myBone->name, &bone->mName.data, bone->mName.length * sizeof(char) );
                 printf( "Copying info for bone: %s, affects %d verts\n", myBone->name, numVertsAffected );
@@ -543,6 +579,31 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
                 printf( "%d children found for this bone\n", bone->childCount );
             }
 
+            struct N {
+                static void SetBindMatxs( Bone* bone, Mat4 parentBindMatrix ) {
+                    Mat4 bindTranslationMat, bindRotationMat, bindScaleMat;
+
+                    SetToIdentity( &bindTranslationMat );
+                    SetToIdentity( &bindScaleMat );
+                    bindRotationMat = MatrixFromQuat( bone->bindRotation );
+                    SetScale( &bindScaleMat, bone->bindScale.x, bone->bindScale.y, bone->bindScale.z );
+                    SetTranslation( &bindTranslationMat, bone->bindPosition.x, bone->bindPosition.y, bone->bindPosition.z );
+
+                    Mat4 netMatrix = bindScaleMat * bindRotationMat * bindTranslationMat;
+                    bone->bindMatrix = parentBindMatrix * netMatrix;
+                    bone->inverseBindMatrix = InverseMatrix( bone->bindMatrix );
+                    *bone->transformMatrix = bone->inverseBindMatrix;
+
+                    for( uint8 childBoneIndex = 0; childBoneIndex < bone->childCount; childBoneIndex++ ) {
+                        SetBindMatxs( bone->childrenBones[childBoneIndex], bone->bindMatrix );
+                    }
+                };
+            };
+
+            Mat4 i;
+            SetToIdentity( &i ) ;
+            N::SetBindMatxs( data->skeleton->rootBone, i );
+
         } else {
             data->hasSkeletonInfo = false;
             printf( "No bone info\n" );
@@ -575,24 +636,22 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
                 aiQuaternion quatKey1 = boneAnimation->mRotationKeys[0].mValue;
                 aiVector3D scaleKey1 = boneAnimation->mScalingKeys[0].mValue;
 
-                key->scale = { scaleKey1.x, scaleKey1.z, -scaleKey1.y };
+                key->scale = { scaleKey1.x, scaleKey1.y, scaleKey1.z };
                 key->rotation = { quatKey1.w, quatKey1.x, quatKey1.y, quatKey1.z };
                 key->translation = { veckey1.x, veckey1.y, veckey1.z };
 
                 if(bone->boneIndex == 0) {
-                    Quaternion inverse = key->rotation;
-                    Inverse( &inverse );
-                    key->rotation = MultQuats( key->rotation, inverse );
+                    key->rotation = { 0.0f, 0.0f, 0.0f, 0.0f };
                 }
-                printf("Bone scale values - x:%2f, y:%2f, z:%2f\n", key->scale.x, key->scale.y, key->scale.z );
-                printf("Bone Quat values - w:%2f, x:%2f, y:%2f, z:%2f\n", key->rotation.w, key->rotation.x, key->rotation.y, key->rotation.z );
-                printf("Bone translate values - x:%2f, y:%2f, z:%2f\n", key->translation.x, key->translation.y, key->translation.z );
+
+                printf("Bone scale values - x:%.2f, y:%.2f, z:%.2f\n", key->scale.x, key->scale.y, key->scale.z );
+                printf("Bone translate values - x:%.2f, y:%.2f, z:%.2f\n", key->translation.x, key->translation.y, key->translation.z );
 
                 Vec3 axis;
                 float angle;
                 ToAngleAxis( key->rotation, &angle, &axis );
                 angle *= 180.0f / 3.1415926f;
-                printf( "For this quat angle axis is - angle:%2f, axis - x:%2f, y:%2f, z:%2f\n", angle, axis.x, axis.y, axis.z );
+                printf( "Bone Rotation - angle:%.2f, axis - x:%.2f, y:%.2f, z:%.2f\n", angle, axis.x, axis.y, axis.z );
             }
         }
     } else {
@@ -605,16 +664,18 @@ bool LoadMeshFromFile( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* ani
 
 void SetSkeletonTransform( ArmatureKeyframe* key, Skeleton* skeleton ) {
     struct N {
-        static void _SetBoneTransformRecursively( ArmatureKeyframe* key, Bone* bone, Matrix4 parentMatrix ) {
+        static void _SetBoneTransformRecursively( ArmatureKeyframe* key, Bone* bone, Mat4 parentMatrix ) {
             BoneKey* bKey = &key->keys[bone->boneIndex];
 
-            Matrix4 scaleMatrix, rotationMatrix, translationMatrix;
-            SetScale( &scaleMatrix, bKey->scale.x, bKey->scale.y, bKey->scale.z );
+            Mat4 scaleMatrix, rotationMatrix, translationMatrix;
             rotationMatrix = MatrixFromQuat( bKey->rotation );
+            SetToIdentity( &scaleMatrix ); SetToIdentity( &translationMatrix );
+            SetScale( &scaleMatrix, bKey->scale.x, bKey->scale.y, bKey->scale.z );
             SetTranslation( &translationMatrix, bKey->translation.x, bKey->translation.y, bKey->translation.z );
 
-            Matrix4 netMatrix = translationMatrix * rotationMatrix * scaleMatrix;
-            *bone->transformMatrix = netMatrix * parentMatrix;
+            Mat4 netMatrix = translationMatrix * rotationMatrix * scaleMatrix ;
+            *bone->transformMatrix = bKey->boneAffected->inverseBindMatrix * netMatrix;
+            //SetToIdentity( bone->transformMatrix );
 
             for( uint8_t i = 0; i < bone->childCount; i++ ) {
                 _SetBoneTransformRecursively( key, bone->childrenBones[i], *bone->transformMatrix );
@@ -622,8 +683,8 @@ void SetSkeletonTransform( ArmatureKeyframe* key, Skeleton* skeleton ) {
         }
     };
 
-    Matrix4 i;
-    Identity( &i );
+    Mat4 i;
+    SetToIdentity( &i );
     N::_SetBoneTransformRecursively( key, skeleton->rootBone, i );
 
     // int8_t stackIndex = -1;
@@ -637,12 +698,12 @@ void SetSkeletonTransform( ArmatureKeyframe* key, Skeleton* skeleton ) {
     //     Bone* currentBone = boneStack[stackIndex];
     //     BoneKey* bKey = &key->keys[currentBone->boneIndex];
 
-    //     Matrix4 scaleMatrix, rotationMatrix, translationMatrix;
+    //     Mat4 scaleMatrix, rotationMatrix, translationMatrix;
     //     SetScale( &scaleMatrix, bKey->scale.x, bKey->scale.y, bKey->scale.z );
     //     rotationMatrix = MatrixFromQuat( bKey->rotation );
     //     SetTranslation( &translationMatrix, bKey->translation.x, bKey->translation.y, bKey->translation.z );
 
-    //     Matrix4 netMatrix = scaleMatrix * rotationMatrix * translationMatrix;
+    //     Mat4 netMatrix = scaleMatrix * rotationMatrix * translationMatrix;
     // //}
 }
 
@@ -674,7 +735,7 @@ void CreateRenderMesh(OpenGLMeshBinding* renderMesh, MeshData* meshData) {
         glBindBuffer( GL_ARRAY_BUFFER, renderMesh->boneIndexBuffer );
         glBufferData( GL_ARRAY_BUFFER, MAXBONEPERVERT * meshData->vertexCount * sizeof(GLuint), meshData->boneIndexData, GL_STATIC_DRAW );
 
-        //SetSkeletonTransform( key,  );
+        SetSkeletonTransform( &frame1, renderMesh->skeleton );
     }
 
     glBindBuffer( GL_ARRAY_BUFFER, (GLuint)NULL ); 
@@ -748,10 +809,11 @@ bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
 
     glViewport( 0.0f, 0.0f, screen_w, screen_h );
 
-    const float halfHeight = screen_h * 0.5f;
-    const float halfWidth = screen_w * 0.5f;
+    float screenAspectRatio = screen_w / screen_h;
+    float orthoWidth = 10.0f * screenAspectRatio;
+    float orthoHeight = 10.0f;
     glMatrixMode(GL_PROJECTION);
-    glOrtho( -halfWidth, halfWidth, -halfHeight, halfHeight, -halfWidth, halfWidth );
+    glOrtho( -orthoWidth * 0.5f, orthoWidth * 0.5f, -orthoHeight * 0.5f, orthoHeight * 0.5f, -10.0f, 10.0f );
 
     //Initialize framebuffer
     CreateFrameBuffer( &myFramebuffer );
@@ -777,14 +839,30 @@ void GameInit( MemorySlab* gameMemory ) {
 
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
     CreateShader( &primitiveShader, "Data/Shaders/Line.vert", "Data/Shaders/Line.frag" );
+    CreateShader( &shader1, "Data/Shaders/Vert.vert", "Data/Shaders/Frag.frag" );
+    SetToIdentity( &meshData1.modelMatrix );
+    SetTranslation( &meshData1.modelMatrix, 0.0f, -1.0f, 0.0f );
 
-    const float localVert[9] = {-300.0f, -200.0f, 1.0f, 20.0f, -100.0f, 0.0f, 300.0f, 200.0f, -1.0f };
-    const uint32 localIndex[3] = { 0, 1, 2 };
-    memcpy(&gMem->vertexData, &localVert, 9 * sizeof(float) );
-    memcpy(&gMem->indexData, &localIndex, 3 * sizeof(uint32) );
+    LoadMeshFromFile( &meshData1, &skeleton1, &frame1, "Data/SkeletonDebug.dae" );
+    CreateRenderMesh( &meshBinding1, &meshData1 );
+    LoadTextureFromFile( &texture1, "Data/Textures/green_texture.png");
+    texSet1.count = 1;
+    texSet1.associatedShader = &shader1;
+    texSet1.shaderSamplerPtrs[0] = shader1.samplerPtrs[0];
+    texSet1.shaderSamplerPtrs[1] = shader1.samplerPtrs[1];
+    texSet1.texturePtrs[0] = texture1.textureID;
+    texSet1.texturePtrs[1] = 0;
 
     printf("Init went well\n");
     return;
+}
+
+bool Update( MemorySlab* gameMemory ) {
+    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
+
+    //UpdateAI( &gMem->aiMem );
+
+    return true;
 }
 
 void Render( MemorySlab* gameMemory ) {
@@ -796,27 +874,10 @@ void Render( MemorySlab* gameMemory ) {
 
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    RenderLineStrip( (float*)&gMem->vertexData, (uint32*)&gMem->indexData, 3 );
-    RenderCircle( {gMem->x, gMem->y, 0.0f}, 8.0f );
+    RenderMesh( &meshBinding1, &shader1, texSet1 );
+    //RenderLineStrip( (GLfloat*)&meshData1.vertexData, (uint32*)&meshData1.indexData, meshData1.indexCount );
 
     glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
     RenderFramebuffer( &myFramebuffer );
-}
-
-bool Update( MemorySlab* gameMemory ) {
-    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
-
-    float x, y;
-    GetMousePosition( &x, &y );
-    if( x < -1.0f || x > 1.0f ) x = 0.0f;
-    if( y < -1.0f || y > 1.0f ) y = 0.0f;
-
-    x *= (640 / 2);
-    y *= (480 / 2);
-
-    gMem->x = x;
-    gMem->y = y;
-
-    return true;
 }

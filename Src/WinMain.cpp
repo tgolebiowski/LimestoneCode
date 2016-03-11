@@ -13,9 +13,9 @@
 bool running = true;
 bool isFullScreen = false;
 
-uint16_t SCREEN_WIDTH = 640;
-uint16_t SCREEN_HEIGHT = 480;
-uint16_t mSecsPerFrame = 1000 / 60;
+uint16 SCREEN_WIDTH = 640;
+uint16 SCREEN_HEIGHT = 480;
+uint16 mSecsPerFrame = 1000 / 60;
 
 struct AppInfo {
 	HINSTANCE appInstance;
@@ -24,12 +24,12 @@ struct AppInfo {
 	HDC deviceContext;
 	HGLRC openglRenderContext;
 	LPRECT windowRect;
-	int windowPosX;
-	int windowPosY;
+	uint16 windowPosX;
+	uint16 windowPosY;
 };
 static AppInfo appInfo;
 
-int16_t ReadShaderSrcFileFromDisk(const char* fileName, GLchar* buffer, uint16_t bufferLen) {
+int16 ReadShaderSrcFileFromDisk(const char* fileName, GLchar* buffer, uint16 bufferLen) {
 	FILE* file;
     errno_t e = fopen_s(&file, fileName, "r" );
     if( file == NULL || e != 0) {
@@ -149,7 +149,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 
 	appInfo.deviceContext = GetDC(appInfo.hwnd);
 
-	int  letWindowsChooseThisPixelFormat;
+	int letWindowsChooseThisPixelFormat;
 	letWindowsChooseThisPixelFormat = ChoosePixelFormat( appInfo.deviceContext, &pfd ); 
 	SetPixelFormat( appInfo.deviceContext, letWindowsChooseThisPixelFormat, &pfd );
 
