@@ -1,4 +1,8 @@
+#ifndef MATH3D
+#define MATH3D
 #include <math.h>
+
+//This whole thing is like 95% lifted code from Polycode, so credit there.
 
 #define PI 3.14159265359
 
@@ -216,6 +220,22 @@ Mat4 InverseMatrix( Mat4 m ) {
     return retVal;
 }
 
+Mat4 LookAtMatrix( Vec3 position, Vec3 target, Vec3 up ) {
+	Vec3 f = DiffVec( position, target );
+	Normalize( &f );
+	Normalize( &up );
+	Vec3 s = Cross( f, up );
+	Vec3 u = Cross( s, f );
+
+	Mat4 lookatMat;
+	lookatMat.m[0][0] = s.x; lookatMat.m[0][1] = u.x; lookatMat.m[0][2] = -f.x; lookatMat.m[0][3] = 0.0f;
+	lookatMat.m[1][0] = s.y; lookatMat.m[1][1] = u.y; lookatMat.m[1][2] = -f.y; lookatMat.m[1][3] = 0.0f;
+	lookatMat.m[2][0] = s.z; lookatMat.m[2][1] = u.z; lookatMat.m[2][2] = -f.z; lookatMat.m[2][3] = 0.0f;
+	lookatMat.m[3][0] = 0.0; lookatMat.m[3][1] = 0.0; lookatMat.m[3][2] = 0.0f; lookatMat.m[3][3] = 1.0f;
+	//Note: lack of "f" after [3][0] & [3][1] is so things line up, nothing more :P
+	return lookatMat;
+}
+
 Mat4 operator * ( const Mat4 m1, const Mat4 m2 ) {
 	return MultMatrix(m1, m2);
 }
@@ -323,3 +343,4 @@ Mat4 MatrixFromQuat(const Quat quat) {
 
 	return matx;
 }
+#endif

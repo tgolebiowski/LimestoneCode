@@ -5,6 +5,7 @@
 #include "OpenGL/glew.h"
 
 #include "App.h"
+#include "ClayGLRenderer.cpp"
 #include "App.cpp"
 
 #define WIN32_LEAN_AND_MEAN
