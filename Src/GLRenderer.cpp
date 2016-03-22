@@ -219,9 +219,10 @@ void RenderBoundData( MeshRenderBinding* meshBinding, ShaderProgramBinding* prog
     //     glVertexAttribIPointer( program->boneIndiciesAttribute, MAXBONEPERVERT, GL_UNSIGNED_INT, 0, 0 );
     // }
 
+    glActiveTexture( GL_TEXTURE0 );
     glBindTexture( GL_TEXTURE_2D, params.sampler1 );
-    //glActiveTexture( GL_TEXTURE1 );
-    //glBindTexture( GL_TEXTURE_2D, textureSet.texturePtrs[1] );
+    glActiveTexture( GL_TEXTURE1 );
+    glBindTexture( GL_TEXTURE_2D, params.sampler2 );
 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, meshBinding->indexDataPtr );
     glDrawElements( GL_TRIANGLES, meshBinding->dataCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
