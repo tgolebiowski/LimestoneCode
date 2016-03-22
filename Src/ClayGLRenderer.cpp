@@ -6,6 +6,7 @@ void RenderLineStrip( GLfloat* stripVertBuffer, uint32* indexBuffer, uint16 buff
     const float identityM[16] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
                                   0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
     glUniformMatrix4fv( primitiveShader.modelMatrixUniformPtr, 1, false, (float*)&identityM );
+    glUniformMatrix4fv( primitiveShader.cameraMatrixUniformPtr, 1, false, (float*)&baseOrthoMat );
 
     GLuint lineVBO;
     glGenBuffers( 1, &lineVBO );
@@ -19,7 +20,7 @@ void RenderLineStrip( GLfloat* stripVertBuffer, uint32* indexBuffer, uint16 buff
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, lineIBO );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, bufferCount * sizeof(GLuint), (GLuint*)indexBuffer, GL_STATIC_DRAW );
 
-    glDrawElements( GL_LINES, bufferCount, GL_UNSIGNED_INT, NULL );
+    glDrawElements( GL_LINE_STRIP, bufferCount, GL_UNSIGNED_INT, NULL );
 
     glDeleteBuffers( 1, &lineVBO );
     glDeleteBuffers( 1, &lineIBO );
@@ -55,8 +56,9 @@ void RenderCircle( Vec3 position, float radius, Vec3 color ) {
     SetScale( &scaleMatrix, radius, radius, radius );
     netMatrix = scaleMatrix * translateMatrix;
     glUniformMatrix4fv( primitiveShader.modelMatrixUniformPtr, 1, false, (float*)&netMatrix );
+    glUniformMatrix4fv( primitiveShader.cameraMatrixUniformPtr, 1, false, (float*)&baseOrthoMat );
 
-    GLfloat float4[4] = {color.x, color.y, color.z, 1.0f };
+    GLfloat float4[4] = { color.x, color.y, color.z, 1.0f };
     glUniform4f( glGetUniformLocation( primitiveShader.programID, "primitiveColor"), color.x, color.y, color.z, 1.0f );
 
     GLuint circleVBO;
@@ -75,6 +77,66 @@ void RenderCircle( Vec3 position, float radius, Vec3 color ) {
 
     glDeleteBuffers( 1, &circleVBO );
     glDeleteBuffers( 1, &circleIBO );
+    glUseProgram( (GLuint)NULL );
+    glBindBuffer( GL_ARRAY_BUFFER, 0 );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
+}
+
+void RenderSkeletonAsLines( Skeleton* skeleton, Mat4* modelMat ) {
+    GLfloat data[MAXBONECOUNT * 3 * 3];
+    GLuint iData [ MAXBONECOUNT * 3];
+    uint16 filledIndex = 0;
+
+    struct N {
+        static void FillData( GLfloat* storage, uint16* fillTracker, GLuint* indData, Bone* bone ) {
+            //Vec3 basePosition = MultVec( *bone->transformMatrix, bone->bindPosition );
+            Vec3 basePosition = bone->bindPosition;
+            for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
+                Bone* childBone = bone->childrenBones[ childIndex ];
+                //Vec3 childPosition = MultVec( *childBone->transformMatrix, childBone->bindPosition );
+                Vec3 childPosition = childBone->bindPosition;
+
+                GLfloat* slice = &storage[ *fillTracker * 3 ];
+                slice[0] = basePosition.x;
+                slice[1] = basePosition.y;
+                slice[2] = basePosition.z;
+                indData[ *fillTracker ] = *fillTracker;
+                (*fillTracker)++;
+                slice = &storage[ *fillTracker * 3 ];
+                slice[0] = childPosition.x;
+                slice[1] = childPosition.y;
+                slice[2] = childPosition.z;
+                indData[ *fillTracker ] = *fillTracker;
+                (*fillTracker)++;
+                FillData( storage, fillTracker, indData, childBone );
+            }
+
+            return;
+        };
+    };
+    N::FillData( (GLfloat*)&data, &filledIndex, (GLuint*)&iData, skeleton->rootBone );
+
+    Mat4 identityM;
+    SetToIdentity( &identityM );
+    glUniformMatrix4fv( primitiveShader.modelMatrixUniformPtr, 1, false, (float*)modelMat );
+    glUniformMatrix4fv( primitiveShader.cameraMatrixUniformPtr, 1, false, (float*)&baseOrthoMat );
+
+    GLuint lineVBO;
+    glGenBuffers( 1, &lineVBO );
+    glBindBuffer( GL_ARRAY_BUFFER, lineVBO );
+    glBufferData( GL_ARRAY_BUFFER, 3 * filledIndex * sizeof(GLfloat), (GLfloat*)&data, GL_STATIC_DRAW );
+    glEnableVertexAttribArray( primitiveShader.positionAttribute );
+    glVertexAttribPointer( primitiveShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+    GLuint lineIBO;
+    glGenBuffers( 1, &lineIBO );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, lineIBO );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, filledIndex * sizeof(GLuint), (GLuint*)&iData, GL_STATIC_DRAW );
+
+    glDrawElements( GL_LINE_STRIP, filledIndex, GL_UNSIGNED_INT, NULL );
+
+    glDeleteBuffers( 1, &lineVBO );
+    glDeleteBuffers( 1, &lineIBO );
     glUseProgram( (GLuint)NULL );
     glBindBuffer( GL_ARRAY_BUFFER, 0 );
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
@@ -202,6 +264,7 @@ void CreateFrameBuffer( OpenGLFramebuffer* buffer ) {
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, (GLuint)NULL );
 }
 
+static OpenGLFramebuffer myFramebuffer;
 static ShaderProgram framebufferShader;
 
 void RenderFramebuffer( OpenGLFramebuffer* framebuffer ) {
@@ -251,7 +314,7 @@ void printShaderLog( GLuint shader ) {
     }
 }
 
-void CreateShader(ShaderProgram* program, const char* vertShaderFile, const char* fragShaderFile) {
+void CreateShader( ShaderProgram* program, const char* vertShaderFile, const char* fragShaderFile ) {
     const size_t shaderSrcBufferLength = 1700;
     GLchar shaderSrcBuffer[shaderSrcBufferLength];
     memset(&shaderSrcBuffer, 0, sizeof(GLchar) * shaderSrcBufferLength );
@@ -355,23 +418,6 @@ bool LoadMeshViaAssimp( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* an
         return false;
     }
 
-    aiMatrix4x4t<float> rootTransform = scene->mRootNode->mTransformation;
-    aiVector3t<float> tScale;
-    aiVector3t<float> tPosition;
-    aiQuaterniont<float> tRotation;
-    rootTransform.Decompose( tScale, tRotation, tPosition );
-
-    float ang;
-    Vec3 ax;
-    ToAngleAxis( {tRotation.w, tRotation.x, tRotation.y, tRotation.z}, &ang, &ax );
-    Mat4 rootSMat, rootTMat, rootRMat;
-    SetToIdentity( &rootSMat ); SetToIdentity( &rootTMat ); SetToIdentity( &rootRMat );
-    SetRotation( &rootRMat, ax.z, ax.y, ax.x, ang );
-    SetTranslation( &rootTMat, tPosition.x, tPosition.y, tPosition.z );
-    SetScale( &rootSMat, tScale.x, tScale.y, tScale.z );
-    Mat4 rootTransformMat = rootSMat * rootRMat * rootTMat;
-    Mat4 rootInverseTransform = InverseMatrix( rootTransformMat );
-
     // printf( "Transform data for%s\n", scene->mRootNode->mName.data );
     // printf( "Position x:%.3f, y:%.3f, z:%.3f\n", tPosition.x, tPosition.y, tPosition.z );
     // printf( "Scale x:%.3f, y:%.3f, z:%.3f\n", tScale.x, tScale.y, tScale.z );
@@ -461,14 +507,14 @@ bool LoadMeshViaAssimp( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* an
                 myBone->bindScale = { bindScale.x, bindScale.y, bindScale.z };
 
                 //Debug Print info, I expect I will need this again eventually
-                // printf("Bind Data %s\n", myBone->name);
-                // printf("Translation --"); PrintVec( myBone->bindPosition );
-                // printf("\nScale --"); PrintVec( myBone->bindScale );
-                // float angle;
-                // Vec3 axis;
-                // ToAngleAxis( myBone->bindRotation, &angle, &axis);
-                // printf("\nRotation -- Angle: %.3f ", angle); PrintVec(axis);
-                // printf("\n");
+                printf("Bind Data %s\n", myBone->name);
+                printf("Translation --"); PrintVec( myBone->bindPosition );
+                printf("\nScale --"); PrintVec( myBone->bindScale );
+                float angle;
+                Vec3 axis;
+                ToAngleAxis( myBone->bindRotation, &angle, &axis);
+                printf("\nRotation -- Angle: %.3f ", angle); PrintVec(axis);
+                printf("\n");
 
 
                 //Set weight data for verticies affected by this bone
@@ -509,6 +555,23 @@ bool LoadMeshViaAssimp( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* an
                 }
             }
 
+            aiMatrix4x4t<float> rootTransform = nodesByName.find( skeleton->rootBone->name )->second->mTransformation;
+            aiVector3t<float> tScale;
+            aiVector3t<float> tPosition;
+            aiQuaterniont<float> tRotation;
+            rootTransform.Decompose( tScale, tRotation, tPosition );
+
+            float ang;
+            Vec3 ax;
+            ToAngleAxis( {tRotation.w, tRotation.x, tRotation.y, tRotation.z}, &ang, &ax );
+            Mat4 rootSMat, rootTMat, rootRMat;
+            SetToIdentity( &rootSMat ); SetToIdentity( &rootTMat ); SetToIdentity( &rootRMat );
+            SetRotation( &rootRMat, ax.z, ax.y, ax.x, ang );
+            SetTranslation( &rootTMat, tPosition.x, tPosition.y, tPosition.z );
+            SetScale( &rootSMat, tScale.x, tScale.y, tScale.z );
+            Mat4 rootTransformMat = rootSMat * rootRMat * rootTMat;
+            Mat4 rootInverseTransform = InverseMatrix( rootTransformMat );
+
             struct N {
                 static void SetBindMatxs( Bone* bone, Mat4 parentBindMatrix ) {
                     Mat4 bindTranslationMat, bindRotationMat, bindScaleMat;
@@ -523,14 +586,12 @@ bool LoadMeshViaAssimp( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* an
                     bone->inverseBindMatrix = InverseMatrix( bone->bindMatrix );
 
                     for( uint8 childBoneIndex = 0; childBoneIndex < bone->childCount; childBoneIndex++ ) {
-                        SetBindMatxs( bone->childrenBones[childBoneIndex], bone->bindMatrix );
+                        SetBindMatxs( bone->childrenBones[childBoneIndex], bone->inverseBindMatrix );
                     }
                 };
             };
-
-            Mat4 i;
-            SetToIdentity( &i ) ;
-            N::SetBindMatxs( data->skeleton->rootBone, rootInverseTransform );
+            Mat4 I; SetToIdentity( &I );
+            N::SetBindMatxs( data->skeleton->rootBone, I );
 
         } else {
             data->hasSkeletonInfo = false;
@@ -565,16 +626,9 @@ bool LoadMeshViaAssimp( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* an
                 aiQuaternion quatKey1 = boneAnimation->mRotationKeys[0].mValue;
                 aiVector3D scaleKey1 = boneAnimation->mScalingKeys[0].mValue;
 
-                if(bone->boneIndex == 0) {
-                    key->scale = { scaleKey1.x * (1.0f / tScale.x), scaleKey1.y * (1.0f / tScale.y), scaleKey1.z * (1.0f / tScale.z)};
-                    key->translation = { veckey1.x - tPosition.x, veckey1.y - tPosition.y, veckey1.z - tPosition.z };
-                    key->rotation = MultQuats( { quatKey1.w, quatKey1.x, quatKey1.y, quatKey1.z }, 
-                                                InverseQuat( { tRotation.w, tRotation.x, tRotation.y, tRotation.z } ) );
-                } else {
-                    key->scale = { scaleKey1.x, scaleKey1.y, scaleKey1.z };
-                    key->rotation = { quatKey1.w, quatKey1.x, quatKey1.y, quatKey1.z };
-                    key->translation = { veckey1.x, veckey1.y, veckey1.z };
-                }
+                key->scale = { scaleKey1.x, scaleKey1.y, scaleKey1.z };
+                key->translation = { veckey1.x, veckey1.y, veckey1.z };
+                key->rotation = { quatKey1.w, quatKey1.x, quatKey1.y, quatKey1.z };
             }
         }
     } else {
@@ -585,7 +639,7 @@ bool LoadMeshViaAssimp( MeshData* data, Skeleton* skeleton, ArmatureKeyframe* an
     return true; 
 }
 
-void CreateGLMeshBinding(OpenGLMeshBinding* renderMesh, MeshData* meshData) {
+void CreateGLMeshBinding( OpenGLMeshBinding* renderMesh, MeshData* meshData ) {
     renderMesh->modelMatrix = &meshData->modelMatrix;
 
     glGenBuffers( 1, &renderMesh->vbo );
@@ -664,4 +718,44 @@ void RenderGLMeshBinding( Mat4* cameraMatrix, OpenGLMeshBinding* mesh, ShaderPro
     glBindTexture( GL_TEXTURE_2D, 0 );
     //clear shader
     glUseProgram( (GLuint)NULL );
+}
+
+bool InitOpenGLRenderer( const float screen_w, const float screen_h ) {
+    printf( "Vendor: %s\n", glGetString( GL_VENDOR ) );
+    printf( "Renderer: %s\n", glGetString( GL_RENDERER ) );
+    printf( "GL Version: %s\n", glGetString( GL_VERSION ) );
+    printf( "GLSL Version: %s\n", glGetString( GL_SHADING_LANGUAGE_VERSION ) );
+
+    GLint k;
+    glGetIntegerv( GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &k );
+    printf("Max texture units: %d\n", k);
+
+    //Initialize clear color
+    glClearColor( 0.1f, 0.1f, 0.1f, 1.0f );
+
+    //glEnable( GL_DEPTH_TEST );
+    glEnable( GL_CULL_FACE );
+    glCullFace( GL_BACK );
+
+    glViewport( 0.0f, 0.0f, screen_w, screen_h );
+
+    float screenAspectRatio = screen_w / screen_h;
+    InitOrthoCameraMatrix( &baseOrthoMat, 20.0f * screenAspectRatio, 20.0f, -20.0f, 20.0f );
+    //InitOrthoCameraMatrix( &baseOrthoMat, screen_w, screen_h, -1.0f, 1.0f );
+    cameraPosition = {0.0f, 0.0f, 0.0f};
+
+    //Initialize framebuffer
+    CreateFrameBuffer( &myFramebuffer );
+    CreateShader( &framebufferShader, "Data/Shaders/Framebuffer.vert", "Data/Shaders/Framebuffer.frag" );
+
+    //Check for error
+    GLenum error = glGetError();
+    if( error != GL_NO_ERROR ) {
+        printf( "Error initializing OpenGL! %s\n", gluErrorString( error ) );
+        return false;
+    } else {
+        printf( "Initialized OpenGL\n" );
+    }
+
+    return true;
 }

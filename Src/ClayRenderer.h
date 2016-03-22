@@ -61,6 +61,12 @@ struct MeshData {
     ArmatureKeyframe debugFrame;
 };
 
+struct ArmatureData {
+    Skeleton skeleton;
+    GLfloat boneWeightData[MAXVERTCOUNT * MAXBONEPERVERT];
+    GLuint boneIndexData[MAXVERTCOUNT * MAXBONEPERVERT];
+};
+
 void SetSkeletonTransform( ArmatureKeyframe* key, Skeleton* skeleton ) {
     struct N {
         static void _SetBoneTransformRecursively( ArmatureKeyframe* key, Bone* bone, Mat4 parentMatrix ) {
@@ -73,7 +79,7 @@ void SetSkeletonTransform( ArmatureKeyframe* key, Skeleton* skeleton ) {
             SetTranslation( &translationMatrix, bKey->translation.x, bKey->translation.y, bKey->translation.z );
 
             Mat4 netMatrix = scaleMatrix * rotationMatrix * translationMatrix;
-            *bone->transformMatrix = bKey->boneAffected->inverseBindMatrix * netMatrix;
+            *bone->transformMatrix = parentMatrix * bKey->boneAffected->inverseBindMatrix * netMatrix;
 
             // printf("Animation Data %s\n", bKey->boneAffected->name);
             // printf("Translation --"); PrintVec(bKey->translation);
@@ -118,9 +124,9 @@ void InitOrthoCameraMatrix( Mat4* m, float width, float height, float near, floa
     float halfWidth = width * 0.5f;
     float halfHeight = height * 0.5f;
 
-    m->m[0][0] = -1.0f / halfWidth; m->m[0][1] = 0.0f; m->m[0][2] = 0.0f; m->m[0][3] = 0.0f;
+    m->m[0][0] = 1.0f / halfWidth; m->m[0][1] = 0.0f; m->m[0][2] = 0.0f; m->m[0][3] = 0.0f;
     m->m[1][0] = 0.0f; m->m[1][1] = 1.0f / halfHeight; m->m[1][2] = 0.0f; m->m[1][3] = 0.0f;
-    m->m[2][0] = 0.0f; m->m[2][1] = 0.0f; m->m[2][2] = -2.0f / (far - near); m->m[2][3] = 0.0f;
+    m->m[2][0] = 0.0f; m->m[2][1] = 0.0f; m->m[2][2] = 2.0f / (far - near); m->m[2][3] = 0.0f;
     m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = -(far + near) / (far - near); m->m[3][3] = 1.0f;
 }
 
@@ -133,8 +139,11 @@ void SetCameraMatrixPosition( Mat4* m, Vec3 p) {
 }
 
 void SetCameraMatrixLookAt( Mat4* m ) {
-
 }
+
+static Mat4 myCameraMatrix;
+static Mat4 baseOrthoMat;
+static Vec3 cameraPosition;
 
 /*-------------------------------------
 IMPLEMENTATIONS SPECIFIC TO THE OPEN GL RENDERER
