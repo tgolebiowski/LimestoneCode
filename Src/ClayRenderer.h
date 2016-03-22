@@ -139,6 +139,7 @@ void SetCameraMatrixPosition( Mat4* m, Vec3 p) {
 }
 
 void SetCameraMatrixLookAt( Mat4* m ) {
+    
 }
 
 static Mat4 myCameraMatrix;

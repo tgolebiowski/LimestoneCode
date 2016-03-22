@@ -46,7 +46,7 @@ struct ShaderProgramParams {
 };
 
 //TODO: figure out if this is useful or not
-//Hypothetical ease-of-use idea, you want renderbinding but don't care to store the mesh data anywhere other
+//Hypothetical ease-of-use idea, you always want renderbinding but only sometimes care to store the mesh data anywhere other
 //than on the GPU, then this function header below would be easiest
 //LoadRenderBinding( const char fileName, MeshRenderBinding** bindDataStorage, MeshDataStorage** meshDataStorage = NULL );
 
@@ -64,10 +64,10 @@ void CreateEmptyTexture( TextureDataStorage* texDataStorage, uint16 width, uint1
 
 bool InitRenderer( uint16 screen_w, uint16 screen_h );
 void CreateRenderBinding( MeshRenderBinding* bindDataStorage, MeshDataStorage* meshDataStorage );
-void CreateShaderProgram( ShaderProgramBinding* bindDataStorage );
+void CreateShaderProgram( ShaderProgramBinding* bindDataStorage, const char* vertProgramFilePath, const char* fragProgramFilePath );
 void CreateTextureBinding( TextureBindingID* texBindID, TextureDataStorage* textureData );
 
-void RenderBoundData( MeshRenderBinding* renderBinding, ShaderProgramBinding* program, ShaderProgramParams* params );
+void RenderBoundData( MeshRenderBinding* renderBinding, ShaderProgramBinding* program, ShaderProgramParams params );
 
 /*------------------------------------------------------------------------------------------------------------------
                                        THINGS FOR THE OS TO IMPLEMENT

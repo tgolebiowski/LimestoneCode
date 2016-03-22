@@ -1,18 +1,18 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <assert.h>
+#include "tinyxml2.h"
+#include "tinyxml2.cpp"
+
 #define GLEW_STATIC
 #include "OpenGL/glew.h"
 
 #include "App.h"
 #include "GLRenderer.cpp"
 #include "App.cpp"
-
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <assert.h>
-#include "tinyxml2.h"
-#include "tinyxml2.cpp"
 
 //Win32 function prototypes, allows the entry point to be the first function
 LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
@@ -260,6 +260,7 @@ void LoadMeshData( const char* fileName, MeshDataStorage* storage ) {
 	float rawIndexData[1024];
 
 	///TODO: do more error handling on this, rather than all hard-codey expecting where data is and by what name
+	///and things like that
 	{
 	    //Vertex p data
 		tinyxml2::XMLNode* colladaVertexArray = meshNode->FirstChild();
@@ -288,7 +289,7 @@ void LoadMeshData( const char* fileName, MeshDataStorage* storage ) {
 	    //Reading index data
 		tinyxml2::XMLElement* meshSrc = meshNode->FirstChildElement( "polylist" );
 		meshSrc->QueryAttribute( "count", &count );
-		indexCount = count * 3;
+		indexCount = count * 3 * 3;
 		tinyxml2::XMLElement* colladaIndexArray = meshSrc->FirstChildElement( "p" );
 		strcpy( &colladaTextBuffer[0], colladaIndexArray->FirstChild()->ToText()->Value() );
 		TextToNumberConversion( (char*)&colladaTextBuffer[0], (float*)&rawIndexData );
@@ -304,23 +305,24 @@ void LoadMeshData( const char* fileName, MeshDataStorage* storage ) {
 		uint16 normalIndex = rawIndexData[ counter++ ];
 		uint16 uvIndex = rawIndexData[ counter++ ];
 
-		v.x = rawColladaVertexData[ vertIndex + 0];
-		v.z = rawColladaVertexData[ vertIndex + 1];
-		v.y = -rawColladaVertexData[ vertIndex + 2];
+		v.x = rawColladaVertexData[ vertIndex * 3 + 0 ];
+		v.z = -rawColladaVertexData[ vertIndex * 3 + 1 ];
+		v.y = rawColladaVertexData[ vertIndex * 3 + 2 ];
 
-		n.x = rawColladaNormalData[ normalIndex + 0];
-		n.z = rawColladaNormalData[ normalIndex + 1];
-		n.y = -rawColladaNormalData[ normalIndex + 2];
+		n.x = rawColladaNormalData[ normalIndex * 3 + 0 ];
+		n.z = -rawColladaNormalData[ normalIndex * 3 + 1 ];
+		n.y = rawColladaNormalData[ normalIndex * 3 + 2 ];
 
 		uv_x = rawColladaUVData[ uvIndex * 2 ];
 		uv_y = rawColladaUVData[ uvIndex * 2 + 1 ];
 
+		///TODO: check for exact copies of data, use to index to first instance instead
 		uint32 storageIndex = storage->dataCount;
 		storage->vData[ storageIndex ] = v;
-		storage->iData[ storageIndex ] = storageIndex;
 		storage->normalData[ storageIndex ] = n;
 		storage->uvData[ storageIndex * 2 ] = uv_x;
 		storage->uvData[ storageIndex * 2 + 1 ] = uv_y;
+		storage->iData[ storageIndex ] = storageIndex;
 		storage->dataCount++;
 	};
 }
