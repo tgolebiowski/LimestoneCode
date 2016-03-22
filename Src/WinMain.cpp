@@ -10,6 +10,10 @@
 #define GLEW_STATIC
 #include "OpenGL/glew.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#include "stb/stb_image.h"
+
 #include "App.h"
 #include "GLRenderer.cpp"
 #include "App.cpp"
@@ -219,7 +223,7 @@ int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 buffe
     return 0;
 }
 
-void LoadMeshData( const char* fileName, MeshDataStorage* storage ) {
+void LoadMeshDataFromDisk( const char* fileName, MeshDataStorage* storage ) {
 	tinyxml2::XMLDocument colladaDoc;
 	colladaDoc.LoadFile( fileName );
 
@@ -325,4 +329,14 @@ void LoadMeshData( const char* fileName, MeshDataStorage* storage ) {
 		storage->iData[ storageIndex ] = storageIndex;
 		storage->dataCount++;
 	};
+}
+
+void LoadTextureDataFromDisk( const char* fileName, TextureDataStorage* storage ) {
+    //unsigned char* data = stbi_load( fileName, &texData->width, &texData->height, &n, 0 );
+    storage->texData = (uint8*)stbi_load( fileName, (int*)&storage->width, (int*)&storage->height, (int*)&storage->channelsPerPixel, 0 );
+    if( storage->texData == NULL ) {
+        printf( "Could not load file: %s\n", fileName );
+    }
+    printf( "Loaded file: %s\n", fileName );
+    printf( "Width: %d, Height: %d, Channel count: %d\n", storage->width, storage->height, storage->channelsPerPixel );
 }

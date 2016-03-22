@@ -11,9 +11,9 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     //Initialize clear color
     glClearColor( 0.1f, 0.1f, 0.1f, 1.0f );
 
-    //glEnable( GL_DEPTH_TEST );
-    //glEnable( GL_CULL_FACE );
-    //glCullFace( GL_BACK );
+    glEnable( GL_DEPTH_TEST );
+    glEnable( GL_CULL_FACE );
+    glCullFace( GL_BACK );
 
     glViewport( 0.0f, 0.0f, screen_w, screen_h );
 
@@ -36,6 +36,31 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     }
 
     return true;
+}
+
+void CreateTextureBinding( TextureBindingID* texBindID, TextureDataStorage* textureData ) {
+	GLenum pixelFormat;
+    if( textureData->channelsPerPixel == 3 ) {
+        pixelFormat = GL_RGB;
+    } else if( textureData->channelsPerPixel == 4 ) {
+        pixelFormat = GL_RGBA;
+    }
+
+    GLuint glTextureID;
+    glGenTextures( 1, &glTextureID );
+    glBindTexture( GL_TEXTURE_2D, glTextureID );
+
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+
+    glTexImage2D( GL_TEXTURE_2D, 0, textureData->channelsPerPixel, textureData->width, 
+    	textureData->height, 0, pixelFormat, GL_UNSIGNED_BYTE, textureData->texData );
+
+    *texBindID = glTextureID;
+
+    //stbi_image_free( data );
 }
 
 void CreateRenderBinding( MeshRenderBinding* bindDataStorage, MeshDataStorage* meshDataStorage ) {
@@ -194,7 +219,7 @@ void RenderBoundData( MeshRenderBinding* meshBinding, ShaderProgramBinding* prog
     //     glVertexAttribIPointer( program->boneIndiciesAttribute, MAXBONEPERVERT, GL_UNSIGNED_INT, 0, 0 );
     // }
 
-    //glBindTexture( GL_TEXTURE_2D, textureSet.texturePtrs[0] );
+    glBindTexture( GL_TEXTURE_2D, params.sampler1 );
     //glActiveTexture( GL_TEXTURE1 );
     //glBindTexture( GL_TEXTURE_2D, textureSet.texturePtrs[1] );
 

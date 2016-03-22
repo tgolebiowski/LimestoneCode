@@ -3,6 +3,7 @@ struct GameMemory {
     ShaderProgramBinding shader;
     ShaderProgramParams programParams;
     Mat4 m1, m2;
+    TextureBindingID greenTexBinding;
 };
 
 static Mat4 rotMat;
@@ -16,17 +17,21 @@ void GameInit( MemorySlab* gameMemory ) {
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
 
     MeshDataStorage data;
-    LoadMeshData( "Data/Pointy.dae", &data );
-    CreateShaderProgram( &gMem->shader, "Data/Shaders/Vert.vert", "Data/Shaders/Frag.frag" );
+    TextureDataStorage tData;
+    LoadMeshDataFromDisk( "Data/Pointy.dae", &data );
+    LoadTextureDataFromDisk( "Data/Textures/green_texture.png", &tData );
 
+    CreateShaderProgram( &gMem->shader, "Data/Shaders/Vert.vert", "Data/Shaders/Frag.frag" );
     CreateRenderBinding( &gMem->renderBinding, &data );
+    CreateTextureBinding( &gMem->greenTexBinding, &tData );
+
     ShaderProgramParams* params = &gMem->programParams;
     params->modelMatrix = &gMem->m1; 
     params->cameraMatrix = &gMem->m2;
     SetToIdentity( params->modelMatrix );
     SetScale( params->modelMatrix, 0.33, 0.33, 0.33 );
     SetToIdentity( params->cameraMatrix );
-    params->sampler1 = 0;
+    params->sampler1 = gMem->greenTexBinding;
     params->sampler2 = 0;
 
     SetToIdentity( &rotMat );

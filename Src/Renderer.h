@@ -10,10 +10,10 @@ struct MeshDataStorage {
 };
 
 struct TextureDataStorage {
-	uint32* texData;
+	uint8* texData;
 	uint16 width;
 	uint16 height;
-	uint8 pixelFormat;
+	uint8 channelsPerPixel;
 };
 
 typedef uint32 TextureBindingID;
@@ -75,5 +75,5 @@ void RenderBoundData( MeshRenderBinding* renderBinding, ShaderProgramBinding* pr
 
 ///Return 0 on success, required buffer length if buffer is too small, or -1 on other OS failure
 int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 bufferLen);
-void LoadMeshData( const char* fileName, MeshDataStorage* meshDataStorage );
-void LoadTextureData( const char* fileName, TextureDataStorage* dataStorage );
+void LoadMeshDataFromDisk( const char* fileName, MeshDataStorage* meshDataStorage );
+void LoadTextureDataFromDisk( const char* fileName, TextureDataStorage* dataStorage );
