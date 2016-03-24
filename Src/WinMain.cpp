@@ -193,7 +193,7 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
                          App.h function prototype implementations
 -----------------------------------------------------------------------------------------*/
 
-void GetMousePosition( float* x, float * y ) {
+void GetMousePosition( float* x, float* y ) {
 	POINT mousePosition;
 	GetCursorPos( &mousePosition );
 	*x = ((float)(mousePosition.x - appInfo.windowPosX)) / ( (float)SCREEN_WIDTH / 2.0f ) - 1.0f;
@@ -223,33 +223,33 @@ int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 buffe
     return 0;
 }
 
-void LoadMeshDataFromDisk( const char* fileName, MeshDataStorage* storage ) {
+void TextToNumberConversion( char* textIn, float* numbersOut ) {
+	char* start;
+	char* end; 
+	start = textIn; 
+	end = start;
+	uint16 index = 0;
+	do {
+		do {
+			end++;
+		} while( *end != ' ' && *end != 0 );
+
+		char buffer [16];
+		memcpy( &buffer[0], start, end - start);
+		buffer[end - start] = 0;
+		start = end;
+
+		numbersOut[index] = atof( buffer );
+		index++;
+	} while( *end != 0 );
+};
+
+void LoadMeshDataFromDisk( const char* fileName, MeshGeometryStorage* storage ) {
 	tinyxml2::XMLDocument colladaDoc;
 	colladaDoc.LoadFile( fileName );
 
 	tinyxml2::XMLElement* meshNode = colladaDoc.FirstChildElement( "COLLADA" )->FirstChildElement( "library_geometries" )
 	->FirstChildElement( "geometry" )->FirstChildElement( "mesh" );
-
-	auto TextToNumberConversion = [] ( char* textIn, float* numbersOut ) {
-		char* start;
-		char* end; 
-		start = textIn; 
-		end = start;
-		uint16 index = 0;
-		do{
-			do {
-				end++;
-			} while( *end != ' ' && *end != 0 );
-
-			char buffer [16];
-			memcpy( &buffer[0], start, end - start);
-			buffer[end - start] = 0;
-			start = end;
-
-			numbersOut[index] = atof( buffer );
-			index++;
-		} while( *end != 0 );
-	};
 
 	int count;
 	char colladaTextBuffer [1024];
@@ -329,6 +329,87 @@ void LoadMeshDataFromDisk( const char* fileName, MeshDataStorage* storage ) {
 		storage->iData[ storageIndex ] = storageIndex;
 		storage->dataCount++;
 	};
+}
+
+void LoadMeshSkinningDataFromDisk( const char* fileName, MeshSkinningStorage* storage, Armature* armature ) {
+	tinyxml2::XMLDocument colladaDoc;
+	colladaDoc.LoadFile( fileName );
+
+	//Armature
+	{
+		tinyxml2::XMLElement* visualScenesNode = colladaDoc.FirstChildElement( "COLLADA" )->FirstChildElement( "library_visual_scenes" )
+		->FirstChildElement( "visual_scene" )->FirstChildElement( "node" );
+		tinyxml2::XMLElement* armatureNode = NULL;
+
+		while( visualScenesNode != NULL ) {
+			if( visualScenesNode->FirstChildElement( "node" ) != NULL && 
+				visualScenesNode->FirstChildElement( "node" )->Attribute( "type", "JOINT" ) != NULL ) {
+				armatureNode = visualScenesNode;
+			    break;
+			} else {
+				visualScenesNode = visualScenesNode->NextSibling()->ToElement();
+			}
+		}
+		if( armatureNode == NULL ) return;
+
+		uint8 stackTracker = 0;
+		//Note: the same index for bone and sibling stack is like this:
+		//boneStack[ i ] = parent
+		//siblingStack[ i ] next sibling to branch from, whose parent bone is "parent"
+		Bone* boneStack[ MAXBONES ];
+		tinyxml2::XMLElement* siblingStack[ MAXBONES ];
+
+		//Parsing basic data from XML
+		armature->boneCount = 0;
+		tinyxml2::XMLElement* boneElement = armatureNode->FirstChildElement( "node" ); //->FirstChildElement( "node" );
+		while( boneElement != NULL ) {
+			Bone* armatureBone = &armature->allBones[ armature->boneCount ];
+			armatureBone->childCount = 0;
+			armatureBone->currentTransform = &armature->boneTransforms[ armature->boneCount ];
+			if( stackTracker > 0) { 
+				Bone* parentBone = boneStack[ stackTracker - 1 ];
+				armatureBone->parent = parentBone;
+				parentBone->children[ parentBone->childCount ] = armatureBone;
+				parentBone->childCount++;
+			}
+			else { 
+				armatureBone->parent = NULL; 
+			}
+			armature->boneCount++;
+
+			strcpy( &armatureBone->name[0], boneElement->Attribute( "name" ) );
+
+			float matrixData[16];
+			char matrixTextData [512];
+			tinyxml2::XMLNode* matrixElement = boneElement->FirstChildElement("matrix");
+			strcpy( &matrixTextData[0], matrixElement->FirstChild()->ToText()->Value() );
+
+			TextToNumberConversion( matrixTextData, matrixData );
+			memcpy( &armatureBone->inverseBindPose.m[0][0], &matrixData[0], sizeof(float) * 16 );
+
+			if( boneElement->FirstChildElement( "node" ) != NULL ) {
+				tinyxml2::XMLElement* nextElement = boneElement->FirstChildElement( "node" );
+				boneStack[ stackTracker ] = armatureBone;
+				siblingStack[ stackTracker ] = nextElement;
+				stackTracker++;
+				boneElement = nextElement;
+			} else {
+				while( stackTracker > 0 ) {
+					tinyxml2::XMLElement* prev = siblingStack[ stackTracker - 1 ];
+					if( prev->NextSibling() != NULL ) {
+						boneElement = prev->NextSibling()->ToElement();
+						siblingStack[ stackTracker - 1 ] = boneElement;
+						break;
+					} else {
+						stackTracker--;
+					}
+				};
+				if( stackTracker == 0 ) {
+					boneElement = NULL;
+				}
+			}
+		};
+	}
 }
 
 void LoadTextureDataFromDisk( const char* fileName, TextureDataStorage* storage ) {

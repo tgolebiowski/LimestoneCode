@@ -63,7 +63,7 @@ void CreateTextureBinding( TextureBindingID* texBindID, TextureDataStorage* text
     //stbi_image_free( data );
 }
 
-void CreateRenderBinding( MeshRenderBinding* bindDataStorage, MeshDataStorage* meshDataStorage ) {
+void CreateRenderBinding( MeshGPUBinding* bindDataStorage, MeshGeometryStorage* meshDataStorage, MeshSkinningStorage* meshSkinningStorage ) {
 	GLuint glVBOPtr;
 	glGenBuffers( 1, &glVBOPtr );
 	glBindBuffer( GL_ARRAY_BUFFER, glVBOPtr );
@@ -187,7 +187,7 @@ void CreateShaderProgram( ShaderProgramBinding* bindDataStorage, const char* ver
     glDeleteShader( fragShader );
 }
 
-void RenderBoundData( MeshRenderBinding* meshBinding, ShaderProgramBinding* programBinding, ShaderProgramParams params ) {
+void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* programBinding, ShaderProgramParams params ) {
 	//Flush errors
     //while( glGetError() != GL_NO_ERROR ){};
 

@@ -1,5 +1,5 @@
 struct GameMemory {
-    MeshRenderBinding renderBinding;
+    MeshGPUBinding renderBinding;
     ShaderProgramBinding shader;
     ShaderProgramParams programParams;
     Mat4 m1, m2;
@@ -17,9 +17,14 @@ void GameInit( MemorySlab* gameMemory ) {
 
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
 
-    MeshDataStorage data;
+    Bone bone;
+
+    MeshGeometryStorage data;
+    MeshSkinningStorage sData;
+    Armature armature;
     TextureDataStorage tData, pData;
     LoadMeshDataFromDisk( "Data/Pointy.dae", &data );
+    LoadMeshSkinningDataFromDisk( "Data/ComplexSkeletonDebug.dae", &sData, &armature );
     LoadTextureDataFromDisk( "Data/Textures/green_texture.png", &tData );
     LoadTextureDataFromDisk( "Data/Textures/pink_texture.png", &pData );
 

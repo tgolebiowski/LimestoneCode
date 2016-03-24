@@ -1,12 +1,18 @@
 #include "Math3D.h"
 
-struct MeshDataStorage {
+struct MeshGeometryStorage {
 	#define MAXVERTCOUNT 600
 	Vec3 vData[ MAXVERTCOUNT ];
 	float uvData[ MAXVERTCOUNT * 2 ];
 	Vec3 normalData[ MAXVERTCOUNT ];
 	uint32 iData[ 600 ];
 	uint32 dataCount;
+};
+
+struct MeshSkinningStorage {
+	#define MAXBONESPERVERT 4
+	float boneWeightData[ MAXVERTCOUNT * MAXBONESPERVERT ];
+	uint8 boneIndexData[ MAXVERTCOUNT * MAXBONESPERVERT ];
 };
 
 struct TextureDataStorage {
@@ -17,15 +23,31 @@ struct TextureDataStorage {
 };
 
 typedef uint32 TextureBindingID;
-// struct TextureBinding {
-// 	uint32 texBindingID;
-// };
 
-struct MeshRenderBinding {
+struct Bone {
+	Mat4 inverseBindPose;
+	Mat4* currentTransform;
+	Bone* parent;
+	Bone* children[4];
+	char name[32];
+	uint8 childCount;
+};
+
+struct Armature {
+	#define MAXBONES 32
+	Bone allBones[ MAXBONES ];
+	Mat4 boneTransforms[ MAXBONES ];
+	uint8 boneCount;
+};
+
+struct MeshGPUBinding {
 	uint32 dataCount;
 	uint32 vertexDataPtr;
 	uint32 indexDataPtr;
 	uint32 uvDataPtr;
+
+	//uint32 boneWeightDataPtr;
+	//uint32 boneIndexDataPtr;
 };
 
 struct ShaderProgramBinding {
@@ -63,11 +85,11 @@ void CreateEmptyTexture( TextureDataStorage* texDataStorage, uint16 width, uint1
 ------------------------------------------------------------------------------------------------------------------*/
 
 bool InitRenderer( uint16 screen_w, uint16 screen_h );
-void CreateRenderBinding( MeshRenderBinding* bindDataStorage, MeshDataStorage* meshDataStorage );
+void CreateRenderBinding( MeshGPUBinding* bindDataStorage, MeshGeometryStorage* geometryStorage, MeshSkinningStorage* skinningStorage = NULL );
 void CreateShaderProgram( ShaderProgramBinding* bindDataStorage, const char* vertProgramFilePath, const char* fragProgramFilePath );
 void CreateTextureBinding( TextureBindingID* texBindID, TextureDataStorage* textureData );
 
-void RenderBoundData( MeshRenderBinding* renderBinding, ShaderProgramBinding* program, ShaderProgramParams params );
+void RenderBoundData( MeshGPUBinding* renderBinding, ShaderProgramBinding* program, ShaderProgramParams params );
 
 /*------------------------------------------------------------------------------------------------------------------
                                        THINGS FOR THE OS TO IMPLEMENT
@@ -75,5 +97,6 @@ void RenderBoundData( MeshRenderBinding* renderBinding, ShaderProgramBinding* pr
 
 ///Return 0 on success, required buffer length if buffer is too small, or -1 on other OS failure
 int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 bufferLen);
-void LoadMeshDataFromDisk( const char* fileName, MeshDataStorage* meshDataStorage );
+void LoadMeshDataFromDisk( const char* fileName, MeshGeometryStorage* storage );
+void LoadMeshSkinningDataFromDisk( const char* fileName, MeshSkinningStorage* storage, Armature* armature = NULL );
 void LoadTextureDataFromDisk( const char* fileName, TextureDataStorage* dataStorage );
