@@ -5,9 +5,9 @@ struct GameMemory {
     Mat4 m1, m2;
     TextureBindingID greenTexBinding;
     TextureBindingID pinkTexBinding;
-};
 
-static Mat4 rotMat;
+    Armature armature;
+};
 
 void GameInit( MemorySlab* gameMemory ) {
     if( InitRenderer( SCREEN_WIDTH, SCREEN_HEIGHT ) == false ) {
@@ -17,19 +17,17 @@ void GameInit( MemorySlab* gameMemory ) {
 
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
 
-    Bone bone;
+    MeshGeometryData gData;
+    MeshSkinningData sData;
+    TextureData tData, pData;
 
-    MeshGeometryStorage data;
-    MeshSkinningStorage sData;
-    Armature armature;
-    TextureDataStorage tData, pData;
-    LoadMeshDataFromDisk( "Data/Pointy.dae", &data );
-    LoadMeshSkinningDataFromDisk( "Data/ComplexSkeletonDebug.dae", &sData, &armature );
+    LoadMeshDataFromDisk( "Data/Pointy.dae", &gData );
+    LoadMeshSkinningDataFromDisk( "Data/ComplexSkeletonDebug.dae", &sData, &gMem->armature );
     LoadTextureDataFromDisk( "Data/Textures/green_texture.png", &tData );
     LoadTextureDataFromDisk( "Data/Textures/pink_texture.png", &pData );
 
     CreateShaderProgram( &gMem->shader, "Data/Shaders/Vert.vert", "Data/Shaders/Frag.frag" );
-    CreateRenderBinding( &gMem->renderBinding, &data );
+    CreateRenderBinding( &gMem->renderBinding, &gData );
     CreateTextureBinding( &gMem->greenTexBinding, &tData );
     CreateTextureBinding( &gMem->pinkTexBinding, &pData );
 
@@ -42,9 +40,6 @@ void GameInit( MemorySlab* gameMemory ) {
     params->sampler1 = gMem->greenTexBinding;
     params->sampler2 = gMem->pinkTexBinding;
 
-    SetToIdentity( &rotMat );
-    SetRotation( &rotMat, 0.0f, 1.0f, 0.0f, 3.1415926f / 128.0f );
-
     Mat4 m;
     SetToIdentity( &m );
     SetRotation( &m, 1.0f, 0.0f, 0.0f, 3.1415926 / 8.0f );
@@ -56,7 +51,7 @@ void GameInit( MemorySlab* gameMemory ) {
 bool Update( MemorySlab* gameMemory ) {
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
 
-    *gMem->programParams.modelMatrix = MultMatrix( *gMem->programParams.modelMatrix, rotMat );
+    //*gMem->programParams.modelMatrix = MultMatrix( *gMem->programParams.modelMatrix, rotMat );
 
     return true;
 }
@@ -71,9 +66,10 @@ void Render( MemorySlab* gameMemory ) {
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     RenderBoundData( &gMem->renderBinding, &gMem->shader, gMem->programParams );
+    RenderArmatureAsLines( &gMem->armature );
 
-    //RenderGLMeshBinding( &baseOrthoMat, &meshBinding1, &shader1, texSet1 );
-    //RenderSkeletonAsLines( &skeleton1, &meshData1.modelMatrix );
+    Vec3 lineTest [4] = { { -0.5, -0.5, 0.0 }, { 0.5, 0.5, 0.0 }, { -0.5, 0.5, 0.0 }, { 0.5, -0.5, 0.0 } };
+    RenderDebugLines( (float*)&lineTest[0], 4 );
 
     //glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 

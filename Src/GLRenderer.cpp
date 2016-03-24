@@ -35,10 +35,26 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
         printf( "Initialized OpenGL\n" );
     }
 
+    CreateShaderProgram( &rendererStorage.pShader, "Data/Shaders/Line.vert", "Data/Shaders/Line.frag" );
+
+    //Initialization for line primitives
+    GLuint glLineDataPtr, glLineIndexPtr;
+    glGenBuffers( 1, &glLineDataPtr );
+    glGenBuffers( 1, &glLineIndexPtr );
+    rendererStorage.lineDataPtr = glLineDataPtr;
+    rendererStorage.lineIDataPtr = glLineIndexPtr;
+
+    GLuint sequentialIndexBuffer[64];
+    for( uint8 i = 0; i < 64; i++ ) {
+        sequentialIndexBuffer[i] = i;
+    }
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, glLineIndexPtr );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, 64 * sizeof(GLuint), &sequentialIndexBuffer[0], GL_STATIC_DRAW );
+
     return true;
 }
 
-void CreateTextureBinding( TextureBindingID* texBindID, TextureDataStorage* textureData ) {
+void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData ) {
 	GLenum pixelFormat;
     if( textureData->channelsPerPixel == 3 ) {
         pixelFormat = GL_RGB;
@@ -63,7 +79,7 @@ void CreateTextureBinding( TextureBindingID* texBindID, TextureDataStorage* text
     //stbi_image_free( data );
 }
 
-void CreateRenderBinding( MeshGPUBinding* bindDataStorage, MeshGeometryStorage* meshDataStorage, MeshSkinningStorage* meshSkinningStorage ) {
+void CreateRenderBinding( MeshGPUBinding* bindDataStorage, MeshGeometryData* meshDataStorage, MeshSkinningData* meshSkinningStorage ) {
 	GLuint glVBOPtr;
 	glGenBuffers( 1, &glVBOPtr );
 	glBindBuffer( GL_ARRAY_BUFFER, glVBOPtr );
@@ -233,4 +249,24 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
     //glBindTexture( GL_TEXTURE_2D, 0 );
     //clear shader
     //glUseProgram( (GLuint)NULL );
+}
+
+void RenderDebugLines( float* vertexData, uint8 dataCount ) {
+    glUseProgram( rendererStorage.pShader.programID );
+
+    Mat4 i; SetToIdentity( &i );
+    glUniformMatrix4fv( rendererStorage.pShader.modelMatrixUniformPtr, 1, false, (float*)&i.m[0] );
+    glUniformMatrix4fv( rendererStorage.pShader.cameraMatrixUniformPtr, 1, false, (float*)&i.m[0] );
+
+    glEnableVertexAttribArray( rendererStorage.pShader.positionAttribute );
+    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage.lineDataPtr );
+    glBufferData( GL_ARRAY_BUFFER, dataCount * 3 * sizeof(float), (GLfloat*)vertexData, GL_DYNAMIC_DRAW );
+    glVertexAttribPointer( rendererStorage.pShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage.lineIDataPtr );
+    glDrawElements( GL_LINES, dataCount, GL_UNSIGNED_INT, NULL );
+}
+
+void RenderArmatureAsLines( Armature* armature ) {
+
 }

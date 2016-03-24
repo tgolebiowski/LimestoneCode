@@ -4,6 +4,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <assert.h>
+#include <functional>
 #include "tinyxml2.h"
 #include "tinyxml2.cpp"
 
@@ -244,7 +245,7 @@ void TextToNumberConversion( char* textIn, float* numbersOut ) {
 	} while( *end != 0 );
 };
 
-void LoadMeshDataFromDisk( const char* fileName, MeshGeometryStorage* storage ) {
+void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage ) {
 	tinyxml2::XMLDocument colladaDoc;
 	colladaDoc.LoadFile( fileName );
 
@@ -331,7 +332,7 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryStorage* storage ) 
 	};
 }
 
-void LoadMeshSkinningDataFromDisk( const char* fileName, MeshSkinningStorage* storage, Armature* armature ) {
+void LoadMeshSkinningDataFromDisk( const char* fileName, MeshSkinningData* storage, Armature* armature ) {
 	tinyxml2::XMLDocument colladaDoc;
 	colladaDoc.LoadFile( fileName );
 
@@ -359,6 +360,9 @@ void LoadMeshSkinningDataFromDisk( const char* fileName, MeshSkinningStorage* st
 		Bone* boneStack[ MAXBONES ];
 		tinyxml2::XMLElement* siblingStack[ MAXBONES ];
 
+		//TODO: clean up into one big thing that uses recursion
+		//TODO: combine parsing recursive function, and bind pose thing into one thing
+		//TODO: recursive lambda rather than messy stack stuff
 		//Parsing basic data from XML
 		armature->boneCount = 0;
 		tinyxml2::XMLElement* boneElement = armatureNode->FirstChildElement( "node" ); //->FirstChildElement( "node" );
@@ -374,6 +378,7 @@ void LoadMeshSkinningDataFromDisk( const char* fileName, MeshSkinningStorage* st
 			}
 			else { 
 				armatureBone->parent = NULL; 
+				armature->rootBone = armatureBone;
 			}
 			armature->boneCount++;
 
@@ -385,6 +390,7 @@ void LoadMeshSkinningDataFromDisk( const char* fileName, MeshSkinningStorage* st
 			strcpy( &matrixTextData[0], matrixElement->FirstChild()->ToText()->Value() );
 
 			TextToNumberConversion( matrixTextData, matrixData );
+			//Note: this is only local transform data, but its being saved in inverse bind pose matrix for now
 			memcpy( &armatureBone->inverseBindPose.m[0][0], &matrixData[0], sizeof(float) * 16 );
 
 			if( boneElement->FirstChildElement( "node" ) != NULL ) {
@@ -409,10 +415,28 @@ void LoadMeshSkinningDataFromDisk( const char* fileName, MeshSkinningStorage* st
 				}
 			}
 		};
+
+		//Calculating Bind Pose matricies
+		std::function< void ( Bone*, Mat4 ) > SetBindMatrix = [&]( Bone* bone, Mat4 parentBindPoseMatrix ) {
+			//This is taking the local transform to the bind pose
+			bone->inverseBindPose = MultMatrix( parentBindPoseMatrix, bone->inverseBindPose );
+
+			for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
+				SetBindMatrix( bone->children[ childIndex ], bone->inverseBindPose );
+			}
+		};
+		Mat4 i; SetToIdentity( &i );
+		SetBindMatrix( armature->rootBone, i );
+
+		//Actually invert matricies so they are finally inverse-bind-pose
+		for( uint8 boneIndex = 0; boneIndex < armature->boneCount; boneIndex++ ) {
+			Bone* bone = &armature->allBones[ boneIndex ];
+			bone->inverseBindPose = InverseMatrix( bone->inverseBindPose );
+		}
 	}
 }
 
-void LoadTextureDataFromDisk( const char* fileName, TextureDataStorage* storage ) {
+void LoadTextureDataFromDisk( const char* fileName, TextureData* storage ) {
     //unsigned char* data = stbi_load( fileName, &texData->width, &texData->height, &n, 0 );
     storage->texData = (uint8*)stbi_load( fileName, (int*)&storage->width, (int*)&storage->height, (int*)&storage->channelsPerPixel, 0 );
     if( storage->texData == NULL ) {
