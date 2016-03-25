@@ -391,7 +391,9 @@ void LoadMeshSkinningDataFromDisk( const char* fileName, MeshSkinningData* stora
 
 			TextToNumberConversion( matrixTextData, matrixData );
 			//Note: this is only local transform data, but its being saved in inverse bind pose matrix for now
-			memcpy( &armatureBone->inverseBindPose.m[0][0], &matrixData[0], sizeof(float) * 16 );
+			Mat4 m;
+			memcpy( &m.m[0][0], &matrixData[0], sizeof(float) * 16 );
+			armatureBone->inverseBindPose = TransposeMatrix( m );
 
 			if( boneElement->FirstChildElement( "node" ) != NULL ) {
 				tinyxml2::XMLElement* nextElement = boneElement->FirstChildElement( "node" );

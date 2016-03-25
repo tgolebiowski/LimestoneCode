@@ -69,12 +69,11 @@ struct ShaderProgramParams {
 };
 
 struct RendererThings {
-	//Data for rendering lines as a debugging tool
-	float lineData[64];
 	ShaderProgramBinding pShader;
+
+	//Data for rendering lines as a debugging tool
 	uint32 lineDataPtr;
 	uint32 lineIDataPtr;
-
 };
 static RendererThings rendererStorage;
 
@@ -91,8 +90,8 @@ void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData
 
 void RenderBoundData( MeshGPUBinding* renderBinding, ShaderProgramBinding* program, ShaderProgramParams params );
 
-void RenderDebugLines( float* vertexData, uint8 vertexCount );
-void RenderArmatureAsLines( Armature* armature );
+void RenderDebugLines( float* vertexData, uint8 vertexCount, Mat4 transform );
+void RenderArmatureAsLines( Armature* armature, Mat4 transform );
 
 //TODO: figure out if this is useful or not
 //Hypothetical ease-of-use idea, you always want renderbinding but only sometimes care to store the mesh data anywhere other

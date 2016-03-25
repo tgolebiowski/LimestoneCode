@@ -251,11 +251,11 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
     //glUseProgram( (GLuint)NULL );
 }
 
-void RenderDebugLines( float* vertexData, uint8 dataCount ) {
+void RenderDebugLines( float* vertexData, uint8 dataCount, Mat4 transform ) {
     glUseProgram( rendererStorage.pShader.programID );
 
     Mat4 i; SetToIdentity( &i );
-    glUniformMatrix4fv( rendererStorage.pShader.modelMatrixUniformPtr, 1, false, (float*)&i.m[0] );
+    glUniformMatrix4fv( rendererStorage.pShader.modelMatrixUniformPtr, 1, false, (float*)&transform.m[0] );
     glUniformMatrix4fv( rendererStorage.pShader.cameraMatrixUniformPtr, 1, false, (float*)&i.m[0] );
 
     glEnableVertexAttribArray( rendererStorage.pShader.positionAttribute );
@@ -267,6 +267,28 @@ void RenderDebugLines( float* vertexData, uint8 dataCount ) {
     glDrawElements( GL_LINES, dataCount, GL_UNSIGNED_INT, NULL );
 }
 
-void RenderArmatureAsLines( Armature* armature ) {
+void RenderArmatureAsLines( Armature* armature, Mat4 transform ) {
+    uint8 dataCount = 0;
+    Vec3 linePositions [64];
 
+    for( uint8 boneIndex = 0; boneIndex < armature->boneCount; boneIndex++ ) {
+        Bone* bone = &armature->allBones[ boneIndex ];
+        Mat4 bindPosition = InverseMatrix( bone->inverseBindPose );
+
+        for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
+            Bone* child = bone->children[ childIndex ];
+            Mat4 childBindMat = InverseMatrix( child->inverseBindPose );
+
+            Vec3 p1, p2;
+            p1 = { 0.0f, 0.0f, 0.0f };
+            p2 = p1;
+            p1 = MultVec( bindPosition, p1 );
+            p2 = MultVec( childBindMat, p2 );
+
+            linePositions[ dataCount++ ] = p1;
+            linePositions[ dataCount++ ] = p2;
+        }
+    }
+
+    RenderDebugLines( (float*)&linePositions[0], dataCount, transform );
 }

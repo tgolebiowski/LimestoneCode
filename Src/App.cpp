@@ -7,6 +7,8 @@ struct GameMemory {
     TextureBindingID pinkTexBinding;
 
     Armature armature;
+    Mat4 debugArmMat;
+    Mat4 rotMat;
 };
 
 void GameInit( MemorySlab* gameMemory ) {
@@ -42,8 +44,13 @@ void GameInit( MemorySlab* gameMemory ) {
 
     Mat4 m;
     SetToIdentity( &m );
-    SetRotation( &m, 1.0f, 0.0f, 0.0f, 3.1415926 / 8.0f );
+    SetRotation( &m, 1.0f, 0.0f, 0.0f, PI / 8.0f );
     *gMem->programParams.modelMatrix = MultMatrix( gMem->m1, m );
+
+    SetToIdentity( &gMem->rotMat ); SetToIdentity( &gMem->debugArmMat );
+    SetRotation( &gMem->rotMat, 0.0f, 1.0f, 0.0f, PI / 128.0f );
+    SetScale( &gMem->debugArmMat, 0.25, 0.25, 0.25 );
+    SetTranslation( &gMem->debugArmMat, 0.0f, -0.75, 0.0 );
 
     return;
 }
@@ -51,7 +58,7 @@ void GameInit( MemorySlab* gameMemory ) {
 bool Update( MemorySlab* gameMemory ) {
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
 
-    //*gMem->programParams.modelMatrix = MultMatrix( *gMem->programParams.modelMatrix, rotMat );
+    gMem->debugArmMat = MultMatrix( gMem->debugArmMat, gMem->rotMat );
 
     return true;
 }
@@ -65,11 +72,8 @@ void Render( MemorySlab* gameMemory ) {
 
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    RenderBoundData( &gMem->renderBinding, &gMem->shader, gMem->programParams );
-    RenderArmatureAsLines( &gMem->armature );
-
-    Vec3 lineTest [4] = { { -0.5, -0.5, 0.0 }, { 0.5, 0.5, 0.0 }, { -0.5, 0.5, 0.0 }, { 0.5, -0.5, 0.0 } };
-    RenderDebugLines( (float*)&lineTest[0], 4 );
+    //RenderBoundData( &gMem->renderBinding, &gMem->shader, gMem->programParams );
+    RenderArmatureAsLines( &gMem->armature, gMem->debugArmMat );
 
     //glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 

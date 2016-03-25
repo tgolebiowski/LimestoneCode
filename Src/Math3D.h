@@ -133,6 +133,17 @@ void SetRotation( Mat4* mtx, float x, float y, float z, float angle) {
 	mtx->m[3][0] = 0.0f; mtx->m[3][1] = 0.0f; mtx->m[3][1] = 0.0f;	mtx->m[3][3] = 1.0f;
 }
 
+Mat4 TransposeMatrix( Mat4 m ) {
+	Mat4 r;
+	for( uint8 y = 0; y < 4; y++ ) {
+		for( uint8 x = 0; x < 4; x++ ) {
+			r[y][x] = m[x][y];
+		}
+	}
+
+	return r;
+}
+
 Mat4 MultMatrix(const Mat4 m, const Mat4 m2) {
 	Mat4 r;
 	r.m[0][0] = m.m[0][0] * m2.m[0][0] + m.m[0][1] * m2.m[1][0] + m.m[0][2] * m2.m[2][0] + m.m[0][3] * m2.m[3][0];
