@@ -5,8 +5,8 @@
 #include <windows.h>
 #include <assert.h>
 #include <functional>
-#include "tinyxml2.h"
-#include "tinyxml2.cpp"
+#include "tinyxml2/tinyxml2.h"
+#include "tinyxml2/tinyxml2.cpp"
 
 #define GLEW_STATIC
 #include "OpenGL/glew.h"
@@ -335,6 +335,12 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage ) {
 void LoadMeshSkinningDataFromDisk( const char* fileName, MeshSkinningData* storage, Armature* armature ) {
 	tinyxml2::XMLDocument colladaDoc;
 	colladaDoc.LoadFile( fileName );
+
+	//Skinning Data
+	{
+		tinyxml2::XMLElement* controllerElement = colladaDoc.FirstChildElement( "library_controllers" )->FirstChildElement( "controllers" );
+
+	}
 
 	//Armature
 	{

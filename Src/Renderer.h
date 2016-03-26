@@ -69,14 +69,20 @@ struct ShaderProgramParams {
 };
 
 struct RendererThings {
-	ShaderProgramBinding pShader;
+	Mat4 baseProjectionMatrix;
+	Mat4 cameraTransform;
 
+	ShaderProgramBinding pShader;
 	//Data for rendering lines as a debugging tool
 	uint32 lineDataPtr;
 	uint32 lineIDataPtr;
+	//Data for rendering circles/dots as a debugging tool
+	uint32 circleDataPtr;
+	uint32 circleIDataPtr;
 };
 static RendererThings rendererStorage;
 
+void SetOrthoProjectionMatrix( float width, float height, float nearPlane, float farPlane );
 void CreateEmptyTexture( TextureData* texDataStorage, uint16 width, uint16 height );
 
 /*-----------------------------------------------------------------------------------------------------------------
@@ -90,8 +96,9 @@ void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData
 
 void RenderBoundData( MeshGPUBinding* renderBinding, ShaderProgramBinding* program, ShaderProgramParams params );
 
-void RenderDebugLines( float* vertexData, uint8 vertexCount, Mat4 transform );
-void RenderArmatureAsLines( Armature* armature, Mat4 transform );
+void RenderDebugCircle( Vec3 position, float radius = 6.0f , Vec3 color = { 1.0f, 1.0f, 1.0f} );
+void RenderDebugLines( float* vertexData, uint8 vertexCount, Mat4 transform, Vec3 color = { 1.0f, 1.0f, 1.0f } );
+void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color = { 1.0f, 1.0f, 1.0f } );
 
 //TODO: figure out if this is useful or not
 //Hypothetical ease-of-use idea, you always want renderbinding but only sometimes care to store the mesh data anywhere other

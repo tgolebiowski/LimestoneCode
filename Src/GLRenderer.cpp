@@ -8,6 +8,9 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     glGetIntegerv( GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &k );
     printf("Max texture units: %d\n", k);
 
+    glGetIntegerv( GL_MAX_VERTEX_ATTRIBS, &k );
+    printf( "Max Vertex Attributes: %d\n", k );
+
     //Initialize clear color
     glClearColor( 0.1f, 0.1f, 0.1f, 1.0f );
 
@@ -17,10 +20,8 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
 
     glViewport( 0.0f, 0.0f, screen_w, screen_h );
 
-    float screenAspectRatio = screen_w / screen_h;
-    //InitOrthoCameraMatrix( &baseOrthoMat, 20.0f * screenAspectRatio, 20.0f, -20.0f, 20.0f );
-    //InitOrthoCameraMatrix( &baseOrthoMat, screen_w, screen_h, -1.0f, 1.0f );
-    //cameraPosition = {0.0f, 0.0f, 0.0f};
+    SetToIdentity( &rendererStorage.baseProjectionMatrix );
+    SetToIdentity( &rendererStorage.cameraTransform );
 
     //Initialize framebuffer
     //CreateFrameBuffer( &myFramebuffer );
@@ -37,7 +38,7 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
 
     CreateShaderProgram( &rendererStorage.pShader, "Data/Shaders/Line.vert", "Data/Shaders/Line.frag" );
 
-    //Initialization for line primitives
+    //Initialization of data for line primitives
     GLuint glLineDataPtr, glLineIndexPtr;
     glGenBuffers( 1, &glLineDataPtr );
     glGenBuffers( 1, &glLineIndexPtr );
@@ -51,7 +52,44 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, glLineIndexPtr );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, 64 * sizeof(GLuint), &sequentialIndexBuffer[0], GL_STATIC_DRAW );
 
+    //Initialization of data for circle primitives
+    GLuint glCircleDataPtr, glCircleIndexPtr;
+    glGenBuffers( 1, &glCircleDataPtr );
+    glGenBuffers( 1, &glCircleIndexPtr );
+    rendererStorage.circleDataPtr = glCircleDataPtr;
+    rendererStorage.circleIDataPtr = glCircleIndexPtr;
+
+    GLfloat circleVertexData[ 18 * 3 ];
+    circleVertexData[0] = 0.0f;
+    circleVertexData[1] = 0.0f;
+    circleVertexData[2] = 0.0f;
+    for( uint8 i = 0; i < 17; i++ ) {
+        GLfloat x, y;
+        float angle = (2 * PI / 16.0f) * (float)i;
+        x = cosf( angle );
+        y = sinf( angle );
+        circleVertexData[ (i + 1) * 3 ] = x;
+        circleVertexData[ (i + 1) * 3 + 1 ] = y;
+        circleVertexData[ (i + 1) * 3 + 2 ] = 0.0f;
+    }
+    glBindBuffer( GL_ARRAY_BUFFER, glCircleDataPtr );
+    glBufferData( GL_ARRAY_BUFFER, 18 * 3 * sizeof(GLfloat), &circleVertexData[0], GL_STATIC_DRAW );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, glCircleIndexPtr );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, 18 * sizeof(GLuint), &sequentialIndexBuffer[0], GL_STATIC_DRAW );
+
     return true;
+}
+
+void SetOrthoProjectionMatrix( float width, float height, float nearPlane, float farPlane ) {
+    Mat4* m = &rendererStorage.baseProjectionMatrix;
+    float halfWidth = width * 0.5f;
+    float halfHeight = height * 0.5f;
+    float depth = farPlane - nearPlane;
+
+    m->m[0][0] = 1.0f / halfWidth; m->m[0][1] = 0.0f; m->m[0][2] = 0.0f; m->m[0][3] = 0.0f;
+    m->m[1][0] = 0.0f; m->m[1][1] = 1.0f / halfHeight; m->m[1][2] = 0.0f; m->m[1][3] = 0.0f;
+    m->m[2][0] = 0.0f; m->m[2][1] = 0.0f; m->m[2][2] = 2.0f / depth; m->m[2][3] = 0.0f;
+    m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = -(farPlane + nearPlane) / depth; m->m[3][3] = 1.0f;
 }
 
 void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData ) {
@@ -210,7 +248,7 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
     //Bind Shader
     glUseProgram( programBinding->programID );
     glUniformMatrix4fv( programBinding->modelMatrixUniformPtr, 1, false, (float*)params.modelMatrix->m[0] );
-    glUniformMatrix4fv( programBinding->cameraMatrixUniformPtr, 1, false, (float*)params.cameraMatrix->m[0] );
+    glUniformMatrix4fv( programBinding->cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.baseProjectionMatrix.m[0] );
     //glUniform1i( program->isArmatureAnimatedUniform, (int)mesh->isArmatureAnimated );
 
     //Set vertex data
@@ -251,12 +289,29 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
     //glUseProgram( (GLuint)NULL );
 }
 
-void RenderDebugLines( float* vertexData, uint8 dataCount, Mat4 transform ) {
+void RenderDebugCircle( Vec3 position, float radius, Vec3 color ) {
     glUseProgram( rendererStorage.pShader.programID );
 
-    Mat4 i; SetToIdentity( &i );
+    Mat4 p; SetToIdentity( &p );
+    SetTranslation( &p, position.x, position.y, position.z ); SetScale( &p, radius, radius, radius );
+    glUniformMatrix4fv( rendererStorage.pShader.modelMatrixUniformPtr, 1, false, (float*)&p.m[0] );
+    glUniformMatrix4fv( rendererStorage.pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.baseProjectionMatrix.m[0] );
+    glUniform4f( glGetUniformLocation( rendererStorage.pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
+
+    glEnableVertexAttribArray( rendererStorage.pShader.positionAttribute );
+    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage.circleDataPtr );
+    glVertexAttribPointer( rendererStorage.pShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage.circleIDataPtr );
+    glDrawElements( GL_TRIANGLE_FAN, 18, GL_UNSIGNED_INT, NULL );
+}
+
+void RenderDebugLines( float* vertexData, uint8 dataCount, Mat4 transform, Vec3 color ) {
+    glUseProgram( rendererStorage.pShader.programID );
+
     glUniformMatrix4fv( rendererStorage.pShader.modelMatrixUniformPtr, 1, false, (float*)&transform.m[0] );
-    glUniformMatrix4fv( rendererStorage.pShader.cameraMatrixUniformPtr, 1, false, (float*)&i.m[0] );
+    glUniformMatrix4fv( rendererStorage.pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.baseProjectionMatrix.m[0] );
+    glUniform4f( glGetUniformLocation( rendererStorage.pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
 
     glEnableVertexAttribArray( rendererStorage.pShader.positionAttribute );
     glBindBuffer( GL_ARRAY_BUFFER, rendererStorage.lineDataPtr );
@@ -267,7 +322,7 @@ void RenderDebugLines( float* vertexData, uint8 dataCount, Mat4 transform ) {
     glDrawElements( GL_LINES, dataCount, GL_UNSIGNED_INT, NULL );
 }
 
-void RenderArmatureAsLines( Armature* armature, Mat4 transform ) {
+void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color ) {
     uint8 dataCount = 0;
     Vec3 linePositions [64];
 
@@ -290,5 +345,5 @@ void RenderArmatureAsLines( Armature* armature, Mat4 transform ) {
         }
     }
 
-    RenderDebugLines( (float*)&linePositions[0], dataCount, transform );
+    RenderDebugLines( (float*)&linePositions[0], dataCount, transform, color );
 }
