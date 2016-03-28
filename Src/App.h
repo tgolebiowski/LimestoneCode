@@ -29,6 +29,8 @@ struct MemorySlab {
 -----------------------------------------------------------------------------*/
 ///Set inputted values to Normalized Window Coordinates (0,0 is center, ranges go from -1 to +1)
 void GetMousePosition( float* x, float* y );
+///Currently limiting it to Ascii Table
+bool IsKeyDown( uint8 keyChar );
 
 /* --------------------------------------------------------------------------
 	                      STUFF THE GAME PROVIDES THE OS

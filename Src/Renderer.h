@@ -96,7 +96,7 @@ void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData
 
 void RenderBoundData( MeshGPUBinding* renderBinding, ShaderProgramBinding* program, ShaderProgramParams params );
 
-void RenderDebugCircle( Vec3 position, float radius = 6.0f , Vec3 color = { 1.0f, 1.0f, 1.0f} );
+void RenderDebugCircle( Vec3 position, float radius = 1.0f , Vec3 color = { 1.0f, 1.0f, 1.0f} );
 void RenderDebugLines( float* vertexData, uint8 vertexCount, Mat4 transform, Vec3 color = { 1.0f, 1.0f, 1.0f } );
 void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color = { 1.0f, 1.0f, 1.0f } );
 

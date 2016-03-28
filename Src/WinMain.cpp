@@ -201,6 +201,15 @@ void GetMousePosition( float* x, float* y ) {
 	*y = (((float)(mousePosition.y - appInfo.windowPosY)) / ( (float)SCREEN_HEIGHT / 2.0f ) - 1.0f) * -1.0f;
 }
 
+bool IsKeyDown( uint8 keyChar ) {
+	if( keyChar >= 'a' && keyChar <= 'z' ) {
+		keyChar -= ( 'a' - 'A');
+	}
+	short keystate = GetAsyncKeyState( keyChar );
+
+	return ( 1 << 16 ) & keystate;
+}
+
 /*----------------------------------------------------------------------------------------
                        Renderer.h function prototype implementations
 -----------------------------------------------------------------------------------------*/

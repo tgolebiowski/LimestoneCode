@@ -35,18 +35,66 @@ struct AI_Component {
 
 struct AIDataStorage {
 	AI_Component aiEntities[2];
+	uint8 entityCount;
 };
 
 void InitAIComponents( AIDataStorage* storage ) {
-	storage->aiEntities[0].pos = { -0.0f, 0.0f };
-	storage->aiEntities[1].pos = { 0.5f, 0.5f };
+	storage->aiEntities[0].pos = { 1.0f, 3.0f };
+	storage->aiEntities[1].pos = { -1.0f, 3.0f };
+	storage->entityCount = 2;
 }
 
 void UpdateAI( AIDataStorage* storage, Vec3 targetPos ) {
+	for( uint8 entityIndex = 0; entityIndex < storage->entityCount; entityIndex++ ) {
+		AI_Component* e = &storage->aiEntities[ entityIndex ];
+		Vec2 vecToTarget = { targetPos.x - e->pos.x, targetPos.y - e->pos.y };
+		Vec2 normalizedVecTo = vecToTarget; Normalize( &normalizedVecTo );
+		const float factor = 2.0f;
+		float distanceFromTarget = Len( vecToTarget );
+		float ellipseDistance = distanceFromTarget * factor;
 
+		e->moveDir = normalizedVecTo;
+		e->avoidDir = normalizedVecTo;
+
+		for( uint8 otherIndex = 0; otherIndex < storage->entityCount; otherIndex++ ) {
+			if( otherIndex == entityIndex ) continue;
+			AI_Component* o = &storage->aiEntities[ otherIndex ];
+
+			Vec2 vecToTarget_o = { targetPos.x - o->pos.x, targetPos.y - o->pos.y };
+			float targetVecCompareDot = Dot( vecToTarget, vecToTarget_o );
+			if( targetVecCompareDot <= 0.0f ) continue;
+
+			Vec2 awayFromO = { e->pos.x - o->pos.x, e->pos.y - o->pos.y };
+			float distanceFromTarget_o = Len( vecToTarget_o );
+			float distBetween = Len( awayFromO );
+
+			float ellipseDistance_o = distanceFromTarget_o + distBetween;
+			if( ellipseDistance_o <= ellipseDistance ) {
+	            Vec2 normalizedVecTo_O = vecToTarget_o; Normalize( &normalizedVecTo_O );
+	            Vec2 normalizedAwayVec = awayFromO; Normalize( &normalizedAwayVec );
+	            float normalizedDot = 1.0f - Dot( normalizedVecTo, normalizedVecTo_O );
+	            float normalizedE_Dist = ( ellipseDistance_o - distanceFromTarget ) / ( ellipseDistance - distanceFromTarget );
+
+	            e->avoidDir = Slerp2D( e->avoidDir, normalizedAwayVec, normalizedDot * normalizedE_Dist );
+	        }
+		}
+	}
 }
 
 void DebugRenderAI( AIDataStorage* storage ) {
-	Vec2 p1 = storage->aiEntities[0].pos;
-	RenderDebugCircle( { p1.x, p1.y, 0.0f }, 0.025 );
+	Vec3 lineData[64];
+	uint8 lineDataCount = 0;
+	for( uint8 entityIndex = 0; entityIndex < storage->entityCount; entityIndex++ ) {
+		AI_Component* e = &storage->aiEntities[ entityIndex ];
+		Vec2 p1 = storage->aiEntities[entityIndex].pos;
+		RenderDebugCircle( { p1.x, p1.y, 0.0f }, 0.1f );
+
+		lineData[ lineDataCount++ ] = { p1.x, p1.y, 0.0f };
+		lineData[ lineDataCount++ ] = { p1.x + e->moveDir.x * 0.5f, p1.y + e->moveDir.y * 0.5f, 0.0f };
+		lineData[ lineDataCount++ ] = { p1.x, p1.y, 0.0f };
+		lineData[ lineDataCount++ ] = { p1.x + e->avoidDir.x * 0.5f, p1.y + e->avoidDir.y * 0.5f, 0.0f };
+	}
+
+	Mat4 i; SetToIdentity( &i );
+	RenderDebugLines( (float*)&lineData[0], lineDataCount, i );
 }
