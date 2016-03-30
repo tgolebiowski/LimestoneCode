@@ -52,6 +52,7 @@ void UpdateAI( AIDataStorage* storage, Vec3 targetPos ) {
 		const float factor = 2.0f;
 		float distanceFromTarget = Len( vecToTarget );
 		float ellipseDistance = distanceFromTarget * factor;
+		float falloffEllipseDistance = distanceFromTarget * falloffEllipseDistance;
 
 		e->moveDir = normalizedVecTo;
 		e->avoidDir = normalizedVecTo;
@@ -61,40 +62,52 @@ void UpdateAI( AIDataStorage* storage, Vec3 targetPos ) {
 			AI_Component* o = &storage->aiEntities[ otherIndex ];
 
 			Vec2 vecToTarget_o = { targetPos.x - o->pos.x, targetPos.y - o->pos.y };
-			float targetVecCompareDot = Dot( vecToTarget, vecToTarget_o );
-			if( targetVecCompareDot <= 0.0f ) continue;
-
 			Vec2 awayFromO = { e->pos.x - o->pos.x, e->pos.y - o->pos.y };
 			float distanceFromTarget_o = Len( vecToTarget_o );
 			float distBetween = Len( awayFromO );
 
 			float ellipseDistance_o = distanceFromTarget_o + distBetween;
 			if( ellipseDistance_o <= ellipseDistance ) {
-	            Vec2 normalizedVecTo_O = vecToTarget_o; Normalize( &normalizedVecTo_O );
-	            Vec2 normalizedAwayVec = awayFromO; Normalize( &normalizedAwayVec );
-	            float normalizedDot = 1.0f - Dot( normalizedVecTo, normalizedVecTo_O );
-	            float normalizedE_Dist = ( ellipseDistance_o - distanceFromTarget ) / ( ellipseDistance - distanceFromTarget );
+	            //TODO: fix these names, they're awful
+	            float viableDistanceRange = ellipseDistance - distanceFromTarget; 
+	            float comparedDistanceValue = ellipseDistance_o - distanceFromTarget;
 
-	            e->avoidDir = Slerp2D( e->avoidDir, normalizedAwayVec, normalizedDot * normalizedE_Dist );
+	            float normalizedE_Dist = comparedDistanceValue / viableDistanceRange;
+	            float ellipseFalloffStart = ellipseDistance * 0.9;
+	            float edgeFalloffFactor = 1.0f;
+	            if( ellipseDistance_o > ellipseFalloffStart ) {
+	            	edgeFalloffFactor *= ( 1.0f - ( ellipseDistance_o - ellipseFalloffStart ) / ( ellipseDistance - ellipseFalloffStart ) );
+	            	sqrtf( edgeFalloffFactor );
+            	}
+	            
+            	Vec2 normalizedAwayVec = awayFromO; Normalize( &normalizedAwayVec );
+            	e->avoidDir = Slerp2D( e->avoidDir, normalizedAwayVec, normalizedE_Dist * edgeFalloffFactor );
 	        }
 		}
+
+		float moveSpeed = 0.01f;
+		e->pos.x += e->avoidDir.x * moveSpeed;
+		e->pos.y += e->avoidDir.y * moveSpeed;
 	}
 }
 
 void DebugRenderAI( AIDataStorage* storage ) {
-	Vec3 lineData[64];
-	uint8 lineDataCount = 0;
+	Vec3 avoidData[16];
+	Vec3 toVecData[16];
+	uint8 avoidLineDataCount = 0;
+	uint8 toVecLineDataCount = 0;
 	for( uint8 entityIndex = 0; entityIndex < storage->entityCount; entityIndex++ ) {
 		AI_Component* e = &storage->aiEntities[ entityIndex ];
 		Vec2 p1 = storage->aiEntities[entityIndex].pos;
 		RenderDebugCircle( { p1.x, p1.y, 0.0f }, 0.1f );
 
-		lineData[ lineDataCount++ ] = { p1.x, p1.y, 0.0f };
-		lineData[ lineDataCount++ ] = { p1.x + e->moveDir.x * 0.5f, p1.y + e->moveDir.y * 0.5f, 0.0f };
-		lineData[ lineDataCount++ ] = { p1.x, p1.y, 0.0f };
-		lineData[ lineDataCount++ ] = { p1.x + e->avoidDir.x * 0.5f, p1.y + e->avoidDir.y * 0.5f, 0.0f };
+		toVecData[ toVecLineDataCount++ ] = { p1.x, p1.y, 0.0f };
+		toVecData[ toVecLineDataCount++ ] = { p1.x + e->moveDir.x * 0.5f, p1.y + e->moveDir.y * 0.5f, 0.0f };
+		avoidData[ avoidLineDataCount++ ] = { p1.x, p1.y, 0.0f };
+		avoidData[ avoidLineDataCount++ ] = { p1.x + e->avoidDir.x * 0.5f, p1.y + e->avoidDir.y * 0.5f, 0.0f };
 	}
 
 	Mat4 i; SetToIdentity( &i );
-	RenderDebugLines( (float*)&lineData[0], lineDataCount, i );
+	RenderDebugLines( (float*)&toVecData[0], toVecLineDataCount, i, { 0.06, 0.89, 0.06 } );
+	RenderDebugLines( (float*)&avoidData[0], avoidLineDataCount, i, { 0.89, 0.06, 0.06 } );
 }

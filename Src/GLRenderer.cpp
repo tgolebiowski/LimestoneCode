@@ -117,7 +117,7 @@ void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData
     //stbi_image_free( data );
 }
 
-void CreateRenderBinding( MeshGPUBinding* bindDataStorage, MeshGeometryData* meshDataStorage, MeshSkinningData* meshSkinningStorage ) {
+void CreateRenderBinding( MeshGPUBinding* bindDataStorage, MeshGeometryData* meshDataStorage ) {
 	GLuint glVBOPtr;
 	glGenBuffers( 1, &glVBOPtr );
 	glBindBuffer( GL_ARRAY_BUFFER, glVBOPtr );

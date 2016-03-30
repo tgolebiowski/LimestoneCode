@@ -5,14 +5,11 @@ struct MeshGeometryData {
 	Vec3 vData[ MAXVERTCOUNT ];
 	float uvData[ MAXVERTCOUNT * 2 ];
 	Vec3 normalData[ MAXVERTCOUNT ];
-	uint32 iData[ 600 ];
-	uint32 dataCount;
-};
-
-struct MeshSkinningData {
 	#define MAXBONESPERVERT 4
 	float boneWeightData[ MAXVERTCOUNT * MAXBONESPERVERT ];
 	uint8 boneIndexData[ MAXVERTCOUNT * MAXBONESPERVERT ];
+	uint32 iData[ 600 ];
+	uint32 dataCount;
 };
 
 struct TextureData {
@@ -90,7 +87,7 @@ void CreateEmptyTexture( TextureData* texDataStorage, uint16 width, uint16 heigh
 ------------------------------------------------------------------------------------------------------------------*/
 
 bool InitRenderer( uint16 screen_w, uint16 screen_h );
-void CreateRenderBinding( MeshGPUBinding* bindData, MeshGeometryData* geometryStorage, MeshSkinningData* skinningStorage = NULL );
+void CreateRenderBinding( MeshGPUBinding* bindData, MeshGeometryData* geometryStorage );
 void CreateShaderProgram( ShaderProgramBinding* bindData, const char* vertProgramFilePath, const char* fragProgramFilePath );
 void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData );
 
@@ -106,11 +103,11 @@ void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color = { 1
 //LoadRenderBinding( const char fileName, MeshRenderBinding** bindDataStorage, MeshDataStorage** meshDataStorage = NULL );
 
 /*------------------------------------------------------------------------------------------------------------------
-                                       THINGS FOR THE OS TO IMPLEMENT
+                                       THINGS FOR THE OS LAYER TO IMPLEMENT
 --------------------------------------------------------------------------------------------------------------------*/
 
 ///Return 0 on success, required buffer length if buffer is too small, or -1 on other OS failure
 int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 bufferLen);
 void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage );
-void LoadMeshSkinningDataFromDisk( const char* fileName, MeshSkinningData* storage, Armature* armature = NULL );
+void LoadMeshSkinningDataFromDisk( const char* fileName, Armature* armature = NULL );
 void LoadTextureDataFromDisk( const char* fileName, TextureData* texDataStorage );
