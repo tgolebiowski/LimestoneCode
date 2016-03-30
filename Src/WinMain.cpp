@@ -265,80 +265,96 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage ) {
 	tinyxml2::XMLElement* meshNode = colladaDoc.FirstChildElement( "COLLADA" )->FirstChildElement( "library_geometries" )
 	->FirstChildElement( "geometry" )->FirstChildElement( "mesh" );
 
-	int count;
 	char* colladaTextBuffer = NULL;
 	size_t textBufferLen = 0;
-	size_t requiredLen = 0;
+
 	uint16 vCount = 0;
 	uint16 nCount = 0;
 	uint16 uvCount = 0;
 	uint16 indexCount = 0;
-	///TODO: use stack allocation for these to reduce uneeded overhead or support bigger data
-	float rawColladaVertexData[1024];
-	float rawColladaNormalData[1024];
-	float rawColladaUVData[1024];
-	float rawIndexData[1024];
-
-	///TODO: fix weird memory leak thing, cause I keep just using alloca and I could overflow the stack
+	float* rawColladaVertexData;
+	float* rawColladaNormalData;
+	float* rawColladaUVData;
+	float* rawIndexData;
+	///Basic Mesh Geometry Data
 	{
-	    //Vertex p data
 		tinyxml2::XMLNode* colladaVertexArray = meshNode->FirstChildElement( "source" );
 		tinyxml2::XMLElement* vertexFloatArray = colladaVertexArray->FirstChildElement( "float_array" );
-		vertexFloatArray->QueryAttribute( "count", &count );
-		vCount = count / 3;
-		const char* colladaVertArrayVal = vertexFloatArray->FirstChild()->Value();
-		requiredLen = strlen( colladaVertArrayVal );
-		colladaTextBuffer = (char*)alloca( requiredLen + 1 );
-		textBufferLen = requiredLen;
-		memset( colladaTextBuffer, 0, requiredLen );
-		strcpy( colladaTextBuffer, colladaVertArrayVal );
-		TextToNumberConversion( colladaTextBuffer, (float*)&rawColladaVertexData );
-
-	    //Normals data
 		tinyxml2::XMLNode* colladaNormalArray = colladaVertexArray->NextSibling();
 		tinyxml2::XMLElement* normalFloatArray = colladaNormalArray->FirstChildElement( "float_array" );
-		normalFloatArray->QueryAttribute( "count", &count );
-		nCount = count / 3;
-		const char* colladaNormArrayVal = normalFloatArray->FirstChild()->Value();
-		requiredLen = strlen( colladaNormArrayVal );
-		if( requiredLen > textBufferLen ) {
-			colladaTextBuffer = (char*)alloca( requiredLen );
-			textBufferLen = requiredLen;
-		}
-		memset( colladaTextBuffer, 0, requiredLen );
-		strcpy( colladaTextBuffer, colladaNormArrayVal );
-		TextToNumberConversion( colladaTextBuffer, (float*)&rawColladaNormalData );
-
-	    //UV map data
 		tinyxml2::XMLNode* colladaUVMapArray = colladaNormalArray->NextSibling();
 		tinyxml2::XMLElement* uvMapFloatArray = colladaUVMapArray->FirstChildElement( "float_array" );
-		uvMapFloatArray->QueryAttribute( "count", &count );
-		uvCount = count / 2;
+		tinyxml2::XMLElement* meshSrc = meshNode->FirstChildElement( "polylist" );
+		tinyxml2::XMLElement* colladaIndexArray = meshSrc->FirstChildElement( "p" );
+
+		int count;
+		const char* colladaVertArrayVal = vertexFloatArray->FirstChild()->Value();
+		vertexFloatArray->QueryAttribute( "count", &count );
+		vCount = count;
+		const char* colladaNormArrayVal = normalFloatArray->FirstChild()->Value();
+		normalFloatArray->QueryAttribute( "count", &count );
+		nCount = count;
 		const char* colladaUVMapArrayVal = uvMapFloatArray->FirstChild()->Value();
-		requiredLen = strlen( colladaUVMapArrayVal );
-		if( requiredLen > textBufferLen ) {
-			colladaTextBuffer = (char*)alloca( requiredLen );
-			textBufferLen = requiredLen;
-		}
-		memset( colladaTextBuffer, 0, requiredLen );
+		uvMapFloatArray->QueryAttribute( "count", &count );
+		uvCount = count;
+		const char* colladaIndexArrayVal = colladaIndexArray->FirstChild()->Value();
+		meshSrc->QueryAttribute( "count", &count );
+		//Assume this is already triangulated
+		indexCount = count * 3 * 3;
+
+		///TODO: replace this with fmaxf?
+		std::function< size_t (size_t, size_t) > sizeComparison = []( size_t size1, size_t size2 ) -> size_t {
+			if( size1 >= size2 ) return size1;
+			return size2;
+		};
+
+		textBufferLen = strlen( colladaVertArrayVal );
+		textBufferLen = sizeComparison( strlen( colladaNormArrayVal ), textBufferLen );
+		textBufferLen = sizeComparison( strlen( colladaUVMapArrayVal ), textBufferLen );
+		textBufferLen = sizeComparison( strlen( colladaIndexArrayVal ), textBufferLen );
+		colladaTextBuffer = (char*)alloca( textBufferLen );
+		memset( colladaTextBuffer, 0, textBufferLen );
+		rawColladaVertexData = (float*)alloca( sizeof(float) * vCount );
+		rawColladaNormalData = (float*)alloca( sizeof(float) * nCount );
+		rawColladaUVData = (float*)alloca( sizeof(float) * uvCount );
+		rawIndexData = (float*)alloca( sizeof(float) * indexCount );
+
+		//Reading Vertex position data
+		strcpy( colladaTextBuffer, colladaVertArrayVal );
+		rawColladaVertexData = (float*)alloca( sizeof(float) * vCount );
+		TextToNumberConversion( colladaTextBuffer, rawColladaVertexData );
+
+	    //Reading Normals data
+		memset( colladaTextBuffer, 0, textBufferLen );
+		strcpy( colladaTextBuffer, colladaNormArrayVal );
+		rawColladaNormalData = (float*)alloca( sizeof(float) * nCount );
+		TextToNumberConversion( colladaTextBuffer, rawColladaNormalData );
+
+	    //Reading UV map data
+		memset( colladaTextBuffer, 0, textBufferLen );
 		strcpy( colladaTextBuffer, colladaUVMapArrayVal );
-		TextToNumberConversion( colladaTextBuffer, (float*)&rawColladaUVData );
+		rawColladaUVData = (float*)alloca( sizeof(float) * uvCount );
+		TextToNumberConversion( colladaTextBuffer, rawColladaUVData );
 
 	    //Reading index data
-		tinyxml2::XMLElement* meshSrc = meshNode->FirstChildElement( "polylist" );
-		meshSrc->QueryAttribute( "count", &count );
-		indexCount = count * 3 * 3;
-		tinyxml2::XMLElement* colladaIndexArray = meshSrc->FirstChildElement( "p" );
-		const char* colladaIndexArrayVal = colladaIndexArray->FirstChild()->Value();
-		requiredLen = strlen( colladaIndexArrayVal );
-		if( requiredLen > textBufferLen ) {
-			colladaTextBuffer = (char*)alloca( requiredLen );
-			textBufferLen = requiredLen;
-		}
-		memset( colladaTextBuffer, 0, requiredLen );
-		strcpy( &colladaTextBuffer[0], colladaIndexArray->FirstChild()->Value() );
-		TextToNumberConversion( colladaTextBuffer, (float*)&rawIndexData );
+		memset( colladaTextBuffer, 0, textBufferLen );
+		strcpy( colladaTextBuffer, colladaIndexArrayVal );
+		rawIndexData = (float*)alloca( sizeof(float) * indexCount );
+		TextToNumberConversion( colladaTextBuffer, rawIndexData );
 	}
+
+	float* boneWeightData = NULL;
+	uint8* boneIndexData = NULL;
+	//Skinning Data
+	{
+		tinyxml2::XMLElement* libControllers = colladaDoc.FirstChildElement( "library_controllers" );
+		if( libControllers == NULL ) goto skinningExit;
+		tinyxml2::XMLElement* controllerElement = libControllers->FirstChildElement( "controllers" );
+		if( controllerElement == NULL ) goto skinningExit;
+
+
+	}
+	skinningExit:
 	
 	storage->dataCount = 0;
 	uint16 counter = 0;
@@ -375,12 +391,6 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage ) {
 void LoadMeshSkinningDataFromDisk( const char* fileName, Armature* armature ) {
 	tinyxml2::XMLDocument colladaDoc;
 	colladaDoc.LoadFile( fileName );
-
-	//Skinning Data
-	{
-		tinyxml2::XMLElement* controllerElement = colladaDoc.FirstChildElement( "library_controllers" )->FirstChildElement( "controllers" );
-
-	}
 
 	//Armature
 	{
