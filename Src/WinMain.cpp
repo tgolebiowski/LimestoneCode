@@ -35,6 +35,7 @@ struct AppInfo {
 	uint16 windowPosY;
 	bool running = true;
 	bool isFullScreen = false;
+
 	DWORD mSecsPerFrame = 1000 / 60;
 };
 static AppInfo appInfo;
@@ -254,7 +255,7 @@ void TextToNumberConversion( char* textIn, float* numbersOut ) {
 	} while( *end != 0 );
 };
 
-void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage ) {
+void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Armature* armature ) {
 	tinyxml2::XMLDocument colladaDoc;
 	colladaDoc.LoadFile( fileName );
 	//if( colladaDoc == NULL ) {
@@ -321,79 +322,86 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage ) {
 
 		//Reading Vertex position data
 		strcpy( colladaTextBuffer, colladaVertArrayVal );
-		rawColladaVertexData = (float*)alloca( sizeof(float) * vCount );
 		TextToNumberConversion( colladaTextBuffer, rawColladaVertexData );
 
 	    //Reading Normals data
 		memset( colladaTextBuffer, 0, textBufferLen );
 		strcpy( colladaTextBuffer, colladaNormArrayVal );
-		rawColladaNormalData = (float*)alloca( sizeof(float) * nCount );
 		TextToNumberConversion( colladaTextBuffer, rawColladaNormalData );
 
 	    //Reading UV map data
 		memset( colladaTextBuffer, 0, textBufferLen );
 		strcpy( colladaTextBuffer, colladaUVMapArrayVal );
-		rawColladaUVData = (float*)alloca( sizeof(float) * uvCount );
 		TextToNumberConversion( colladaTextBuffer, rawColladaUVData );
 
 	    //Reading index data
 		memset( colladaTextBuffer, 0, textBufferLen );
 		strcpy( colladaTextBuffer, colladaIndexArrayVal );
-		rawIndexData = (float*)alloca( sizeof(float) * indexCount );
 		TextToNumberConversion( colladaTextBuffer, rawIndexData );
 	}
 
-	float* boneWeightData = NULL;
-	uint8* boneIndexData = NULL;
+	float* rawBoneWeightData = NULL;
+	float* rawBoneIndexData = NULL;
 	//Skinning Data
 	{
-		tinyxml2::XMLElement* libControllers = colladaDoc.FirstChildElement( "library_controllers" );
+		tinyxml2::XMLElement* libControllers = colladaDoc.FirstChildElement( "COLLADA" )->FirstChildElement( "library_controllers" );
 		if( libControllers == NULL ) goto skinningExit;
-		tinyxml2::XMLElement* controllerElement = libControllers->FirstChildElement( "controllers" );
+		tinyxml2::XMLElement* controllerElement = libControllers->FirstChildElement( "controller" );
 		if( controllerElement == NULL ) goto skinningExit;
 
+		tinyxml2::XMLNode* vertexWeightDataArray = controllerElement->FirstChild()->FirstChild()->NextSibling()->NextSibling()->NextSibling();
+		tinyxml2::XMLNode* vertexBoneIndexDataArray = vertexWeightDataArray->NextSibling()->NextSibling();
+		tinyxml2::XMLNode* vCountArray = vertexBoneIndexDataArray->FirstChildElement( "vcount" );
+		tinyxml2::XMLNode* vArray = vertexBoneIndexDataArray->FirstChildElement( "v" );
+		const char* boneWeightsData = vertexWeightDataArray->FirstChild()->FirstChild()->Value();
+		const char* vCountArrayData = vCountArray->FirstChild()->Value();
+		const char* vArrayData = vArray->FirstChild()->Value();
 
+		float* colladaBoneWeightData = NULL;
+		float* colladaIndexData = NULL;
+		float* colladaBoneInfluenceCounts = NULL;
+		///Allocating this much space is overkill, but is it worth calculating exactly how much 
+		colladaBoneWeightData = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
+		colladaIndexData = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
+		colladaBoneInfluenceCounts = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
+
+		//Read bone weights data
+		memset( colladaTextBuffer, 0, textBufferLen );
+		strcpy( colladaTextBuffer, boneWeightsData );
+		TextToNumberConversion( colladaTextBuffer, colladaBoneWeightData );
+
+		//Read bone index data
+		memset( colladaTextBuffer, 0, textBufferLen );
+		strcpy( colladaTextBuffer, vArrayData );
+		TextToNumberConversion( colladaTextBuffer, colladaIndexData );
+
+		//Read bone influence counts
+		memset( colladaTextBuffer, 0, textBufferLen );
+		strcpy( colladaTextBuffer, vCountArrayData );
+		TextToNumberConversion( colladaTextBuffer, colladaBoneInfluenceCounts );
+
+		rawBoneWeightData = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
+		rawBoneIndexData = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
+		memset( rawBoneWeightData, 0, sizeof(float) * MAXBONESPERVERT * vCount );
+		memset( rawBoneIndexData, 0, sizeof(float) * MAXBONESPERVERT * vCount );
+
+		int longIndexCounter = 0;
+		int influenceCountCount = 0;
+		vCountArray->Parent()->ToElement()->QueryAttribute( "count", &influenceCountCount );
+		for( uint16 i = 0; i < influenceCountCount; i++ ) {
+			uint8 influenceCount = colladaBoneInfluenceCounts[i];
+			for( uint16 j = 0; j < influenceCount; j++ ) {
+				uint16 boneIndex = colladaIndexData[ longIndexCounter++ ];
+				uint16 weightIndex = colladaIndexData[ longIndexCounter++ ];
+				rawBoneWeightData[ i * MAXBONESPERVERT + j ] = colladaBoneWeightData[ weightIndex ];
+				rawBoneIndexData[ i * MAXBONESPERVERT + j ] = boneIndex;
+			}
+		}
 	}
 	skinningExit:
-	
-	storage->dataCount = 0;
-	uint16 counter = 0;
-	while( counter < indexCount ) {
-		Vec3 v, n;
-		float uv_x, uv_y;
-
-		uint16 vertIndex = rawIndexData[ counter++ ];
-		uint16 normalIndex = rawIndexData[ counter++ ];
-		uint16 uvIndex = rawIndexData[ counter++ ];
-
-		v.x = rawColladaVertexData[ vertIndex * 3 + 0 ];
-		v.z = -rawColladaVertexData[ vertIndex * 3 + 1 ];
-		v.y = rawColladaVertexData[ vertIndex * 3 + 2 ];
-
-		n.x = rawColladaNormalData[ normalIndex * 3 + 0 ];
-		n.z = -rawColladaNormalData[ normalIndex * 3 + 1 ];
-		n.y = rawColladaNormalData[ normalIndex * 3 + 2 ];
-
-		uv_x = rawColladaUVData[ uvIndex * 2 ];
-		uv_y = rawColladaUVData[ uvIndex * 2 + 1 ];
-
-		///TODO: check for exact copies of data, use to index to first instance instead
-		uint32 storageIndex = storage->dataCount;
-		storage->vData[ storageIndex ] = v;
-		storage->normalData[ storageIndex ] = n;
-		storage->uvData[ storageIndex * 2 ] = uv_x;
-		storage->uvData[ storageIndex * 2 + 1 ] = uv_y;
-		storage->iData[ storageIndex ] = storageIndex;
-		storage->dataCount++;
-	};
-}
-
-void LoadMeshSkinningDataFromDisk( const char* fileName, Armature* armature ) {
-	tinyxml2::XMLDocument colladaDoc;
-	colladaDoc.LoadFile( fileName );
 
 	//Armature
-	{
+	if( armature != NULL ) {
 		tinyxml2::XMLElement* visualScenesNode = colladaDoc.FirstChildElement( "COLLADA" )->FirstChildElement( "library_visual_scenes" )
 		->FirstChildElement( "visual_scene" )->FirstChildElement( "node" );
 		tinyxml2::XMLElement* armatureNode = NULL;
@@ -426,6 +434,7 @@ void LoadMeshSkinningDataFromDisk( const char* fileName, Armature* armature ) {
 			Bone* armatureBone = &armature->allBones[ armature->boneCount ];
 			armatureBone->childCount = 0;
 			armatureBone->currentTransform = &armature->boneTransforms[ armature->boneCount ];
+			SetToIdentity( armatureBone->currentTransform );
 			if( stackTracker > 0) { 
 				Bone* parentBone = boneStack[ stackTracker - 1 ];
 				armatureBone->parent = parentBone;
@@ -492,10 +501,50 @@ void LoadMeshSkinningDataFromDisk( const char* fileName, Armature* armature ) {
 			bone->inverseBindPose = InverseMatrix( bone->inverseBindPose );
 		}
 	}
+	
+	storage->hasBoneData = rawBoneWeightData != NULL;
+
+	storage->dataCount = 0;
+	uint16 counter = 0;
+	while( counter < indexCount ) {
+		Vec3 v, n;
+		float uv_x, uv_y;
+
+		uint16 vertIndex = rawIndexData[ counter++ ];
+		uint16 normalIndex = rawIndexData[ counter++ ];
+		uint16 uvIndex = rawIndexData[ counter++ ];
+
+		v.x = rawColladaVertexData[ vertIndex * 3 + 0 ];
+		v.z = -rawColladaVertexData[ vertIndex * 3 + 1 ];
+		v.y = rawColladaVertexData[ vertIndex * 3 + 2 ];
+
+		n.x = rawColladaNormalData[ normalIndex * 3 + 0 ];
+		n.z = -rawColladaNormalData[ normalIndex * 3 + 1 ];
+		n.y = rawColladaNormalData[ normalIndex * 3 + 2 ];
+
+		uv_x = rawColladaUVData[ uvIndex * 2 ];
+		uv_y = rawColladaUVData[ uvIndex * 2 + 1 ];
+
+		///TODO: check for exact copies of data, use to index to first instance instead
+		uint32 storageIndex = storage->dataCount;
+		storage->vData[ storageIndex ] = v;
+		storage->normalData[ storageIndex ] = n;
+		storage->uvData[ storageIndex * 2 ] = uv_x;
+		storage->uvData[ storageIndex * 2 + 1 ] = uv_y;
+		if( rawBoneWeightData != NULL ) {
+			uint16 boneDataIndex = storage->dataCount * MAXBONESPERVERT;
+			uint16 boneVertexIndex = vertIndex * MAXBONESPERVERT;
+			for( uint8 i = 0; i < MAXBONESPERVERT; i++ ) {
+				storage->boneWeightData[ boneDataIndex + i ] = rawBoneWeightData[ boneVertexIndex + i ];
+				storage->boneIndexData[ boneDataIndex + i ] = rawBoneIndexData[ boneVertexIndex + i ];
+			}
+		}
+		storage->iData[ storageIndex ] = storageIndex;
+		storage->dataCount++;
+	};
 }
 
 void LoadTextureDataFromDisk( const char* fileName, TextureData* storage ) {
-    //unsigned char* data = stbi_load( fileName, &texData->width, &texData->height, &n, 0 );
     storage->texData = (uint8*)stbi_load( fileName, (int*)&storage->width, (int*)&storage->height, (int*)&storage->channelsPerPixel, 0 );
     if( storage->texData == NULL ) {
         printf( "Could not load file: %s\n", fileName );

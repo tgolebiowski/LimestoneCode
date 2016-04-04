@@ -6,8 +6,9 @@ struct MeshGeometryData {
 	float uvData[ MAXVERTCOUNT * 2 ];
 	Vec3 normalData[ MAXVERTCOUNT ];
 	#define MAXBONESPERVERT 4
+	bool hasBoneData;
 	float boneWeightData[ MAXVERTCOUNT * MAXBONESPERVERT ];
-	uint8 boneIndexData[ MAXVERTCOUNT * MAXBONESPERVERT ];
+	uint32 boneIndexData[ MAXVERTCOUNT * MAXBONESPERVERT ];
 	uint32 iData[ 600 ];
 	uint32 dataCount;
 };
@@ -44,25 +45,33 @@ struct MeshGPUBinding {
 	uint32 indexDataPtr;
 	uint32 uvDataPtr;
 
-	//uint32 boneWeightDataPtr;
-	//uint32 boneIndexDataPtr;
+	bool hasBoneData;
+	uint32 boneWeightDataPtr;
+	uint32 boneIndexDataPtr;
 };
 
 struct ShaderProgramBinding {
 	uint32 programID;
     int32 modelMatrixUniformPtr;
     int32 cameraMatrixUniformPtr;
+    int32 armatureUniformPtr;
+
     int32 positionAttribute;
     int32 texCoordAttribute;
+
+    int32 isArmatureAnimated;
+    int32 boneWeightsAttribute;
+    int32 boneIndiciesAttribute;
+
     int32 samplerPtr1;
     int32 samplerPtr2;
 };
 
 struct ShaderProgramParams {
 	Mat4* modelMatrix;
-	Mat4* cameraMatrix;
 	TextureBindingID sampler1;
 	TextureBindingID sampler2;
+	Armature* armature;
 };
 
 struct RendererThings {
@@ -87,10 +96,9 @@ void CreateEmptyTexture( TextureData* texDataStorage, uint16 width, uint16 heigh
 ------------------------------------------------------------------------------------------------------------------*/
 
 bool InitRenderer( uint16 screen_w, uint16 screen_h );
-void CreateRenderBinding( MeshGPUBinding* bindData, MeshGeometryData* geometryStorage );
-void CreateShaderProgram( ShaderProgramBinding* bindData, const char* vertProgramFilePath, const char* fragProgramFilePath );
 void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData );
-
+void CreateShaderProgram( ShaderProgramBinding* bindData, const char* vertProgramFilePath, const char* fragProgramFilePath );
+void CreateRenderBinding( MeshGPUBinding* bindData, MeshGeometryData* geometryStorage );
 void RenderBoundData( MeshGPUBinding* renderBinding, ShaderProgramBinding* program, ShaderProgramParams params );
 
 void RenderDebugCircle( Vec3 position, float radius = 1.0f , Vec3 color = { 1.0f, 1.0f, 1.0f} );
@@ -108,6 +116,5 @@ void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color = { 1
 
 ///Return 0 on success, required buffer length if buffer is too small, or -1 on other OS failure
 int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 bufferLen);
-void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage );
-void LoadMeshSkinningDataFromDisk( const char* fileName, Armature* armature = NULL );
+void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Armature* armature = NULL );
 void LoadTextureDataFromDisk( const char* fileName, TextureData* texDataStorage );

@@ -36,7 +36,7 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
         printf( "Initialized OpenGL\n" );
     }
 
-    CreateShaderProgram( &rendererStorage.pShader, "Data/Shaders/Line.vert", "Data/Shaders/Line.frag" );
+    CreateShaderProgram( &rendererStorage.pShader, "Data/Shaders/Primitive.vert", "Data/Shaders/Primitive.frag" );
 
     //Initialization of data for line primitives
     GLuint glLineDataPtr, glLineIndexPtr;
@@ -117,28 +117,6 @@ void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData
     //stbi_image_free( data );
 }
 
-void CreateRenderBinding( MeshGPUBinding* bindDataStorage, MeshGeometryData* meshDataStorage ) {
-	GLuint glVBOPtr;
-	glGenBuffers( 1, &glVBOPtr );
-	glBindBuffer( GL_ARRAY_BUFFER, glVBOPtr );
-	glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 3 * sizeof(float), &meshDataStorage->vData, GL_STATIC_DRAW );
-	bindDataStorage->vertexDataPtr = glVBOPtr;
-
-	GLuint glIBOPtr;
-	glGenBuffers( 1, &glIBOPtr );
-	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, glIBOPtr );
-	glBufferData( GL_ELEMENT_ARRAY_BUFFER, meshDataStorage->dataCount * sizeof(uint32), &meshDataStorage->iData, GL_STATIC_DRAW );
-	bindDataStorage->indexDataPtr = glIBOPtr;
-
-	GLuint glUVPtr;
-	glGenBuffers( 1, &glUVPtr );
-	glBindBuffer( GL_ARRAY_BUFFER, glUVPtr );
-	glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 2 * sizeof(float), &meshDataStorage->uvData, GL_STATIC_DRAW );
-	bindDataStorage->uvDataPtr = glUVPtr;
-
-	bindDataStorage->dataCount = meshDataStorage->dataCount;
-}
-
 void PrintGLShaderLog( GLuint shader ) {
     //Make sure name is shader
     if( glIsShader( shader ) ) {
@@ -164,7 +142,7 @@ void PrintGLShaderLog( GLuint shader ) {
 }
 
 void CreateShaderProgram( ShaderProgramBinding* bindDataStorage, const char* vertProgramFilePath, const char* fragProgramFilePath ) {
-	const size_t shaderSrcBufferLength = 1700;
+    const size_t shaderSrcBufferLength = 1700;
     char shaderSrcBuffer[shaderSrcBufferLength];
     char* bufferPtr = (char*)&shaderSrcBuffer[0];
     memset( bufferPtr, 0, sizeof(char) * shaderSrcBufferLength );
@@ -223,13 +201,13 @@ void CreateShaderProgram( ShaderProgramBinding* bindDataStorage, const char* ver
 
     bindDataStorage->modelMatrixUniformPtr = glGetUniformLocation( bindDataStorage->programID, "modelMatrix" );
     bindDataStorage->cameraMatrixUniformPtr = glGetUniformLocation( bindDataStorage->programID, "cameraMatrix" );
-    //bindDataStorage->isArmatureAnimatedUniform = glGetUniformLocation( bindDataStorage->programID, "isSkeletalAnimated" );
-    //bindDataStorage->skeletonUniform = glGetUniformLocation( bindDataStorage->programID, "skeleton" );
+    bindDataStorage->isArmatureAnimated = glGetUniformLocation( bindDataStorage->programID, "isSkeletalAnimated" );
+    bindDataStorage->armatureUniformPtr = glGetUniformLocation( bindDataStorage->programID, "skeleton" );
 
     bindDataStorage->positionAttribute = glGetAttribLocation( bindDataStorage->programID, "position" );
     bindDataStorage->texCoordAttribute = glGetAttribLocation( bindDataStorage->programID, "texCoord" );
-    //bindDataStorage->boneWeightsAttribute = glGetAttribLocation( bindDataStorage->programID, "boneWeights" );
-    //bindDataStorage->boneIndiciesAttribute = glGetAttribLocation( bindDataStorage->programID, "boneIndicies" );
+    bindDataStorage->boneWeightsAttribute = glGetAttribLocation( bindDataStorage->programID, "boneWeights" );
+    bindDataStorage->boneIndiciesAttribute = glGetAttribLocation( bindDataStorage->programID, "boneIndicies" );
 
     bindDataStorage->samplerPtr1 = glGetUniformLocation( bindDataStorage->programID, "tex1" );
     bindDataStorage->samplerPtr2 = glGetUniformLocation( bindDataStorage->programID, "tex2" );
@@ -241,13 +219,53 @@ void CreateShaderProgram( ShaderProgramBinding* bindDataStorage, const char* ver
     glDeleteShader( fragShader );
 }
 
+void CreateRenderBinding( MeshGPUBinding* bindDataStorage, MeshGeometryData* meshDataStorage ) {
+	GLuint glVBOPtr;
+	glGenBuffers( 1, &glVBOPtr );
+	glBindBuffer( GL_ARRAY_BUFFER, glVBOPtr );
+	glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 3 * sizeof(float), &meshDataStorage->vData, GL_STATIC_DRAW );
+	bindDataStorage->vertexDataPtr = glVBOPtr;
+
+	GLuint glIBOPtr;
+	glGenBuffers( 1, &glIBOPtr );
+	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, glIBOPtr );
+	glBufferData( GL_ELEMENT_ARRAY_BUFFER, meshDataStorage->dataCount * sizeof(uint32), &meshDataStorage->iData, GL_STATIC_DRAW );
+	bindDataStorage->indexDataPtr = glIBOPtr;
+
+	GLuint glUVPtr;
+	glGenBuffers( 1, &glUVPtr );
+	glBindBuffer( GL_ARRAY_BUFFER, glUVPtr );
+	glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 2 * sizeof(float), &meshDataStorage->uvData, GL_STATIC_DRAW );
+	bindDataStorage->uvDataPtr = glUVPtr;
+
+    if( meshDataStorage->hasBoneData ) {
+        bindDataStorage->hasBoneData = true;
+
+        GLuint glBoneWeightBufferPtr;
+        glGenBuffers( 1, &glBoneWeightBufferPtr );
+        glBindBuffer( GL_ARRAY_BUFFER, glBoneWeightBufferPtr );
+        glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * MAXBONESPERVERT * sizeof(float), &meshDataStorage->boneWeightData, GL_STATIC_DRAW );
+        bindDataStorage->boneWeightDataPtr = glBoneWeightBufferPtr;
+
+        GLuint glBoneIndexBufferPtr;
+        glGenBuffers( 1, &glBoneIndexBufferPtr );
+        glBindBuffer( GL_ARRAY_BUFFER, glBoneIndexBufferPtr );
+        glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * MAXBONESPERVERT * sizeof(uint32), &meshDataStorage->boneIndexData, GL_STATIC_DRAW );
+        bindDataStorage->boneIndexDataPtr = glBoneIndexBufferPtr;
+    } else {
+        bindDataStorage->hasBoneData = false;
+    }
+
+	bindDataStorage->dataCount = meshDataStorage->dataCount;
+}
+
 void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* programBinding, ShaderProgramParams params ) {
 	//Flush errors
     //while( glGetError() != GL_NO_ERROR ){};
 
     //Bind Shader
     glUseProgram( programBinding->programID );
-    glUniformMatrix4fv( programBinding->modelMatrixUniformPtr, 1, false, (float*)params.modelMatrix->m[0] );
+    glUniformMatrix4fv( programBinding->modelMatrixUniformPtr, 1, false, (float*)&params.modelMatrix->m[0] );
     glUniformMatrix4fv( programBinding->cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.baseProjectionMatrix.m[0] );
     //glUniform1i( program->isArmatureAnimatedUniform, (int)mesh->isArmatureAnimated );
 
@@ -261,17 +279,20 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
     glEnableVertexAttribArray( programBinding->texCoordAttribute );
     glVertexAttribPointer( programBinding->texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
 
-    // if( mesh->isArmatureAnimated ) {
-    //     glUniformMatrix4fv( program->skeletonUniform, MAXBONECOUNT, GL_FALSE, (float*)&mesh->skeleton->boneTransforms->m[0] );
+    if( meshBinding->hasBoneData && params.armature != NULL ) {
+        glUniform1i( programBinding->isArmatureAnimated, 1 );
+        glUniformMatrix4fv( programBinding->armatureUniformPtr, MAXBONES, GL_FALSE, (float*)&params.armature->boneTransforms->m[0] );
 
-    //     glBindBuffer( GL_ARRAY_BUFFER, mesh->boneWeightBuffer );
-    //     glEnableVertexAttribArray( program->boneWeightsAttribute );
-    //     glVertexAttribPointer( program->boneWeightsAttribute, MAXBONEPERVERT, GL_FLOAT, false, 0, 0 );
+        glBindBuffer( GL_ARRAY_BUFFER, meshBinding->boneWeightDataPtr );
+        glEnableVertexAttribArray( programBinding->boneWeightsAttribute );
+        glVertexAttribPointer( programBinding->boneWeightsAttribute, MAXBONESPERVERT, GL_FLOAT, false, 0, 0 );
 
-    //     glBindBuffer( GL_ARRAY_BUFFER, mesh->boneIndexBuffer );
-    //     glEnableVertexAttribArray( program->boneIndiciesAttribute );
-    //     glVertexAttribIPointer( program->boneIndiciesAttribute, MAXBONEPERVERT, GL_UNSIGNED_INT, 0, 0 );
-    // }
+        glBindBuffer( GL_ARRAY_BUFFER, meshBinding->boneIndexDataPtr );
+        glEnableVertexAttribArray( programBinding->boneIndiciesAttribute );
+        glVertexAttribIPointer( programBinding->boneIndiciesAttribute, MAXBONESPERVERT, GL_UNSIGNED_INT, 0, 0 );
+    } else {
+        glUniform1i( programBinding->isArmatureAnimated, 0 );
+    }
 
     glActiveTexture( GL_TEXTURE0 );
     glBindTexture( GL_TEXTURE_2D, params.sampler1 );
@@ -279,7 +300,7 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
     glBindTexture( GL_TEXTURE_2D, params.sampler2 );
 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, meshBinding->indexDataPtr );
-    glDrawElements( GL_TRIANGLES, meshBinding->dataCount, GL_UNSIGNED_INT, NULL );     ///Render, assume its all triangles
+    glDrawElements( GL_TRIANGLES, meshBinding->dataCount, GL_UNSIGNED_INT, NULL );
 
     //Unbind textures
     //glBindTexture( GL_TEXTURE_2D, 0 );
