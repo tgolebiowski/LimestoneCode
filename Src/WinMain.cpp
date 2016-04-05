@@ -358,11 +358,12 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 		const char* vArrayData = vArray->FirstChild()->Value();
 
 		float* colladaBoneWeightData = NULL;
-		float* colladaIndexData = NULL;
+		float* colladaBoneIndexData = NULL;
 		float* colladaBoneInfluenceCounts = NULL;
-		///Allocating this much space is overkill, but is it worth calculating exactly how much 
+		///This is overkill, Collada stores ways less data usually, plus this still doesn't account for very complex models 
+		///(e.g, lots of verts with more than MAXBONESPERVERT influencing position )
 		colladaBoneWeightData = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
-		colladaIndexData = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
+		colladaBoneIndexData = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
 		colladaBoneInfluenceCounts = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
 
 		//Read bone weights data
@@ -373,7 +374,7 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 		//Read bone index data
 		memset( colladaTextBuffer, 0, textBufferLen );
 		strcpy( colladaTextBuffer, vArrayData );
-		TextToNumberConversion( colladaTextBuffer, colladaIndexData );
+		TextToNumberConversion( colladaTextBuffer, colladaBoneIndexData );
 
 		//Read bone influence counts
 		memset( colladaTextBuffer, 0, textBufferLen );
@@ -385,14 +386,14 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 		memset( rawBoneWeightData, 0, sizeof(float) * MAXBONESPERVERT * vCount );
 		memset( rawBoneIndexData, 0, sizeof(float) * MAXBONESPERVERT * vCount );
 
-		int longIndexCounter = 0;
-		int influenceCountCount = 0;
-		vCountArray->Parent()->ToElement()->QueryAttribute( "count", &influenceCountCount );
-		for( uint16 i = 0; i < influenceCountCount; i++ ) {
+		int colladaIndexIndirection = 0;
+		int verticiesInfluenced = 0;
+		vCountArray->Parent()->ToElement()->QueryAttribute( "count", &verticiesInfluenced );
+		for( uint16 i = 0; i < verticiesInfluenced; i++ ) {
 			uint8 influenceCount = colladaBoneInfluenceCounts[i];
 			for( uint16 j = 0; j < influenceCount; j++ ) {
-				uint16 boneIndex = colladaIndexData[ longIndexCounter++ ];
-				uint16 weightIndex = colladaIndexData[ longIndexCounter++ ];
+				uint16 boneIndex = colladaBoneIndexData[ colladaIndexIndirection++ ];
+				uint16 weightIndex = colladaBoneIndexData[ colladaIndexIndirection++ ];
 				rawBoneWeightData[ i * MAXBONESPERVERT + j ] = colladaBoneWeightData[ weightIndex ];
 				rawBoneIndexData[ i * MAXBONESPERVERT + j ] = boneIndex;
 			}
@@ -417,76 +418,113 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 		}
 		if( armatureNode == NULL ) return;
 
-		uint8 stackTracker = 0;
-		//Note: the same index for bone and sibling stack is like this:
-		//boneStack[ i ] = parent
-		//siblingStack[ i ] next sibling to branch from, whose parent bone is "parent"
-		Bone* boneStack[ MAXBONES ];
-		tinyxml2::XMLElement* siblingStack[ MAXBONES ];
+		// uint8 stackTracker = 0;
+		// //Note: the same index for bone and sibling stack is like this:
+		// //boneStack[ i ] = parent
+		// //siblingStack[ i ] next sibling to branch from, whose parent bone is "parent"
+		// Bone* boneStack[ MAXBONES ];
+		// tinyxml2::XMLElement* siblingStack[ MAXBONES ];
+		// while( boneElement != NULL ) {
+		// 	Bone* armatureBone = &armature->allBones[ armature->boneCount ];
+		// 	armatureBone->childCount = 0;
+		// 	armatureBone->currentTransform = &armature->boneTransforms[ armature->boneCount ];
+		// 	SetToIdentity( armatureBone->currentTransform );
+		// 	if( stackTracker > 0) { 
+		// 		Bone* parentBone = boneStack[ stackTracker - 1 ];
+		// 		armatureBone->parent = parentBone;
+		// 		parentBone->children[ parentBone->childCount ] = armatureBone;
+		// 		parentBone->childCount++;
+		// 	}
+		// 	else { 
+		// 		armatureBone->parent = NULL; 
+		// 		armature->rootBone = armatureBone;
+		// 	}
+		// 	armature->boneCount++;
 
-		//TODO: clean up into one big thing that uses recursion
-		//TODO: combine parsing recursive function, and bind pose thing into one thing
-		//TODO: recursive lambda rather than messy stack stuff
+		// 	strcpy( &armatureBone->name[0], boneElement->Attribute( "name" ) );
+
+		// 	float matrixData[16];
+		// 	char matrixTextData [512];
+		// 	tinyxml2::XMLNode* matrixElement = boneElement->FirstChildElement("matrix");
+		// 	strcpy( &matrixTextData[0], matrixElement->FirstChild()->ToText()->Value() );
+
+		// 	TextToNumberConversion( matrixTextData, matrixData );
+		// 	//Note: this is only local transform data, but its being saved in inverse bind pose matrix for now
+		// 	Mat4 m;
+		// 	memcpy( &m.m[0][0], &matrixData[0], sizeof(float) * 16 );
+		// 	armatureBone->inverseBindPose = TransposeMatrix( m );
+
+		// 	if( boneElement->FirstChildElement( "node" ) != NULL ) {
+		// 		tinyxml2::XMLElement* nextElement = boneElement->FirstChildElement( "node" );
+		// 		boneStack[ stackTracker ] = armatureBone;
+		// 		siblingStack[ stackTracker ] = nextElement;
+		// 		stackTracker++;
+		// 		boneElement = nextElement;
+		// 	} else {
+		// 		while( stackTracker > 0 ) {
+		// 			tinyxml2::XMLElement* prev = siblingStack[ stackTracker - 1 ];
+		// 			if( prev->NextSibling() != NULL ) {
+		// 				boneElement = prev->NextSibling()->ToElement();
+		// 				siblingStack[ stackTracker - 1 ] = boneElement;
+		// 				break;
+		// 			} else {
+		// 				stackTracker--;
+		// 			}
+		// 		};
+		// 		if( stackTracker == 0 ) {
+		// 			boneElement = NULL;
+		// 		}
+		// 	}
+		// };
+
 		//Parsing basic data from XML
-		armature->boneCount = 0;
-		tinyxml2::XMLElement* boneElement = armatureNode->FirstChildElement( "node" ); //->FirstChildElement( "node" );
-		while( boneElement != NULL ) {
-			Bone* armatureBone = &armature->allBones[ armature->boneCount ];
-			armatureBone->childCount = 0;
-			armatureBone->currentTransform = &armature->boneTransforms[ armature->boneCount ];
-			SetToIdentity( armatureBone->currentTransform );
-			if( stackTracker > 0) { 
-				Bone* parentBone = boneStack[ stackTracker - 1 ];
-				armatureBone->parent = parentBone;
-				parentBone->children[ parentBone->childCount ] = armatureBone;
-				parentBone->childCount++;
-			}
-			else { 
-				armatureBone->parent = NULL; 
-				armature->rootBone = armatureBone;
-			}
+		std::function< Bone* ( tinyxml2::XMLElement*, Armature*, Bone*  ) > ParseColladaBoneData = 
+		[&]( tinyxml2::XMLElement* boneElement, Armature* armature, Bone* parentBone ) -> Bone* {
+			Bone* bone = &armature->allBones[ armature->boneCount ];
+			bone->parent = parentBone;
+			bone->currentTransform = &armature->boneTransforms[ armature->boneCount ];
+			SetToIdentity( bone->currentTransform );
 			armature->boneCount++;
+			if( parentBone == NULL ) armature->rootBone = bone;
 
-			strcpy( &armatureBone->name[0], boneElement->Attribute( "name" ) );
+			strcpy( &bone->name[0], boneElement->Attribute( "name" ) );
 
 			float matrixData[16];
 			char matrixTextData [512];
 			tinyxml2::XMLNode* matrixElement = boneElement->FirstChildElement("matrix");
 			strcpy( &matrixTextData[0], matrixElement->FirstChild()->ToText()->Value() );
-
 			TextToNumberConversion( matrixTextData, matrixData );
 			//Note: this is only local transform data, but its being saved in inverse bind pose matrix for now
 			Mat4 m;
 			memcpy( &m.m[0][0], &matrixData[0], sizeof(float) * 16 );
-			armatureBone->inverseBindPose = TransposeMatrix( m );
+			//Cause collada is a jerk
+			bone->inverseBindPose = TransposeMatrix( m );
 
-			if( boneElement->FirstChildElement( "node" ) != NULL ) {
-				tinyxml2::XMLElement* nextElement = boneElement->FirstChildElement( "node" );
-				boneStack[ stackTracker ] = armatureBone;
-				siblingStack[ stackTracker ] = nextElement;
-				stackTracker++;
-				boneElement = nextElement;
-			} else {
-				while( stackTracker > 0 ) {
-					tinyxml2::XMLElement* prev = siblingStack[ stackTracker - 1 ];
-					if( prev->NextSibling() != NULL ) {
-						boneElement = prev->NextSibling()->ToElement();
-						siblingStack[ stackTracker - 1 ] = boneElement;
-						break;
-					} else {
-						stackTracker--;
-					}
-				};
-				if( stackTracker == 0 ) {
-					boneElement = NULL;
+			bone->childCount = 0;
+			tinyxml2::XMLElement* childBoneElement = boneElement->FirstChildElement( "node" );
+			while( childBoneElement != NULL ) {
+				Bone* childBone = ParseColladaBoneData( childBoneElement, armature, bone );
+				bone->children[ bone->childCount++ ] = childBone;
+				tinyxml2::XMLNode* siblingNode = childBoneElement->NextSibling();
+				if( siblingNode != NULL ) {
+					childBoneElement = siblingNode->ToElement();
+				} else {
+					childBoneElement = NULL;
 				}
-			}
+			};
+
+			return bone;
 		};
+		armature->boneCount = 0;
+		tinyxml2::XMLElement* boneElement = armatureNode->FirstChildElement( "node" ); //->FirstChildElement( "node" );
+		ParseColladaBoneData( boneElement, armature, NULL );
 
 		//Calculating Bind Pose matricies
 		std::function< void ( Bone*, Mat4 ) > SetBindMatrix = [&]( Bone* bone, Mat4 parentBindPoseMatrix ) {
 			//This is taking the local transform to the bind pose
 			bone->inverseBindPose = MultMatrix( parentBindPoseMatrix, bone->inverseBindPose );
+			//bind pose to inverse bind pose
+			bone->inverseBindPose = InverseMatrix( bone->inverseBindPose );
 
 			for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
 				SetBindMatrix( bone->children[ childIndex ], bone->inverseBindPose );
@@ -494,12 +532,6 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 		};
 		Mat4 i; SetToIdentity( &i );
 		SetBindMatrix( armature->rootBone, i );
-
-		//Actually invert matricies so they are finally inverse-bind-pose
-		for( uint8 boneIndex = 0; boneIndex < armature->boneCount; boneIndex++ ) {
-			Bone* bone = &armature->allBones[ boneIndex ];
-			bone->inverseBindPose = InverseMatrix( bone->inverseBindPose );
-		}
 	}
 	
 	storage->hasBoneData = rawBoneWeightData != NULL;
