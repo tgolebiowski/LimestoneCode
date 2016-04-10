@@ -23,12 +23,13 @@ struct TextureData {
 typedef uint32 TextureBindingID;
 
 struct Bone {
-	Mat4 inverseBindPose;
+	Mat4 bindPose, invBindPose;
 	Mat4* currentTransform;
 	Bone* parent;
 	Bone* children[4];
 	char name[32];
 	uint8 childCount;
+	uint8 boneIndex;
 };
 
 struct Armature {
@@ -37,6 +38,10 @@ struct Armature {
 	Mat4 boneTransforms[ MAXBONES ];
 	Bone* rootBone;
 	uint8 boneCount;
+};
+
+struct ArmaturePose {
+	Mat4 localBoneTransforms[ MAXBONES ];
 };
 
 struct MeshGPUBinding {
@@ -88,7 +93,18 @@ struct RendererThings {
 };
 static RendererThings rendererStorage;
 
-void SetOrthoProjectionMatrix( float width, float height, float nearPlane, float farPlane );
+void SetOrthoProjectionMatrix( float width, float height, float nearPlane, float farPlane ) {
+    Mat4* m = &rendererStorage.baseProjectionMatrix;
+    float halfWidth = width * 0.5f;
+    float halfHeight = height * 0.5f;
+    float depth = farPlane - nearPlane;
+
+    m->m[0][0] = 1.0f / halfWidth; m->m[0][1] = 0.0f; m->m[0][2] = 0.0f; m->m[0][3] = 0.0f;
+    m->m[1][0] = 0.0f; m->m[1][1] = 1.0f / halfHeight; m->m[1][2] = 0.0f; m->m[1][3] = 0.0f;
+    m->m[2][0] = 0.0f; m->m[2][1] = 0.0f; m->m[2][2] = 2.0f / depth; m->m[2][3] = 0.0f;
+    m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = -(farPlane + nearPlane) / depth; m->m[3][3] = 1.0f;
+}
+
 void CreateEmptyTexture( TextureData* texDataStorage, uint16 width, uint16 height );
 
 /*-----------------------------------------------------------------------------------------------------------------
@@ -117,4 +133,5 @@ void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color = { 1
 ///Return 0 on success, required buffer length if buffer is too small, or -1 on other OS failure
 int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 bufferLen);
 void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Armature* armature = NULL );
+void LoadAnimationDataFromCollada( const char* fileName, ArmaturePose* pose, Armature* armature );
 void LoadTextureDataFromDisk( const char* fileName, TextureData* texDataStorage );

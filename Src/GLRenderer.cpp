@@ -80,18 +80,6 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     return true;
 }
 
-void SetOrthoProjectionMatrix( float width, float height, float nearPlane, float farPlane ) {
-    Mat4* m = &rendererStorage.baseProjectionMatrix;
-    float halfWidth = width * 0.5f;
-    float halfHeight = height * 0.5f;
-    float depth = farPlane - nearPlane;
-
-    m->m[0][0] = 1.0f / halfWidth; m->m[0][1] = 0.0f; m->m[0][2] = 0.0f; m->m[0][3] = 0.0f;
-    m->m[1][0] = 0.0f; m->m[1][1] = 1.0f / halfHeight; m->m[1][2] = 0.0f; m->m[1][3] = 0.0f;
-    m->m[2][0] = 0.0f; m->m[2][1] = 0.0f; m->m[2][2] = 2.0f / depth; m->m[2][3] = 0.0f;
-    m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = -(farPlane + nearPlane) / depth; m->m[3][3] = 1.0f;
-}
-
 void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData ) {
 	GLenum pixelFormat;
     if( textureData->channelsPerPixel == 3 ) {
@@ -349,17 +337,27 @@ void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color ) {
 
     for( uint8 boneIndex = 0; boneIndex < armature->boneCount; boneIndex++ ) {
         Bone* bone = &armature->allBones[ boneIndex ];
-        Mat4 bindPosition = InverseMatrix( bone->inverseBindPose );
+        Vec3 p1 = { 0.0f, 0.0f, 0.0f };
+        p1 = MultVec( InverseMatrix( bone->invBindPose ), p1 );
+        p1 = MultVec( *bone->currentTransform, p1 );
 
-        for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
-            Bone* child = bone->children[ childIndex ];
-            Mat4 childBindMat = InverseMatrix( child->inverseBindPose );
+        RenderDebugCircle( MultVec( transform, p1 ), 0.05 );
 
-            Vec3 p1, p2;
-            p1 = { 0.0f, 0.0f, 0.0f };
-            p2 = p1;
-            p1 = MultVec( bindPosition, p1 );
-            p2 = MultVec( childBindMat, p2 );
+        if( bone->childCount > 0 ) {
+            for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
+                Bone* child = bone->children[ childIndex ];
+
+                Vec3 p2 = { 0.0f, 0.0f, 0.0f };
+                p2 = MultVec( InverseMatrix( child->invBindPose ), p2 );
+                p2 = MultVec( *child->currentTransform, p2 );
+
+                linePositions[ dataCount++ ] = p1;
+                linePositions[ dataCount++ ] = p2;
+            }
+        } else {
+            Vec3 p2 = { 0.0f, 1.5f, 0.0f };
+            p2 = MultVec( InverseMatrix( bone->invBindPose ), p2 );
+            p2 = MultVec( *bone->currentTransform, p2 );
 
             linePositions[ dataCount++ ] = p1;
             linePositions[ dataCount++ ] = p2;

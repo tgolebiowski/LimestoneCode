@@ -4,6 +4,12 @@
 
 //This whole thing is like 95% lifted code from Polycode, so credit there.
 
+//Quick forward declarations
+struct Quat;
+struct Mat4;
+Quat QuatFromMatrix( Mat4 matrix );
+
+
 #define PI 3.14159265359
 
 struct Vec3 {
@@ -257,6 +263,18 @@ Vec3 MultVec( Mat4 m, Vec3 v ) {
 		     v.x * m.m[0][2] + v.y * m.m[1][2] + v.z * m.m[2][2] + m.m[3][2] };
 }
 
+void DecomposeMat4( Mat4 m, Vec3* scale, Quat* rotation, Vec3* translation ) {
+	*rotation = QuatFromMatrix( m );
+
+	translation->x = m.m[3][0];
+	translation->y = m.m[3][1];
+	translation->z = m.m[3][2];
+
+	scale->x = m.m[0][0];
+	scale->y = m.m[1][1];
+	scale->z = m.m[2][2];
+}
+
 /*----------------------------------------------------------------------------
                                     Quat
 ------------------------------------------------------------------------------*/
@@ -354,4 +372,53 @@ Mat4 MatrixFromQuat(const Quat quat) {
 
 	return matx;
 }
+
+Quat QuatFromMatrix( const Mat4 matrix ) {
+	Quat quat;
+	float tr, s, q[4];
+	int i, j, k;
+
+	static const int nxt[3] = {1, 2, 0};			
+
+	tr = matrix.m[0][0] + matrix.m[1][1] + matrix.m[2][2];
+
+
+	// check the diagonal
+	if (tr > 0.0f)
+	{
+		s = sqrtf(tr + 1.0f);
+		quat.w = s / 2.0f;
+		s = 0.5f / s;
+		quat.x = (matrix.m[1][2] - matrix.m[2][1]) * s;
+		quat.y = (matrix.m[2][0] - matrix.m[0][2]) * s;
+		quat.z = (matrix.m[0][1] - matrix.m[1][0]) * s;
+	}
+	else
+	{
+		// diagonal is negative
+		i = 0;
+		if (matrix.m[1][1] > matrix.m[0][0]) i = 1;
+		if (matrix.m[2][2] > matrix.m[i][i]) i = 2;
+		j = nxt[i];
+		k = nxt[j];
+
+		s = sqrtf((matrix.m[i][i] - (matrix.m[j][j] + matrix.m[k][k])) + 1.0f);
+
+		q[i] = s * 0.5f;
+
+		if (s != 0.0f) s = 0.5f / s;
+
+		q[3] = (matrix.m[j][k] - matrix.m[k][j]) * s;
+		q[j] = (matrix.m[i][j] + matrix.m[j][i]) * s;
+		q[k] = (matrix.m[i][k] + matrix.m[k][i]) * s;
+
+		quat.x = q[0];
+		quat.y = q[1];
+		quat.z = q[2];
+		quat.w = q[3];
+	}
+
+	return quat;
+}
+
 #endif

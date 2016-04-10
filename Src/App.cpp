@@ -5,7 +5,10 @@ struct GameMemory {
     ShaderProgramParams params;
     Mat4 m;
     Armature arm;
+    ArmaturePose pose;
 };
+static Mat4 i;
+static Mat4 r;
 
 void GameInit( MemorySlab* gameMemory ) {
     if( InitRenderer( SCREEN_WIDTH, SCREEN_HEIGHT ) == false ) {
@@ -18,6 +21,7 @@ void GameInit( MemorySlab* gameMemory ) {
 
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
     LoadMeshDataFromDisk( "Data/ComplexSkeletonDebug.dae", &gMem->meshData, &gMem->arm );
+    LoadAnimationDataFromCollada( "Data/ComplexSkeletonDebug.dae", &gMem->pose, &gMem->arm );
     CreateRenderBinding( &gMem->meshBinding, &gMem->meshData );
     CreateShaderProgram( &gMem->shader, "Data/Shaders/Basic.vert", "Data/Shaders/Basic.frag" );
     SetToIdentity( &gMem->m );
@@ -25,6 +29,12 @@ void GameInit( MemorySlab* gameMemory ) {
     gMem->params.sampler1 = 0;
     gMem->params.sampler2 = 0;
     gMem->params.armature = &gMem->arm;
+
+    SetToIdentity( &i ); SetToIdentity( &r );
+    SetTranslation( &i, 0.0f, -3.0, 0.0f );
+    SetRotation( &r, 0.0f, 1.0f, 0.0f, PI / 128.0f );
+    
+    ApplyArmaturePose( &gMem->arm, &gMem->pose );
 
     return;
 }
@@ -39,6 +49,8 @@ bool Update( MemorySlab* gameMemory ) {
     }
     pState = newState;
 
+    i = MultMatrix( i, r );
+
     return true;
 }
 
@@ -50,7 +62,9 @@ void Render( MemorySlab* gameMemory ) {
     //glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, myFramebuffer.framebufferTexture.textureID, 0 );
 
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    *gMem->params.modelMatrix = i;
     RenderBoundData( &gMem->meshBinding, &gMem->shader, gMem->params );
+    RenderArmatureAsLines( &gMem->arm, i, { 1.0f, 0.0f, 0.0f } );
 
     //glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 
