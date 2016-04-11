@@ -510,11 +510,11 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 
 				Mat4 correction;
 				correction.m[0][0] = 1.0f; correction.m[0][1] = 0.0f; correction.m[0][2] = 0.0f; correction.m[0][3] = 0.0f;
-				correction.m[1][0] = 0.0f; correction.m[1][1] = 0.0f; correction.m[1][2] = -1.0f; correction.m[3][3] = 0.0f;
-				correction.m[2][0] = 0.0f; correction.m[2][1] = 1.0f; correction.m[2][2] = 0.0f; correction.m[3][3] = 0.0f;
+				correction.m[1][0] = 0.0f; correction.m[1][1] = 0.0f; correction.m[1][2] = 1.0f; correction.m[3][3] = 0.0f;
+				correction.m[2][0] = 0.0f; correction.m[2][1] = -1.0f; correction.m[2][2] = 0.0f; correction.m[3][3] = 0.0f;
 				correction.m[3][0] = 0.0f; correction.m[3][1] = 0.0f; correction.m[3][2] = 0.0f; correction.m[3][3] = 1.0f;
 				targetBone->invBindPose = TransposeMatrix( matrix );
-				//targetBone->invBindPose = MultMatrix( correction, targetBone->invBindPose );
+				targetBone->invBindPose = MultMatrix( correction, targetBone->invBindPose );
 			}
 		}
 	}
@@ -532,8 +532,8 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 		uint16 uvIndex = rawIndexData[ counter++ ];
 
 		v.x = rawColladaVertexData[ vertIndex * 3 + 0 ];
-		v.y = rawColladaVertexData[ vertIndex * 3 + 1 ];
-		v.z = rawColladaVertexData[ vertIndex * 3 + 2 ];
+		v.z = -rawColladaVertexData[ vertIndex * 3 + 1 ];
+		v.y = rawColladaVertexData[ vertIndex * 3 + 2 ];
 
 		n.x = rawColladaNormalData[ normalIndex * 3 + 0 ];
 		n.z = -rawColladaNormalData[ normalIndex * 3 + 1 ];
@@ -610,11 +610,17 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmaturePose* pose, Arm
 		animationNode = animationNode->NextSibling();
 	}
 
+	Mat4 correction;
+	correction.m[0][0] = 1.0f; correction.m[0][1] = 0.0f; correction.m[0][2] = 0.0f; correction.m[0][3] = 0.0f;
+	correction.m[1][0] = 0.0f; correction.m[1][1] = 0.0f; correction.m[1][2] = -1.0f; correction.m[1][3] = 0.0f;
+	correction.m[2][0] = 0.0f; correction.m[2][1] = 1.0f; correction.m[2][2] = 0.0f; correction.m[2][3] = 0.0f;
+	correction.m[3][0] = 0.0f; correction.m[3][1] = 0.0f; correction.m[3][2] = 0.0f; correction.m[3][3] = 1.0f;	
 	Mat4* rootBonePoseMat = &pose->localBoneTransforms[ armature->rootBone->boneIndex ];
-	//*rootBonePoseMat = MultMatrix( *rootBonePoseMat, correction );
+	*rootBonePoseMat = MultMatrix( *rootBonePoseMat, correction );
 }
 
 void ApplyArmaturePose( Armature* armature, ArmaturePose* pose ) {
+
 	struct N {
 		static void ApplyPoseRecursive( Bone* bone, Mat4 parentTransform, ArmaturePose* pose ) {
 			*bone->currentTransform = MultMatrix( pose->localBoneTransforms[ bone->boneIndex ], parentTransform );
@@ -623,10 +629,10 @@ void ApplyArmaturePose( Armature* armature, ArmaturePose* pose ) {
 				ApplyPoseRecursive( bone->children[ childIndex ], *bone->currentTransform, pose );
 			}
 
-			
 			*bone->currentTransform = MultMatrix( bone->invBindPose, *bone->currentTransform );
 		};
 	};
+
 	Mat4 i; SetToIdentity( &i );
 	N::ApplyPoseRecursive( armature->rootBone, i, pose );
 }

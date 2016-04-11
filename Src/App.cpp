@@ -32,6 +32,7 @@ void GameInit( MemorySlab* gameMemory ) {
 
     SetToIdentity( &i ); SetToIdentity( &r );
     SetTranslation( &i, 0.0f, -3.0, 0.0f );
+    SetScale( &i, 0.5f, 0.5f, 0.5f );
     SetRotation( &r, 0.0f, 1.0f, 0.0f, PI / 128.0f );
     
     ApplyArmaturePose( &gMem->arm, &gMem->pose );
