@@ -23,8 +23,6 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     SetToIdentity( &rendererStorage.baseProjectionMatrix );
     SetToIdentity( &rendererStorage.cameraTransform );
 
-    //Initialize framebuffer
-    //CreateFrameBuffer( &myFramebuffer );
     //CreateShader( &framebufferShader, "Data/Shaders/Framebuffer.vert", "Data/Shaders/Framebuffer.frag" );
 
     //Check for error
@@ -36,7 +34,7 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
         printf( "Initialized OpenGL\n" );
     }
 
-    CreateShaderProgram( &rendererStorage.pShader, "Data/Shaders/Primitive.vert", "Data/Shaders/Primitive.frag" );
+    CreateShaderProgram( "Data/Shaders/Primitive.vert", "Data/Shaders/Primitive.frag", &rendererStorage.pShader );
 
     //Initialization of data for line primitives
     GLuint glLineDataPtr, glLineIndexPtr;
@@ -80,7 +78,7 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     return true;
 }
 
-void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData ) {
+void CreateTextureBinding( TextureData* textureData, TextureBindingID* texBindID ) {
 	GLenum pixelFormat;
     if( textureData->channelsPerPixel == 3 ) {
         pixelFormat = GL_RGB;
@@ -129,7 +127,7 @@ void PrintGLShaderLog( GLuint shader ) {
     }
 }
 
-void CreateShaderProgram( ShaderProgramBinding* bindDataStorage, const char* vertProgramFilePath, const char* fragProgramFilePath ) {
+void CreateShaderProgram( const char* vertProgramFilePath, const char* fragProgramFilePath, ShaderProgramBinding* bindDataStorage ) {
     const size_t shaderSrcBufferLength = 1700;
     char shaderSrcBuffer[shaderSrcBufferLength];
     char* bufferPtr = (char*)&shaderSrcBuffer[0];
@@ -207,7 +205,7 @@ void CreateShaderProgram( ShaderProgramBinding* bindDataStorage, const char* ver
     glDeleteShader( fragShader );
 }
 
-void CreateRenderBinding( MeshGPUBinding* bindDataStorage, MeshGeometryData* meshDataStorage ) {
+void CreateRenderBinding( MeshGeometryData* meshDataStorage, MeshGPUBinding* bindDataStorage ) {
 	GLuint glVBOPtr;
 	glGenBuffers( 1, &glVBOPtr );
 	glBindBuffer( GL_ARRAY_BUFFER, glVBOPtr );

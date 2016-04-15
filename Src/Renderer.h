@@ -79,9 +79,14 @@ struct ShaderProgramParams {
 	Armature* armature;
 };
 
-struct RendererThings {
+static struct RendererThings {
 	Mat4 baseProjectionMatrix;
 	Mat4 cameraTransform;
+
+	ShaderProgramBinding texturedQuadShader;
+	uint32 quadVDataPtr;
+	uint32 quadUVDataPtr;
+	uint32 quadIDataPtr;
 
 	ShaderProgramBinding pShader;
 	//Data for rendering lines as a debugging tool
@@ -90,19 +95,35 @@ struct RendererThings {
 	//Data for rendering circles/dots as a debugging tool
 	uint32 circleDataPtr;
 	uint32 circleIDataPtr;
-};
-static RendererThings rendererStorage;
+} rendererStorage;
 
 void SetOrthoProjectionMatrix( float width, float height, float nearPlane, float farPlane ) {
     Mat4* m = &rendererStorage.baseProjectionMatrix;
     float halfWidth = width * 0.5f;
     float halfHeight = height * 0.5f;
-    float depth = farPlane - nearPlane;
+    float depth = nearPlane - farPlane;
 
     m->m[0][0] = 1.0f / halfWidth; m->m[0][1] = 0.0f; m->m[0][2] = 0.0f; m->m[0][3] = 0.0f;
     m->m[1][0] = 0.0f; m->m[1][1] = 1.0f / halfHeight; m->m[1][2] = 0.0f; m->m[1][3] = 0.0f;
     m->m[2][0] = 0.0f; m->m[2][1] = 0.0f; m->m[2][2] = 2.0f / depth; m->m[2][3] = 0.0f;
     m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = -(farPlane + nearPlane) / depth; m->m[3][3] = 1.0f;
+}
+
+void ApplyArmaturePose( Armature* armature, ArmaturePose* pose ) {
+	struct {
+		static void ApplyPoseRecursive( Bone* bone, Mat4 parentTransform, ArmaturePose* pose ) {
+			*bone->currentTransform = MultMatrix( pose->localBoneTransforms[ bone->boneIndex ], parentTransform );
+
+			for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
+				ApplyPoseRecursive( bone->children[ childIndex ], *bone->currentTransform, pose );
+			}
+
+			*bone->currentTransform = MultMatrix( bone->invBindPose, *bone->currentTransform );
+		};
+	}LocalFunctions;
+
+	Mat4 i; SetToIdentity( &i );
+	LocalFunctions.ApplyPoseRecursive( armature->rootBone, i, pose );
 }
 
 void CreateEmptyTexture( TextureData* texDataStorage, uint16 width, uint16 height );
@@ -112,9 +133,9 @@ void CreateEmptyTexture( TextureData* texDataStorage, uint16 width, uint16 heigh
 ------------------------------------------------------------------------------------------------------------------*/
 
 bool InitRenderer( uint16 screen_w, uint16 screen_h );
-void CreateTextureBinding( TextureBindingID* texBindID, TextureData* textureData );
-void CreateShaderProgram( ShaderProgramBinding* bindData, const char* vertProgramFilePath, const char* fragProgramFilePath );
-void CreateRenderBinding( MeshGPUBinding* bindData, MeshGeometryData* geometryStorage );
+void CreateTextureBinding( TextureData* textureData, TextureBindingID* texBindID );
+void CreateShaderProgram( const char* vertProgramFilePath, const char* fragProgramFilePath, ShaderProgramBinding* bindData );
+void CreateRenderBinding( MeshGeometryData* geometryStorage, MeshGPUBinding* bindData );
 void RenderBoundData( MeshGPUBinding* renderBinding, ShaderProgramBinding* program, ShaderProgramParams params );
 
 void RenderDebugCircle( Vec3 position, float radius = 1.0f , Vec3 color = { 1.0f, 1.0f, 1.0f} );

@@ -16,13 +16,16 @@
 #include "stb/stb_image.h"
 
 #include "App.h"
+#include "App.cpp"
 #include "GLRenderer.cpp"
 
 
 //Win32 function prototypes, allows the entry point to be the first function
-LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
+static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
+//A helper function only to be used in this file ( so far )
+void TextToNumberConversion( char* textIn, float* numbersOut );
 
-struct AppInfo {
+static struct {
 	HINSTANCE appInstance;
 	HWND hwnd;
 	WNDCLASSEX wc;
@@ -33,23 +36,26 @@ struct AppInfo {
 
 	uint16 windowPosX;
 	uint16 windowPosY;
-	bool running = true;
-	bool isFullScreen = false;
+	bool running;
+	bool isFullScreen;
 
-	DWORD mSecsPerFrame = 1000 / 60;
-};
-static AppInfo appInfo;
+	DWORD mSecsPerFrame;
+} appInfo;
 
-int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow ) {
+static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow ) {
 	AllocConsole(); //create a console
-	freopen("conin$","r",stdin);
-	freopen("conout$","w",stdout);
-	freopen("conout$","w",stderr);
+	freopen( "conin$","r",stdin );
+	freopen( "conout$","w",stdout );
+	freopen( "conout$","w",stderr );
 	printf( "Program Started, console initialized\n" );
 
 	appInfo.appInstance = hInstance;
 
 	const char WindowName[] = "Wet Clay";
+
+	appInfo.running = true;
+	appInfo.isFullScreen = false;
+	appInfo.mSecsPerFrame = 1000 / 60;
 
 	appInfo.wc.cbSize = sizeof(WNDCLASSEX);
 	appInfo.wc.style = 0;
@@ -81,7 +87,7 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 		appInfo.windowPosX = 0;
 		appInfo.windowPosY = 0;
 
-		// change resolution before the window is created
+		//change resolution before the window is created
 		//SysSetDisplayMode(width, height, SCRDEPTH);
 		//TODO: implement
 	}
@@ -166,31 +172,6 @@ int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdL
 	return Msg.wParam;
 }
 
-LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
-	switch (uMsg) {
-		case WM_CLOSE: {
-			appInfo.running = false;
-			wglMakeCurrent( appInfo.deviceContext, NULL );
-			wglDeleteContext( appInfo.openglRenderContext );
-			ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
-			DestroyWindow( appInfo.hwnd );
-			break;
-		}
-
-		case WM_DESTROY: {
-			appInfo.running = false;
-			wglMakeCurrent( appInfo.deviceContext, NULL );
-			wglDeleteContext( appInfo.openglRenderContext );
-			ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
-			PostQuitMessage( 0 );
-			break;
-		}
-	}
-
-	// Pass All Unhandled Messages To DefWindowProc
-	return DefWindowProc(hWnd,uMsg,wParam,lParam);
-}
-
 /*----------------------------------------------------------------------------------------
                          App.h function prototype implementations
 -----------------------------------------------------------------------------------------*/
@@ -233,27 +214,6 @@ int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 buffe
     fclose( file );
     return 0;
 }
-
-void TextToNumberConversion( char* textIn, float* numbersOut ) {
-	char* start;
-	char* end; 
-	start = textIn; 
-	end = start;
-	uint16 index = 0;
-	do {
-		do {
-			end++;
-		} while( *end != ' ' && *end != 0 );
-		assert( ( end - start) < 16 );
-		char buffer [16];
-		memcpy( &buffer[0], start, end - start);
-		buffer[end - start] = 0;
-		start = end;
-
-		numbersOut[index] = atof( buffer );
-		index++;
-	} while( *end != 0 );
-};
 
 void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Armature* armature ) {
 	tinyxml2::XMLDocument colladaDoc;
@@ -619,26 +579,6 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmaturePose* pose, Arm
 	*rootBonePoseMat = MultMatrix( *rootBonePoseMat, correction );
 }
 
-void ApplyArmaturePose( Armature* armature, ArmaturePose* pose ) {
-
-	struct N {
-		static void ApplyPoseRecursive( Bone* bone, Mat4 parentTransform, ArmaturePose* pose ) {
-			*bone->currentTransform = MultMatrix( pose->localBoneTransforms[ bone->boneIndex ], parentTransform );
-
-			for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
-				ApplyPoseRecursive( bone->children[ childIndex ], *bone->currentTransform, pose );
-			}
-
-			*bone->currentTransform = MultMatrix( bone->invBindPose, *bone->currentTransform );
-		};
-	};
-
-	Mat4 i; SetToIdentity( &i );
-	N::ApplyPoseRecursive( armature->rootBone, i, pose );
-}
-
-#include "App.cpp"
-
 void LoadTextureDataFromDisk( const char* fileName, TextureData* storage ) {
     storage->texData = (uint8*)stbi_load( fileName, (int*)&storage->width, (int*)&storage->height, (int*)&storage->channelsPerPixel, 0 );
     if( storage->texData == NULL ) {
@@ -646,4 +586,54 @@ void LoadTextureDataFromDisk( const char* fileName, TextureData* storage ) {
     }
     printf( "Loaded file: %s\n", fileName );
     printf( "Width: %d, Height: %d, Channel count: %d\n", storage->width, storage->height, storage->channelsPerPixel );
+}
+
+/*----------------------------------------------------------------------------------------
+                       Local Functions only to be used in this file
+------------------------------------------------------------------------------------------*/
+
+static void TextToNumberConversion( char* textIn, float* numbersOut ) {
+	char* start;
+	char* end; 
+	start = textIn; 
+	end = start;
+	uint16 index = 0;
+	do {
+		do {
+			end++;
+		} while( *end != ' ' && *end != 0 );
+		assert( ( end - start) < 16 );
+		char buffer [16];
+		memcpy( &buffer[0], start, end - start);
+		buffer[end - start] = 0;
+		start = end;
+
+		numbersOut[index] = atof( buffer );
+		index++;
+	} while( *end != 0 );
+};
+
+static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
+	switch (uMsg) {
+		case WM_CLOSE: {
+			appInfo.running = false;
+			wglMakeCurrent( appInfo.deviceContext, NULL );
+			wglDeleteContext( appInfo.openglRenderContext );
+			ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
+			DestroyWindow( appInfo.hwnd );
+			break;
+		}
+
+		case WM_DESTROY: {
+			appInfo.running = false;
+			wglMakeCurrent( appInfo.deviceContext, NULL );
+			wglDeleteContext( appInfo.openglRenderContext );
+			ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
+			PostQuitMessage( 0 );
+			break;
+		}
+	}
+
+	// Pass All Unhandled Messages To DefWindowProc
+	return DefWindowProc(hWnd,uMsg,wParam,lParam);
 }

@@ -3,6 +3,8 @@ struct GameMemory {
     MeshGPUBinding meshBinding;
     ShaderProgramBinding shader;
     ShaderProgramParams params;
+    TextureData texData;
+    TextureBindingID texBinding;
     Mat4 m;
     Armature arm;
     ArmaturePose pose;
@@ -22,11 +24,13 @@ void GameInit( MemorySlab* gameMemory ) {
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
     LoadMeshDataFromDisk( "Data/ComplexSkeletonDebug.dae", &gMem->meshData, &gMem->arm );
     LoadAnimationDataFromCollada( "Data/ComplexSkeletonDebug.dae", &gMem->pose, &gMem->arm );
-    CreateRenderBinding( &gMem->meshBinding, &gMem->meshData );
-    CreateShaderProgram( &gMem->shader, "Data/Shaders/Basic.vert", "Data/Shaders/Basic.frag" );
+    LoadTextureDataFromDisk( "Data/Textures/green_texture.png", &gMem->texData );
+    CreateRenderBinding( &gMem->meshData, &gMem->meshBinding );
+    CreateShaderProgram( "Data/Shaders/Basic.vert", "Data/Shaders/Basic.frag", &gMem->shader );
+    CreateTextureBinding( &gMem->texData, &gMem->texBinding );
     SetToIdentity( &gMem->m );
     gMem->params.modelMatrix = &gMem->m;
-    gMem->params.sampler1 = 0;
+    gMem->params.sampler1 = gMem->texBinding;
     gMem->params.sampler2 = 0;
     gMem->params.armature = &gMem->arm;
 
