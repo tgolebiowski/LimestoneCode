@@ -280,6 +280,11 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 		rawColladaUVData = (float*)alloca( sizeof(float) * uvCount );
 		rawIndexData = (float*)alloca( sizeof(float) * indexCount );
 
+		memset( rawColladaVertexData, 0, sizeof(float) * vCount );
+		memset( rawColladaNormalData, 0, sizeof(float) * nCount );
+		memset( rawColladaUVData, 0, sizeof(float) * uvCount );
+		memset( rawIndexData, 0, sizeof(float) * indexCount );
+
 		//Reading Vertex position data
 		strcpy( colladaTextBuffer, colladaVertArrayVal );
 		TextToNumberConversion( colladaTextBuffer, rawColladaVertexData );
@@ -560,6 +565,7 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmaturePose* pose, Arm
 		int count = 0; 
 		transformMatrixElement->FirstChildElement()->QueryAttribute( "count", &count );
 		float* rawTransformData = (float*)alloca(  count * sizeof(float) );
+		memset( rawTransformData, 0, count * sizeof(float) );
 		TextToNumberConversion( transformDataCopy, rawTransformData );
 		memcpy( &boneLocalTransform.m[0][0], &rawTransformData[0], 16 * sizeof(float) );
 

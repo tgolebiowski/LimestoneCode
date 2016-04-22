@@ -68,8 +68,10 @@ void Render( MemorySlab* gameMemory ) {
 
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     *gMem->params.modelMatrix = i;
-    RenderBoundData( &gMem->meshBinding, &gMem->shader, gMem->params );
-    RenderArmatureAsLines( &gMem->arm, i, { 1.0f, 0.0f, 0.0f } );
+    //RenderBoundData( &gMem->meshBinding, &gMem->shader, gMem->params );
+    //RenderArmatureAsLines( &gMem->arm, i, { 1.0f, 0.0f, 0.0f } );
+
+    RenderTexturedQuad( &gMem->texBinding, 0.5f, 0.5f, -0.5f, 0.5f );
 
     //glBindFramebuffer( GL_FRAMEBUFFER, 0 );
 

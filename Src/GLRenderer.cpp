@@ -23,7 +23,24 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     SetToIdentity( &rendererStorage.baseProjectionMatrix );
     SetToIdentity( &rendererStorage.cameraTransform );
 
-    //CreateShader( &framebufferShader, "Data/Shaders/Framebuffer.vert", "Data/Shaders/Framebuffer.frag" );
+    CreateShaderProgram( "Data/Shaders/TexturedQuad.vert", "Data/Shaders/TexturedQuad.frag", &rendererStorage.texturedQuadShader );
+    //making these not static, break armature pose loading or applying, not sure which and I don't know why, so this is a hack to avoid that
+    static GLfloat quadVData[12] = { -1.0f, 1.0f, 0.0f, -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f };
+    static GLfloat quadUVData[8] = { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f };
+    //The staticy nonsense baystahds ^^^^
+    const GLuint quadIndexData[6] = { 0, 1, 2, 0, 2, 3 };
+    GLuint quadDataPtrs [3];
+    glGenBuffers( 3, (GLuint*)quadDataPtrs );
+
+    rendererStorage.quadVDataPtr = quadDataPtrs[0];
+    glBindBuffer( GL_ARRAY_BUFFER, quadDataPtrs[0] );
+    glBufferData( GL_ARRAY_BUFFER, 12 * sizeof( GLfloat ), &quadVData[0], GL_STATIC_DRAW );
+    rendererStorage.quadUVDataPtr = quadDataPtrs[1];
+    glBindBuffer( GL_ARRAY_BUFFER, quadDataPtrs[1] );
+    glBufferData( GL_ARRAY_BUFFER, 8 * sizeof( GLfloat ), &quadUVData[0], GL_STATIC_DRAW );
+    rendererStorage.quadIDataPtr = quadDataPtrs[2];
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, quadDataPtrs[2] );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, 6 * sizeof( GLuint ), &quadIndexData[0], GL_STATIC_DRAW );
 
     //Check for error
     GLenum error = glGetError();
@@ -294,6 +311,31 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
     //glBindTexture( GL_TEXTURE_2D, 0 );
     //clear shader
     //glUseProgram( (GLuint)NULL );
+}
+
+void RenderTexturedQuad( TextureBindingID* texture, float width, float height, float x, float y ) {
+    Mat4 transform, translation, scale; SetToIdentity( &translation ); SetToIdentity( &scale );
+    SetScale( &scale, width, height, 1.0f  ); SetTranslation( &translation, x, y, 0.0f );
+    transform = MultMatrix( scale, translation );
+
+    glUseProgram( rendererStorage.texturedQuadShader.programID );
+    glUniformMatrix4fv( rendererStorage.texturedQuadShader.modelMatrixUniformPtr, 1, false, (float*)&transform );
+
+    //Set vertex data
+    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage.quadVDataPtr );
+    glEnableVertexAttribArray( rendererStorage.texturedQuadShader.positionAttribute );
+    glVertexAttribPointer( rendererStorage.texturedQuadShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+
+    //Set UV data
+    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage.quadUVDataPtr );
+    glEnableVertexAttribArray( rendererStorage.texturedQuadShader.texCoordAttribute );
+    glVertexAttribPointer( rendererStorage.texturedQuadShader.texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
+
+    glActiveTexture( GL_TEXTURE0 );
+    glBindTexture( GL_TEXTURE_2D, (GLuint)*texture );
+
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage.quadIDataPtr );
+    glDrawElements( GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL );
 }
 
 void RenderDebugCircle( Vec3 position, float radius, Vec3 color ) {

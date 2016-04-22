@@ -79,7 +79,7 @@ struct ShaderProgramParams {
 	Armature* armature;
 };
 
-static struct RendererThings {
+static struct {
 	Mat4 baseProjectionMatrix;
 	Mat4 cameraTransform;
 
@@ -126,7 +126,12 @@ void ApplyArmaturePose( Armature* armature, ArmaturePose* pose ) {
 	LocalFunctions.ApplyPoseRecursive( armature->rootBone, i, pose );
 }
 
-void CreateEmptyTexture( TextureData* texDataStorage, uint16 width, uint16 height );
+void CreateEmptyTexture( TextureData* texDataStorage, uint16 width, uint16 height ) {
+	texDataStorage->texData = ( uint8* )malloc( sizeof( uint8 ) * 4 * width * height );
+    texDataStorage->width = width;
+    texDataStorage->height = height;
+    texDataStorage->channelsPerPixel = 4;
+}
 
 /*-----------------------------------------------------------------------------------------------------------------
                                     THINGS FOR THE RENDERER TO IMPLEMENT
@@ -137,6 +142,7 @@ void CreateTextureBinding( TextureData* textureData, TextureBindingID* texBindID
 void CreateShaderProgram( const char* vertProgramFilePath, const char* fragProgramFilePath, ShaderProgramBinding* bindData );
 void CreateRenderBinding( MeshGeometryData* geometryStorage, MeshGPUBinding* bindData );
 void RenderBoundData( MeshGPUBinding* renderBinding, ShaderProgramBinding* program, ShaderProgramParams params );
+void RenderTexturedQuad( TextureBindingID* texture, float width, float height, float x, float y );
 
 void RenderDebugCircle( Vec3 position, float radius = 1.0f , Vec3 color = { 1.0f, 1.0f, 1.0f} );
 void RenderDebugLines( float* vertexData, uint8 vertexCount, Mat4 transform, Vec3 color = { 1.0f, 1.0f, 1.0f } );
