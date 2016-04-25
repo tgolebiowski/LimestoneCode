@@ -1,7 +1,4 @@
 #ifndef APP_H
-#define KILOBYTES(value) value * 1024
-#define MEGABYTES(value) KILOBYTES(value) * 1024
-#define GIGABYTES(value) MEGABYTES(value) * 1024
 
 #include <stdint.h>
 typedef uint8_t uint8;
@@ -13,15 +10,20 @@ typedef int32_t int32;
 typedef uint64_t uint64;
 typedef int64_t int64;
 
+#include "Memory.h"
 #include "Math3D.h"
 #include "Renderer.h"
 
 uint16 SCREEN_WIDTH = 640;
 uint16 SCREEN_HEIGHT = 480;
 
-struct MemorySlab {
-	void* slabStart;
-	uint64 slabSize;
+struct ControllerState {
+	float leftStick_x, leftStick_y;
+	float rightStick_x, rightStick_y;
+	float leftTrigger, rightTrigger;
+	bool leftBumper, rightBumper;
+	bool button1, button2, button3, button4;
+	bool specialButtonLeft, specialButtonRight;
 };
 
 /* --------------------------------------------------------------------------
@@ -31,6 +33,10 @@ struct MemorySlab {
 void GetMousePosition( float* x, float* y );
 ///Currently limiting it to Ascii Table
 bool IsKeyDown( uint8 keyChar );
+
+bool IsControllerButtonDown( uint8 buttonIndex );
+void GetControllerStickState( uint8 stickIndex, float* x, float* y );
+float GetTriggerState( uint8 triggerIndex );
 
 /* --------------------------------------------------------------------------
 	                      STUFF THE GAME PROVIDES THE OS

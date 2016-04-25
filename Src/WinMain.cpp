@@ -3,8 +3,10 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <XInput.h>
 #include <assert.h>
 #include <functional>
+
 #include "tinyxml2/tinyxml2.h"
 #include "tinyxml2/tinyxml2.cpp"
 
@@ -23,7 +25,7 @@
 //Win32 function prototypes, allows the entry point to be the first function
 static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
 //A helper function only to be used in this file ( so far )
-void TextToNumberConversion( char* textIn, float* numbersOut );
+static void TextToNumberConversion( char* textIn, float* numbersOut );
 
 static struct {
 	HINSTANCE appInstance;
@@ -38,6 +40,7 @@ static struct {
 	uint16 windowPosY;
 	bool running;
 	bool isFullScreen;
+	ControllerState controllerState;
 
 	DWORD mSecsPerFrame;
 } appInfo;
@@ -149,7 +152,32 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 		static DWORD endTime;
 		startTime = GetTickCount();
 
+		//GAME LOOP
 		if(appInfo.running) {
+			XINPUT_STATE state;
+			DWORD queryResult;
+			memset( &state, 0, sizeof( XINPUT_STATE ) ) ;
+			queryResult = XInputGetState( 0, &state );
+			if( queryResult == ERROR_SUCCESS ) {
+				//Note: polling of the sticks results in the range not quite reaching 1.0 in the positive direction
+				appInfo.controllerState.leftStick_x = ((float)state.Gamepad.sThumbLX / 32768.0f );
+				appInfo.controllerState.leftStick_y = ((float)state.Gamepad.sThumbLY / 32768.0f );
+				appInfo.controllerState.rightStick_x = ((float)state.Gamepad.sThumbRX / 32768.0f );
+				appInfo.controllerState.rightStick_y = ((float)state.Gamepad.sThumbRY / 32768.0f );
+				appInfo.controllerState.leftTrigger = ((float)state.Gamepad.bLeftTrigger / 255.0f );
+				appInfo.controllerState.rightTrigger = ((float)state.Gamepad.bRightTrigger / 255.0f );
+				appInfo.controllerState.leftBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+				appInfo.controllerState.rightBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
+				appInfo.controllerState.button1 = state.Gamepad.wButtons & XINPUT_GAMEPAD_A;
+				appInfo.controllerState.button2 = state.Gamepad.wButtons & XINPUT_GAMEPAD_B;
+				appInfo.controllerState.button3 = state.Gamepad.wButtons & XINPUT_GAMEPAD_X;
+				appInfo.controllerState.button4 = state.Gamepad.wButtons & XINPUT_GAMEPAD_Y;
+				appInfo.controllerState.specialButtonLeft = state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK;
+				appInfo.controllerState.specialButtonRight = state.Gamepad.wButtons & XINPUT_GAMEPAD_START;
+			} else {
+
+			}
+
 			appInfo.running = Update( &gameSlab );
 			Render( &gameSlab );
 			SwapBuffers( appInfo.deviceContext );
@@ -190,6 +218,43 @@ bool IsKeyDown( uint8 keyChar ) {
 	short keystate = GetAsyncKeyState( keyChar );
 
 	return ( 1 << 16 ) & keystate;
+}
+
+bool IsControllerButtonDown( uint8 buttonIndex ) {
+	if( buttonIndex == 0 )
+	    return appInfo.controllerState.button1;
+	else if( buttonIndex == 1 )
+	    return appInfo.controllerState.button2;
+	else if( buttonIndex == 2 )
+	    return appInfo.controllerState.button3;
+	else if( buttonIndex == 3 )
+	    return appInfo.controllerState.button4;
+	else if( buttonIndex == 4 )
+	    return appInfo.controllerState.specialButtonLeft;
+	else if( buttonIndex == 5 )
+	    return appInfo.controllerState.specialButtonRight;
+}
+
+void GetControllerStickState( uint8 stickIndex, float* x, float* y ) {
+	if( stickIndex == 0 ) {
+		*x = appInfo.controllerState.leftStick_x;
+		*y = appInfo.controllerState.leftStick_y;
+	} else if( stickIndex == 1 ) {
+		*x = appInfo.controllerState.rightStick_x;
+		*y = appInfo.controllerState.rightStick_y;
+	}
+}
+
+
+float GetTriggerState( uint8 triggerIndex ) {
+
+	if( triggerIndex == 0 ) {
+		return appInfo.controllerState.leftTrigger;
+	} else if( triggerIndex == 1) {
+		return appInfo.controllerState.rightTrigger;
+	}
+
+	return 0.0f;
 }
 
 /*----------------------------------------------------------------------------------------
@@ -617,7 +682,7 @@ static void TextToNumberConversion( char* textIn, float* numbersOut ) {
 		numbersOut[index] = atof( buffer );
 		index++;
 	} while( *end != 0 );
-};
+}
 
 static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 	switch (uMsg) {
