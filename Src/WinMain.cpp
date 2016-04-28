@@ -540,8 +540,8 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 
 				Mat4 correction;
 				correction.m[0][0] = 1.0f; correction.m[0][1] = 0.0f; correction.m[0][2] = 0.0f; correction.m[0][3] = 0.0f;
-				correction.m[1][0] = 0.0f; correction.m[1][1] = 0.0f; correction.m[1][2] = 1.0f; correction.m[3][3] = 0.0f;
-				correction.m[2][0] = 0.0f; correction.m[2][1] = -1.0f; correction.m[2][2] = 0.0f; correction.m[3][3] = 0.0f;
+				correction.m[1][0] = 0.0f; correction.m[1][1] = 0.0f; correction.m[1][2] = 1.0f; correction.m[1][3] = 0.0f;
+				correction.m[2][0] = 0.0f; correction.m[2][1] = -1.0f; correction.m[2][2] = 0.0f; correction.m[2][3] = 0.0f;
 				correction.m[3][0] = 0.0f; correction.m[3][1] = 0.0f; correction.m[3][2] = 0.0f; correction.m[3][3] = 1.0f;
 				targetBone->invBindPose = TransposeMatrix( matrix );
 				targetBone->invBindPose = MultMatrix( correction, targetBone->invBindPose );
@@ -591,7 +591,7 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 	};
 }
 
-void LoadAnimationDataFromCollada( const char* fileName, ArmaturePose* pose, Armature* armature ) {
+void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* pose, Armature* armature ) {
 	tinyxml2::XMLDocument colladaDoc;
 	colladaDoc.LoadFile( fileName );
 
@@ -636,18 +636,20 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmaturePose* pose, Arm
 
 		//Save data in pose struct
 		boneLocalTransform = TransposeMatrix( boneLocalTransform );
-		pose->localBoneTransforms[ targetBone->boneIndex ] = boneLocalTransform;
+		if( targetBone == armature->rootBone ) {
+			Mat4 correction;
+			correction.m[0][0] = 1.0f; correction.m[0][1] = 0.0f; correction.m[0][2] = 0.0f; correction.m[0][3] = 0.0f;
+			correction.m[1][0] = 0.0f; correction.m[1][1] = 0.0f; correction.m[1][2] = -1.0f; correction.m[1][3] = 0.0f;
+			correction.m[2][0] = 0.0f; correction.m[2][1] = 1.0f; correction.m[2][2] = 0.0f; correction.m[2][3] = 0.0f;
+			correction.m[3][0] = 0.0f; correction.m[3][1] = 0.0f; correction.m[3][2] = 0.0f; correction.m[3][3] = 1.0f;
+			boneLocalTransform = MultMatrix( boneLocalTransform, correction );
+		}
+		BoneKeyFrame* key = &pose->localBoneTransforms[ targetBone->boneIndex ];
+		DecomposeMat4( boneLocalTransform, &key->scale, &key->rotation, &key->position );
+		Mat4 m = Mat4FromComponents( key->position, key->scale, key->rotation );
 
 		animationNode = animationNode->NextSibling();
 	}
-
-	Mat4 correction;
-	correction.m[0][0] = 1.0f; correction.m[0][1] = 0.0f; correction.m[0][2] = 0.0f; correction.m[0][3] = 0.0f;
-	correction.m[1][0] = 0.0f; correction.m[1][1] = 0.0f; correction.m[1][2] = -1.0f; correction.m[1][3] = 0.0f;
-	correction.m[2][0] = 0.0f; correction.m[2][1] = 1.0f; correction.m[2][2] = 0.0f; correction.m[2][3] = 0.0f;
-	correction.m[3][0] = 0.0f; correction.m[3][1] = 0.0f; correction.m[3][2] = 0.0f; correction.m[3][3] = 1.0f;	
-	Mat4* rootBonePoseMat = &pose->localBoneTransforms[ armature->rootBone->boneIndex ];
-	*rootBonePoseMat = MultMatrix( *rootBonePoseMat, correction );
 }
 
 void LoadTextureDataFromDisk( const char* fileName, TextureData* storage ) {

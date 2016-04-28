@@ -40,8 +40,13 @@ struct Armature {
 	uint8 boneCount;
 };
 
-struct ArmaturePose {
-	Mat4 localBoneTransforms[ MAXBONES ];
+struct BoneKeyFrame {
+	Vec3 position, scale;
+	Quat rotation;
+};
+
+struct ArmatureKeyFrame {
+	BoneKeyFrame localBoneTransforms[ MAXBONES ];
 };
 
 struct MeshGPUBinding {
@@ -109,10 +114,11 @@ void SetOrthoProjectionMatrix( float width, float height, float nearPlane, float
     m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = -(farPlane + nearPlane) / depth; m->m[3][3] = 1.0f;
 }
 
-void ApplyArmaturePose( Armature* armature, ArmaturePose* pose ) {
+void ApplyArmaturePose( Armature* armature, ArmatureKeyFrame* pose ) {
 	struct {
-		static void ApplyPoseRecursive( Bone* bone, Mat4 parentTransform, ArmaturePose* pose ) {
-			*bone->currentTransform = MultMatrix( pose->localBoneTransforms[ bone->boneIndex ], parentTransform );
+		static void ApplyPoseRecursive( Bone* bone, Mat4 parentTransform, ArmatureKeyFrame* pose ) {
+			BoneKeyFrame boneKey = pose->localBoneTransforms[ bone->boneIndex ];
+			*bone->currentTransform = MultMatrix( Mat4FromComponents( boneKey.position, boneKey.scale, boneKey.rotation ), parentTransform );
 
 			for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
 				ApplyPoseRecursive( bone->children[ childIndex ], *bone->currentTransform, pose );
@@ -160,5 +166,5 @@ void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color = { 1
 ///Return 0 on success, required buffer length if buffer is too small, or -1 on other OS failure
 int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 bufferLen);
 void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Armature* armature = NULL );
-void LoadAnimationDataFromCollada( const char* fileName, ArmaturePose* pose, Armature* armature );
+void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* pose, Armature* armature );
 void LoadTextureDataFromDisk( const char* fileName, TextureData* texDataStorage );

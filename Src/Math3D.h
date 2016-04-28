@@ -263,18 +263,6 @@ Vec3 MultVec( Mat4 m, Vec3 v ) {
 		     v.x * m.m[0][2] + v.y * m.m[1][2] + v.z * m.m[2][2] + m.m[3][2] };
 }
 
-void DecomposeMat4( Mat4 m, Vec3* scale, Quat* rotation, Vec3* translation ) {
-	*rotation = QuatFromMatrix( m );
-
-	translation->x = m.m[3][0];
-	translation->y = m.m[3][1];
-	translation->z = m.m[3][2];
-
-	scale->x = m.m[0][0];
-	scale->y = m.m[1][1];
-	scale->z = m.m[2][2];
-}
-
 /*----------------------------------------------------------------------------
                                     Quat
 ------------------------------------------------------------------------------*/
@@ -378,7 +366,7 @@ Quat QuatFromMatrix( const Mat4 matrix ) {
 	float tr, s, q[4];
 	int i, j, k;
 
-	static const int nxt[3] = {1, 2, 0};			
+	const int nxt[3] = {1, 2, 0};			
 
 	tr = matrix.m[0][0] + matrix.m[1][1] + matrix.m[2][2];
 
@@ -389,9 +377,9 @@ Quat QuatFromMatrix( const Mat4 matrix ) {
 		s = sqrtf(tr + 1.0f);
 		quat.w = s / 2.0f;
 		s = 0.5f / s;
-		quat.x = (matrix.m[1][2] - matrix.m[2][1]) * s;
-		quat.y = (matrix.m[2][0] - matrix.m[0][2]) * s;
-		quat.z = (matrix.m[0][1] - matrix.m[1][0]) * s;
+		quat.x = ( matrix.m[2][1] - matrix.m[1][2] ) * s;
+		quat.y = ( matrix.m[0][2] - matrix.m[2][0] ) * s;
+		quat.z = ( matrix.m[1][0] - matrix.m[0][1] ) * s;
 	}
 	else
 	{
@@ -412,13 +400,65 @@ Quat QuatFromMatrix( const Mat4 matrix ) {
 		q[j] = (matrix.m[i][j] + matrix.m[j][i]) * s;
 		q[k] = (matrix.m[i][k] + matrix.m[k][i]) * s;
 
-		quat.x = q[0];
-		quat.y = q[1];
-		quat.z = q[2];
-		quat.w = q[3];
+		quat.w = q[0];
+		quat.x = q[1];
+		quat.y = q[2];
+		quat.z = q[3];
 	}
 
 	return quat;
+}
+
+/*---------------------------------------------------------------------------------------------------
+                                           Extra Utility Functions
+-----------------------------------------------------------------------------------------------------*/
+
+Mat4 Mat4FromComponents( Vec3 position, Vec3 scale, Quat rotation ) {
+	Mat4 m; SetToIdentity( &m );
+	SetScale( &m, scale.x, scale.y, scale.z );
+	m = MultMatrix( MatrixFromQuat( rotation ), m );
+	SetTranslation( &m, position.x, position.y, position.z );
+	return m;
+}
+
+//Sets scale scale and translation to 0 and rotation to { 0,0,0,1 } if it cannot be decomposed
+void DecomposeMat4( Mat4 m, Vec3* scale, Quat* rotation, Vec3* translation ) {
+	translation->x = m.m[3][0];
+	translation->y = m.m[3][1];
+	translation->z = m.m[3][2];
+
+	scale->x = sqrtf( m.m[0][0] * m.m[0][0] + m.m[0][1] * m.m[0][1] + m.m[0][2] * m.m[0][2] );
+	scale->y = sqrtf( m.m[1][0] * m.m[1][0] + m.m[1][1] * m.m[1][1] + m.m[1][2] * m.m[1][2] );
+	scale->z = sqrtf( m.m[2][0] * m.m[2][0] + m.m[2][1] * m.m[2][1] + m.m[2][2] * m.m[2][2] );
+
+	if( scale->x == 0.0f || scale->y == 0.0f || scale->z == 0.0f ) {
+		memset( translation, 0, sizeof( float ) * 3 );
+		memset( scale, 0, sizeof( float ) * 3 );
+		memset( rotation, 0, sizeof( float ) * 3 );
+		rotation->w = 1.0f;
+		return;
+	}
+
+	Vec3 row0Vec = { m.m[0][0], m.m[0][1], m.m[0][2] };
+	Vec3 row1Vec = { m.m[1][0], m.m[1][1], m.m[1][2] };
+	Vec3 row2Vec = { m.m[2][0], m.m[2][1], m.m[2][2] };
+
+	Vec3 tempZ = Cross( row0Vec, row1Vec );
+	if( Dot( tempZ, row2Vec ) ) {
+		scale->x *= -1.0f;
+		row0Vec.x *= -1.0f;
+		row0Vec.y *= -1.0f;
+		row0Vec.z *= -1.0f;
+	}
+	Normalize( &row0Vec );
+	Normalize( &row1Vec );
+	Normalize( &row2Vec );
+
+	Mat4 r; SetToIdentity( &r );
+	r.m[0][0] = row0Vec.x; r.m[0][1] = row0Vec.y; r.m[0][2] = row0Vec.z;
+	r.m[1][0] = row1Vec.x; r.m[1][1] = row1Vec.y; r.m[1][2] = row1Vec.z;
+	r.m[2][0] = row2Vec.x; r.m[2][1] = row2Vec.y; r.m[2][2] = row2Vec.z;
+	*rotation = QuatFromMatrix( r );
 }
 
 #endif
