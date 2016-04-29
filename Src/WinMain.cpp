@@ -18,7 +18,7 @@
 #include "stb/stb_image.h"
 
 #include "App.h"
-#include "App.cpp"
+#include "..\App.cpp"
 #include "GLRenderer.cpp"
 
 
@@ -135,7 +135,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	UpdateWindow( appInfo.hwnd );
 
 	MemorySlab gameSlab;
-	gameSlab.slabSize = MEGABYTES(32);
+	gameSlab.slabSize = MEGABYTES( RESERVED_SPACE );
 	gameSlab.slabStart = VirtualAlloc( NULL, gameSlab.slabSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
 	assert( gameSlab.slabStart != NULL );
 
@@ -244,7 +244,6 @@ void GetControllerStickState( uint8 stickIndex, float* x, float* y ) {
 		*y = appInfo.controllerState.rightStick_y;
 	}
 }
-
 
 float GetTriggerState( uint8 triggerIndex ) {
 
@@ -645,6 +644,7 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* pose,
 			boneLocalTransform = MultMatrix( boneLocalTransform, correction );
 		}
 		BoneKeyFrame* key = &pose->localBoneTransforms[ targetBone->boneIndex ];
+		key->rawMatrix = boneLocalTransform;
 		DecomposeMat4( boneLocalTransform, &key->scale, &key->rotation, &key->position );
 		Mat4 m = Mat4FromComponents( key->position, key->scale, key->rotation );
 

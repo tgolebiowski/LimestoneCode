@@ -41,6 +41,7 @@ struct Armature {
 };
 
 struct BoneKeyFrame {
+	Mat4 rawMatrix;
 	Vec3 position, scale;
 	Quat rotation;
 };
@@ -117,8 +118,10 @@ void SetOrthoProjectionMatrix( float width, float height, float nearPlane, float
 void ApplyArmaturePose( Armature* armature, ArmatureKeyFrame* pose ) {
 	struct {
 		static void ApplyPoseRecursive( Bone* bone, Mat4 parentTransform, ArmatureKeyFrame* pose ) {
-			BoneKeyFrame boneKey = pose->localBoneTransforms[ bone->boneIndex ];
-			*bone->currentTransform = MultMatrix( Mat4FromComponents( boneKey.position, boneKey.scale, boneKey.rotation ), parentTransform );
+			BoneKeyFrame* boneKey = &pose->localBoneTransforms[ bone->boneIndex ];
+			Mat4 baseComponentMat = Mat4FromComponents( boneKey->position, boneKey->scale, boneKey->rotation );
+			Mat4 resultComponentMat = MultMatrix( baseComponentMat, parentTransform );
+			*bone->currentTransform = /*resultComponentMat; */ MultMatrix( boneKey->rawMatrix, parentTransform );
 
 			for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
 				ApplyPoseRecursive( bone->children[ childIndex ], *bone->currentTransform, pose );
