@@ -422,9 +422,9 @@ Mat4 Mat4FromComponents( Vec3 position, Vec3 scale, Quat rotation ) {
 
 	SetScale( &s, scale.x, scale.y, scale.z );
 	r = MatrixFromQuat( rotation );
-	SetTranslation( &t, position.x, position.y, position.z );
-
-	return MultMatrix( MultMatrix( s, r), t );
+	r = MultMatrix( s, r);
+	SetTranslation( &r, position.x, position.y, position.z );
+	return r;
 }
 
 //Sets scale scale and translation to 0 and rotation to { 0,0,0,1 } if it cannot be decomposed
@@ -449,17 +449,22 @@ void DecomposeMat4( Mat4 m, Vec3* scale, Quat* rotation, Vec3* translation ) {
 	Vec3 row1Vec = { m.m[1][0], m.m[1][1], m.m[1][2] };
 	Vec3 row2Vec = { m.m[2][0], m.m[2][1], m.m[2][2] };
 
+	//TODO SECTION--------------------
+	//So, example i'm working off of has these normalizations after the test
+	//But either changing the test to dot < 1.0 or putting the normalization gives correct results in tests
+	Normalize( &row0Vec );
+	Normalize( &row1Vec );
+	Normalize( &row2Vec );
+
 	Vec3 tempZ = Cross( row0Vec, row1Vec );
 	float dot = Dot( row2Vec, tempZ );
-	if( dot < 1.0f ) {
+	if( dot < 0.0f ) {
 		scale->x *= -1.0f;
 		row0Vec.x *= -1.0f;
 		row0Vec.y *= -1.0f;
 		row0Vec.z *= -1.0f;
 	}
-	Normalize( &row0Vec );
-	Normalize( &row1Vec );
-	Normalize( &row2Vec );
+	//END SECTION----------------------
 
 	Mat4 r = {
 		row0Vec.x, row0Vec.y, row0Vec.z, 0.0f,
