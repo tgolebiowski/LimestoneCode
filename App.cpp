@@ -15,15 +15,17 @@ static Mat4 r;
 
 
 void GameInit( MemorySlab* gameMemory ) {
+    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
+
     if( InitRenderer( SCREEN_WIDTH, SCREEN_HEIGHT ) == false ) {
         printf("Failed to init renderer\n");
         return;
     }
 
     float screenAspectRatio = (float)SCREEN_HEIGHT / (float)SCREEN_WIDTH;
-    SetOrthoProjectionMatrix( 10.0f, screenAspectRatio * 10.0f, -10.0f, 10.0f );
+    SetRendererCameraProjection( 10.0f, 10.0f * screenAspectRatio, -10.0f, 10.0f );
+    SetRendererCameraTransform( { 0.0f, 1.0f, -2.0f }, { 0.0f, 0.0f, 0.0f } );
 
-    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
     LoadMeshDataFromDisk( "Data/SkeletonDebug.dae", &gMem->meshData, &gMem->arm );
     LoadAnimationDataFromCollada( "Data/SkeletonDebug.dae", &gMem->pose, &gMem->arm );
     LoadAnimationDataFromCollada( "Data/SkeletonDebugPose_2.dae", &gMem->pose2, &gMem->arm );
@@ -41,11 +43,6 @@ void GameInit( MemorySlab* gameMemory ) {
     SetTranslation( &i, 0.0f, -2.5f, 0.0f );
     SetScale( &i, 0.5f, 0.5f, 0.5f );
     SetRotation( &r, 0.0f, 1.0f, 0.0f, PI / 128.0f );
-
-    Vec3 cameraPos = { 0.0f, 1.0f, -2.0f };
-    Mat4 cameraTransform = LookAtMatrix( cameraPos, { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } );
-    SetTranslation( &cameraTransform, cameraPos.x, cameraPos.y, cameraPos.z );
-    rendererStorage.cameraTransform = MultMatrix( cameraTransform, rendererStorage.baseProjectionMatrix );
 
     return;
 }

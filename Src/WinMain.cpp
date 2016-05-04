@@ -661,8 +661,8 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyfr
 }
 
 void LoadTextureDataFromDisk( const char* fileName, TextureData* storage ) {
-    storage->texData = (uint8*)stbi_load( fileName, (int*)&storage->width, (int*)&storage->height, (int*)&storage->channelsPerPixel, 0 );
-    if( storage->texData == NULL ) {
+    storage->data = (uint8*)stbi_load( fileName, (int*)&storage->width, (int*)&storage->height, (int*)&storage->channelsPerPixel, 0 );
+    if( storage->data == NULL ) {
         printf( "Could not load file: %s\n", fileName );
     }
     printf( "Loaded file: %s\n", fileName );
