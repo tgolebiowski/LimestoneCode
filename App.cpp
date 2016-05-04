@@ -8,6 +8,7 @@ struct GameMemory {
     Mat4 m;
     Armature arm;
     ArmatureKeyFrame pose;
+    ArmatureKeyFrame pose2;
 };
 static Mat4 i;
 static Mat4 r;
@@ -23,8 +24,9 @@ void GameInit( MemorySlab* gameMemory ) {
     SetOrthoProjectionMatrix( 10.0f, screenAspectRatio * 10.0f, -10.0f, 10.0f );
 
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
-    LoadMeshDataFromDisk( "Data/ComplexSkeletonDebug.dae", &gMem->meshData, &gMem->arm );
-    LoadAnimationDataFromCollada( "Data/ComplexSkeletonDebug.dae", &gMem->pose, &gMem->arm );
+    LoadMeshDataFromDisk( "Data/SkeletonDebug.dae", &gMem->meshData, &gMem->arm );
+    LoadAnimationDataFromCollada( "Data/SkeletonDebug.dae", &gMem->pose, &gMem->arm );
+    LoadAnimationDataFromCollada( "Data/SkeletonDebugPose_2.dae", &gMem->pose2, &gMem->arm );
     LoadTextureDataFromDisk( "Data/Textures/green_texture.png", &gMem->texData );
     CreateRenderBinding( &gMem->meshData, &gMem->meshBinding );
     CreateShaderProgram( "Data/Shaders/Basic.vert", "Data/Shaders/Basic.frag", &gMem->shader );
@@ -40,8 +42,10 @@ void GameInit( MemorySlab* gameMemory ) {
     SetScale( &i, 0.5f, 0.5f, 0.5f );
     SetRotation( &r, 0.0f, 1.0f, 0.0f, PI / 128.0f );
 
-    ApplyArmaturePose( &gMem->arm, &gMem->pose );
-
+    Vec3 cameraPos = { 0.0f, 1.0f, -2.0f };
+    Mat4 cameraTransform = LookAtMatrix( cameraPos, { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } );
+    SetTranslation( &cameraTransform, cameraPos.x, cameraPos.y, cameraPos.z );
+    rendererStorage.cameraTransform = MultMatrix( cameraTransform, rendererStorage.baseProjectionMatrix );
 
     return;
 }
@@ -49,7 +53,43 @@ void GameInit( MemorySlab* gameMemory ) {
 bool Update( MemorySlab* gameMemory ) {
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
 
-    i = MultMatrix( i, r );
+    if( IsKeyDown( 'r' ) )
+        i = MultMatrix( i, r );
+
+    float weights[2];
+    ArmatureKeyFrame* keys[2];
+    keys[0] = &gMem->pose;
+    keys[1] = &gMem->pose2;
+
+    const float tick = PI / 120;
+    static float current = 0.0f;
+    if( IsKeyDown( 'd' ) ) {
+        current += tick;
+    }
+
+    static bool wasPDown = false;
+    bool pDown = IsKeyDown( 'p' );
+
+    weights[0] = ( cosf( current ) + 1.0f ) / 2.0f;
+    weights[1] = ( 1.0f - weights[0] );
+
+    if( IsKeyDown( 'z' ) ) {
+        if( IsKeyDown( '1' ) ) {
+            weights[0] = 1.0f; weights[1] = 0.0f;
+        }
+        if( IsKeyDown( '2' ) ) {
+            weights[0] = 0.0f; weights[1] = 1.0f;
+        }
+        ApplyBlendedArmatureKeyFrames( 2, keys, (float*)weights, &gMem->arm, ( !wasPDown && pDown ) );
+    } else {
+        if( IsKeyDown( '1' ) ) {
+            ApplyArmatureKeyFrame( keys[0], &gMem->arm, ( !wasPDown && pDown ) );
+        } else {
+            ApplyArmatureKeyFrame( keys[1], &gMem->arm, ( !wasPDown && pDown ) );
+        }
+    }
+
+    wasPDown = pDown;
 
     return true;
 }
@@ -64,7 +104,7 @@ void Render( MemorySlab* gameMemory ) {
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     *gMem->params.modelMatrix = i;
-    //RenderBoundData( &gMem->meshBinding, &gMem->shader, gMem->params );
+    RenderBoundData( &gMem->meshBinding, &gMem->shader, gMem->params );
     RenderArmatureAsLines( &gMem->arm, i, { 1.0f, 0.0f, 0.0f } );
 
     //RenderTexturedQuad( &gMem->texBinding, 0.5f, 0.5f, -0.5f, 0.5f );

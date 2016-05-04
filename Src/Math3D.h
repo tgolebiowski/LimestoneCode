@@ -319,6 +319,41 @@ Quat InverseQuat( Quat quat ) {
 	return rq;
 }
 
+Quat Slerp( const Quat q1, const Quat q2, float weight ) {
+	float dotproduct = q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
+	float theta, st, sut, sout, coeff1, coeff2;
+
+	weight = weight * 0.5f;
+
+	theta = (float)acos( dotproduct );
+	if (theta < 0.0) {
+		theta = -theta;
+	} 
+	if( abs( theta ) < 1e-08 ) { //No rotation
+		return q1;
+	}
+	
+	st = sinf( theta );
+	sut = sinf( weight * theta );
+	sout = sinf( ( 1 - weight ) * theta );
+	coeff1 = sout / st;
+	coeff2 = sut / st;
+
+	Quat qr;
+	qr.w = coeff1 * q1.w + coeff2 * q2.w;
+	qr.x = coeff1 * q1.x + coeff2 * q2.x;
+	qr.y = coeff1 * q1.y + coeff2 * q2.y;
+	qr.z = coeff1 * q1.z + coeff2 * q2.z;
+
+	float leninv = 1.0f / sqrtf( qr.x * qr.x + qr.y * qr.y + qr.z * qr.z + qr.w * qr.w );
+	if( leninv == 1.0f ) return qr; //already length 1, no need to normalize
+	qr.w *= leninv;
+	qr.x *= leninv;
+	qr.y *= leninv;
+	qr.z *= leninv;
+	return qr;
+}
+
 Vec3 ApplyTo( Quat q, Vec3 v ) {
 	//Credit to Casey Muratori
 	Vec3 t = Cross( {q.x, q.y, q.z }, v ) * 2.0f;
@@ -373,7 +408,6 @@ Quat QuatFromMatrix( const Mat4 matrix ) {
 
 	tr = matrix.m[0][0] + matrix.m[1][1] + matrix.m[2][2];
 
-
 	// check the diagonal
 	if (tr > 0.0f)
 	{
@@ -412,18 +446,22 @@ Quat QuatFromMatrix( const Mat4 matrix ) {
 	return quat;
 }
 
+//Vec3 QuatToEulerAngles( const Quat q ) {
+
+//}
+
 /*---------------------------------------------------------------------------------------------------
                                            Extra Utility Functions
 -----------------------------------------------------------------------------------------------------*/
 
-Mat4 Mat4FromComponents( Vec3 position, Vec3 scale, Quat rotation ) {
+Mat4 Mat4FromComponents( Vec3 scale, Quat rotation, Vec3 translation ) {
 	Mat4 s, r, t;
 	SetToIdentity( &s ); r = s; t = r;
 
 	SetScale( &s, scale.x, scale.y, scale.z );
 	r = MatrixFromQuat( rotation );
 	r = MultMatrix( s, r);
-	SetTranslation( &r, position.x, position.y, position.z );
+	SetTranslation( &r, translation.x, translation.y, translation.z );
 	return r;
 }
 
@@ -449,22 +487,19 @@ void DecomposeMat4( Mat4 m, Vec3* scale, Quat* rotation, Vec3* translation ) {
 	Vec3 row1Vec = { m.m[1][0], m.m[1][1], m.m[1][2] };
 	Vec3 row2Vec = { m.m[2][0], m.m[2][1], m.m[2][2] };
 
-	//TODO SECTION--------------------
-	//So, example i'm working off of has these normalizations after the test
-	//But either changing the test to dot < 1.0 or putting the normalization gives correct results in tests
-	Normalize( &row0Vec );
-	Normalize( &row1Vec );
-	Normalize( &row2Vec );
-
 	Vec3 tempZ = Cross( row0Vec, row1Vec );
 	float dot = Dot( row2Vec, tempZ );
+	//TODO: Bad Math? Example I was going off uses dot < 0.0 as test, but this gives correct results in my test cases
 	if( dot < 0.0f ) {
 		scale->x *= -1.0f;
 		row0Vec.x *= -1.0f;
 		row0Vec.y *= -1.0f;
 		row0Vec.z *= -1.0f;
 	}
-	//END SECTION----------------------
+
+	Normalize( &row0Vec );
+	Normalize( &row1Vec );
+	Normalize( &row2Vec );
 
 	Mat4 r = {
 		row0Vec.x, row0Vec.y, row0Vec.z, 0.0f,

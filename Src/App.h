@@ -14,18 +14,6 @@ typedef int64_t int64;
 #include "Math3D.h"
 #include "Renderer.h"
 
-uint16 SCREEN_WIDTH = 640;
-uint16 SCREEN_HEIGHT = 480;
-
-struct ControllerState {
-	float leftStick_x, leftStick_y;
-	float rightStick_x, rightStick_y;
-	float leftTrigger, rightTrigger;
-	bool leftBumper, rightBumper;
-	bool button1, button2, button3, button4;
-	bool specialButtonLeft, specialButtonRight;
-};
-
 /* --------------------------------------------------------------------------
 	                      STUFF THE OS PROVIDES THE GAME
 -----------------------------------------------------------------------------*/

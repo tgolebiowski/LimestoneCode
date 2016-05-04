@@ -40,7 +40,15 @@ static struct {
 	uint16 windowPosY;
 	bool running;
 	bool isFullScreen;
-	ControllerState controllerState;
+	//I don't have a reason for this to be a generally available struct
+	struct {
+		float leftStick_x, leftStick_y;
+		float rightStick_x, rightStick_y;
+		float leftTrigger, rightTrigger;
+		bool leftBumper, rightBumper;
+		bool button1, button2, button3, button4;
+		bool specialButtonLeft, specialButtonRight;
+	} controllerState;
 
 	DWORD mSecsPerFrame;
 } appInfo;
@@ -590,7 +598,7 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 	};
 }
 
-void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* pose, Armature* armature ) {
+void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyframe, Armature* armature ) {
 	tinyxml2::XMLDocument colladaDoc;
 	colladaDoc.LoadFile( fileName );
 
@@ -633,7 +641,7 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* pose,
 		TextToNumberConversion( transformDataCopy, rawTransformData );
 		memcpy( &boneLocalTransform.m[0][0], &rawTransformData[0], 16 * sizeof(float) );
 
-		//Save data in pose struct
+		//Save data in BoneKeyFrame struct
 		boneLocalTransform = TransposeMatrix( boneLocalTransform );
 		if( targetBone == armature->rootBone ) {
 			Mat4 correction;
@@ -643,10 +651,10 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* pose,
 			correction.m[3][0] = 0.0f; correction.m[3][1] = 0.0f; correction.m[3][2] = 0.0f; correction.m[3][3] = 1.0f;
 			boneLocalTransform = MultMatrix( boneLocalTransform, correction );
 		}
-		BoneKeyFrame* key = &pose->localBoneTransforms[ targetBone->boneIndex ];
-		key->rawMatrix = boneLocalTransform;
+		BoneKeyFrame* key = &keyframe->localBoneTransforms[ targetBone->boneIndex ];
+		//key->rawMatrix = boneLocalTransform;
 		DecomposeMat4( boneLocalTransform, &key->scale, &key->rotation, &key->position );
-		Mat4 m = Mat4FromComponents( key->position, key->scale, key->rotation );
+		Mat4 m = Mat4FromComponents( key->scale, key->rotation, key->position );
 
 		animationNode = animationNode->NextSibling();
 	}

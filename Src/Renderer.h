@@ -41,7 +41,7 @@ struct Armature {
 };
 
 struct BoneKeyFrame {
-	Mat4 rawMatrix;
+	//Mat4 rawMatrix;
 	Vec3 position, scale;
 	Quat rotation;
 };
@@ -115,16 +115,22 @@ void SetOrthoProjectionMatrix( float width, float height, float nearPlane, float
     m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = -(farPlane + nearPlane) / depth; m->m[3][3] = 1.0f;
 }
 
-void ApplyArmaturePose( Armature* armature, ArmatureKeyFrame* pose ) {
+void ApplyArmatureKeyFrame( ArmatureKeyFrame* pose, Armature* armature, bool doPrint ) {
 	struct {
-		static void ApplyPoseRecursive( Bone* bone, Mat4 parentTransform, ArmatureKeyFrame* pose ) {
+		static void ApplyKeyFrameRecursive( Bone* bone, Mat4 parentTransform, ArmatureKeyFrame* pose, bool doPrint ) {
 			BoneKeyFrame* boneKey = &pose->localBoneTransforms[ bone->boneIndex ];
-			Mat4 baseComponentMat = Mat4FromComponents( boneKey->position, boneKey->scale, boneKey->rotation );
+
+			if( doPrint ) {
+				printf( "%s\n position: %f, %f, %f\n scale %f, %f, %f\n rotation %f, %f, %f, %f\n", bone->name, boneKey->position.x, boneKey->position.y, boneKey->position.z,
+					boneKey->scale.x, boneKey->scale.y, boneKey->scale.z, boneKey->rotation.w, boneKey->rotation.x, boneKey->rotation.y, boneKey->rotation.z );
+			}
+
+			Mat4 baseComponentMat = Mat4FromComponents( boneKey->scale, boneKey->rotation, boneKey->position );
 			Mat4 resultComponentMat = MultMatrix( baseComponentMat, parentTransform );
-			*bone->currentTransform = /*resultComponentMat; */ MultMatrix( boneKey->rawMatrix, parentTransform );
+			*bone->currentTransform = resultComponentMat;
 
 			for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
-				ApplyPoseRecursive( bone->children[ childIndex ], *bone->currentTransform, pose );
+				ApplyKeyFrameRecursive( bone->children[ childIndex ], *bone->currentTransform, pose, doPrint );
 			}
 
 			*bone->currentTransform = MultMatrix( bone->invBindPose, *bone->currentTransform );
@@ -132,7 +138,61 @@ void ApplyArmaturePose( Armature* armature, ArmatureKeyFrame* pose ) {
 	}LocalFunctions;
 
 	Mat4 i; SetToIdentity( &i );
-	LocalFunctions.ApplyPoseRecursive( armature->rootBone, i, pose );
+	LocalFunctions.ApplyKeyFrameRecursive( armature->rootBone, i, pose, doPrint );
+}
+
+void ApplyBlendedArmatureKeyFrames( uint8 keyframeCount, ArmatureKeyFrame** keyframes, float* weights, Armature* armature, bool doPrint ) {
+	struct {
+		static void ApplyBlendedKeyFramesRecursive( uint8 keyframeCount, ArmatureKeyFrame** keyframes, float* weights, Mat4* parentTransforms, Bone* target, bool doPrint ) {
+			Mat4 worldTransforms[4];
+			for( uint8 keyframeIndex = 0; keyframeIndex < keyframeCount; keyframeIndex++ ) {
+				BoneKeyFrame* bonekey = &keyframes[ keyframeIndex ]->localBoneTransforms[ target->boneIndex ];
+				Mat4 localBoneMat = Mat4FromComponents( bonekey->scale, bonekey->rotation, bonekey->position );
+				Mat4 worldBoneMat = MultMatrix( localBoneMat, parentTransforms[ keyframeIndex ] );
+				worldTransforms[ keyframeIndex ] = worldBoneMat;
+			}
+
+			for( uint8 childIndex = 0; childIndex < target->childCount; childIndex++ ) {
+				ApplyBlendedKeyFramesRecursive( keyframeCount, keyframes, weights, &worldTransforms[0], target->children[ childIndex ], doPrint );
+			}
+
+			BoneKeyFrame localKey = { { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f, 0.0f } };
+			for( uint8 keyframeIndex = 0; keyframeIndex < keyframeCount; keyframeIndex++ ) {
+				BoneKeyFrame calculatedKey;
+				DecomposeMat4( worldTransforms[ keyframeIndex ], &calculatedKey.scale, &calculatedKey.rotation, &calculatedKey.position );
+
+				localKey.position.x += weights[ keyframeIndex ] * calculatedKey.position.x;
+				localKey.position.y += weights[ keyframeIndex ] * calculatedKey.position.y;
+				localKey.position.z += weights[ keyframeIndex ] * calculatedKey.position.z;
+				localKey.scale.x += weights[ keyframeIndex ] * calculatedKey.scale.x;
+				localKey.scale.y += weights[ keyframeIndex ] * calculatedKey.scale.y;
+				localKey.scale.z += weights[ keyframeIndex ] * calculatedKey.scale.z;
+
+				localKey.rotation = Slerp( localKey.rotation, calculatedKey.rotation, weights[ keyframeIndex ] );
+
+				//localKey.rotation.w += weights[ keyframeIndex ] * calculatedKey.rotation.w;
+ 			    //localKey.rotation.x += weights[ keyframeIndex ] * calculatedKey.rotation.x;
+				//localKey.rotation.y += weights[ keyframeIndex ] * calculatedKey.rotation.y;
+				//localKey.rotation.z += weights[ keyframeIndex ] * calculatedKey.rotation.z;
+			}
+
+			//float rotLen = sqrtf( localKey.rotation.w * localKey.rotation.w + localKey.rotation.x * localKey.rotation.x + 
+			//localKey.rotation.y * localKey.rotation.y + localKey.rotation.z * localKey.rotation.z );
+			//localKey.rotation.w /= rotLen;
+			//localKey.rotation.x /= rotLen;
+			//localKey.rotation.y /= rotLen;
+			//localKey.rotation.z /= rotLen;
+
+			if( doPrint )
+				printf( "%s\n position: %f, %f, %f\n scale %f, %f, %f\n rotation %f, %f, %f, %f\n", target->name, localKey.position.x, localKey.position.y, localKey.position.z,
+				localKey.scale.x, localKey.scale.y, localKey.scale.z, localKey.rotation.w, localKey.rotation.x, localKey.rotation.y, localKey.rotation.z );
+
+			Mat4 netMatrix = Mat4FromComponents( localKey.scale, localKey.rotation, localKey.position );
+			*target->currentTransform = MultMatrix( target->invBindPose, netMatrix );
+		}
+	} LocalFunctions;
+	Mat4 i[4]; SetToIdentity( &i[0] ); SetToIdentity( &i[1] ); SetToIdentity( &i[2] ); SetToIdentity( &i[3] );
+	LocalFunctions.ApplyBlendedKeyFramesRecursive( keyframeCount, keyframes, weights, &i[0], armature->rootBone, doPrint );
 }
 
 void CreateEmptyTexture( TextureData* texDataStorage, uint16 width, uint16 height ) {

@@ -269,7 +269,7 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
     //Bind Shader
     glUseProgram( programBinding->programID );
     glUniformMatrix4fv( programBinding->modelMatrixUniformPtr, 1, false, (float*)&params.modelMatrix->m[0] );
-    glUniformMatrix4fv( programBinding->cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.baseProjectionMatrix.m[0] );
+    glUniformMatrix4fv( programBinding->cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.cameraTransform.m[0] );
     //glUniform1i( program->isArmatureAnimatedUniform, (int)mesh->isArmatureAnimated );
 
     //Set vertex data
@@ -344,7 +344,7 @@ void RenderDebugCircle( Vec3 position, float radius, Vec3 color ) {
     Mat4 p; SetToIdentity( &p );
     SetTranslation( &p, position.x, position.y, position.z ); SetScale( &p, radius, radius, radius );
     glUniformMatrix4fv( rendererStorage.pShader.modelMatrixUniformPtr, 1, false, (float*)&p.m[0] );
-    glUniformMatrix4fv( rendererStorage.pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.baseProjectionMatrix.m[0] );
+    glUniformMatrix4fv( rendererStorage.pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.cameraTransform.m[0] );
     glUniform4f( glGetUniformLocation( rendererStorage.pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
 
     glEnableVertexAttribArray( rendererStorage.pShader.positionAttribute );
@@ -359,7 +359,7 @@ void RenderDebugLines( float* vertexData, uint8 dataCount, Mat4 transform, Vec3 
     glUseProgram( rendererStorage.pShader.programID );
 
     glUniformMatrix4fv( rendererStorage.pShader.modelMatrixUniformPtr, 1, false, (float*)&transform.m[0] );
-    glUniformMatrix4fv( rendererStorage.pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.baseProjectionMatrix.m[0] );
+    glUniformMatrix4fv( rendererStorage.pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.cameraTransform.m[0] );
     glUniform4f( glGetUniformLocation( rendererStorage.pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
 
     glEnableVertexAttribArray( rendererStorage.pShader.positionAttribute );
@@ -372,6 +372,12 @@ void RenderDebugLines( float* vertexData, uint8 dataCount, Mat4 transform, Vec3 
 }
 
 void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color ) {
+    bool isDepthTesting;
+    glGetBooleanv( GL_DEPTH_TEST, ( GLboolean* )&isDepthTesting );
+    if( isDepthTesting ) {
+        glDisable( GL_DEPTH_TEST );
+    }
+
     uint8 dataCount = 0;
     Vec3 linePositions [64];
 
@@ -405,4 +411,8 @@ void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color ) {
     }
 
     RenderDebugLines( (float*)&linePositions[0], dataCount, transform, color );
+
+    if( isDepthTesting ) {
+        glEnable( GL_DEPTH_TEST );
+    }
 }
