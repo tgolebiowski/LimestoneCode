@@ -486,7 +486,7 @@ void DecomposeMat4( Mat4 m, Vec3* scale, Quat* rotation, Vec3* translation ) {
 	Vec3 tempZ = Cross( row0Vec, row1Vec );
 	float dot = Dot( row2Vec, tempZ );
 	//TODO: Bad Math? Example I was going off uses dot < 0.0 as test, but this gives correct results in my test cases
-	if( dot < 0.0f ) {
+	if( dot <= 0.0f ) {
 		scale->x *= -1.0f;
 		row0Vec.x *= -1.0f;
 		row0Vec.y *= -1.0f;

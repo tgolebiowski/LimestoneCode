@@ -19,8 +19,6 @@
 
 #include "App.h"
 #include "..\App.cpp"
-#include "GLRenderer.cpp"
-
 
 //Win32 function prototypes, allows the entry point to be the first function
 static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );

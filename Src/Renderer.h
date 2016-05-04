@@ -237,7 +237,7 @@ void RenderArmatureAsLines(  Armature* armature, Mat4 transform, Vec3 color = { 
 //LoadRenderBinding( const char fileName, MeshRenderBinding** bindDataStorage, MeshDataStorage** meshDataStorage = NULL );
 
 /*------------------------------------------------------------------------------------------------------------------
-                                       THINGS FOR THE OS LAYER TO IMPLEMENT
+                                     THINGS FOR THE OS LAYER TO IMPLEMENT
 --------------------------------------------------------------------------------------------------------------------*/
 
 ///Return 0 on success, required buffer length if buffer is too small, or -1 on other OS failure
@@ -245,8 +245,12 @@ int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 buffe
 void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Armature* armature = NULL );
 void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* pose, Armature* armature );
 void LoadTextureDataFromDisk( const char* fileName, TextureData* texDataStorage );
+
 #endif //RENDERER_H
 
+/*------------------------------------------------------------------------------------------------------------------
+                                       PLATFORM SPECIFIC IMPLEMENTATION
+-------------------------------------------------------------------------------------------------------------------*/
 #ifdef OPENGL_RENDERER_IMPLEMENTATION
 
 void CreateTextureBinding( TextureData* texData, TextureBindingID* texBindID ) {
