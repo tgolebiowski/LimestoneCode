@@ -4,12 +4,6 @@
 
 //This whole thing is like 95% lifted code from Polycode, so credit there.
 
-//Quick forward declarations
-struct Quat;
-struct Mat4;
-Quat QuatFromMatrix( Mat4 matrix );
-
-
 #define PI 3.14159265359
 
 struct Vec3 {
@@ -41,11 +35,6 @@ float InvSqrt(float x) {
                                     Vec3
 -------------------------------------------------------------------------*/
 
-void PrintVec( Vec3 v ) {
-	#include <stdio.h>
-	printf("x:%.3f, y:%.3f, z:%.3f", v.x, v.y, v.z );
-}
-
 void Normalize( Vec3* v ) {
 	float tL = sqrt( v->x * v->x + v->y * v->y + v->z * v->z );
 	if(tL > 1e-08 ) {
@@ -56,7 +45,7 @@ void Normalize( Vec3* v ) {
 	}
 }
 
-float VecLength( Vec3 v ) {
+float Vec3Length( Vec3 v ) {
 	return sqrtf( v.x * v.x + v.y * v.y + v.z * v.z );
 }
 
@@ -89,7 +78,7 @@ Vec3 Cross( Vec3 v1, Vec3 v2 ) {
 }
 
 float AngleBetween( Vec3 v1, Vec3 v2) {
-	float lenProduct = VecLength(v1) * VecLength(v2);
+	float lenProduct = Vec3Length(v1) * Vec3Length(v2);
 	if(lenProduct < 1e-6f)
 		lenProduct = 1e-6f;
 
@@ -102,13 +91,6 @@ float AngleBetween( Vec3 v1, Vec3 v2) {
 /*-------------------------------------------------------------------
                                  Mat4
 ---------------------------------------------------------------------*/
-
-void PrintMat4( Mat4 m ) {
-	printf("Row 1: %.2f, %.2f, %.2f, %.2f\n", m[0][0], m[0][1], m[0][2], m[0][3] );
-	printf("Row 2: %.2f, %.2f, %.2f, %.2f\n", m[1][0], m[1][1], m[1][2], m[1][3] );
-	printf("Row 3: %.2f, %.2f, %.2f, %.2f\n", m[2][0], m[2][1], m[2][2], m[2][3] );
-	printf("Row 4: %.2f, %.2f, %.2f, %.2f\n", m[3][0], m[3][1], m[3][2], m[3][3] );
-}
 
 void SetToIdentity(Mat4* m) {
 	m->m[0][0] = 1.0f; m->m[0][1] = 0.0f; m->m[0][2] = 0.0f; m->m[0][3] = 0.0f;
@@ -263,17 +245,54 @@ Vec3 MultVec( Mat4 m, Vec3 v ) {
 		     v.x * m.m[0][2] + v.y * m.m[1][2] + v.z * m.m[2][2] + m.m[3][2] };
 }
 
+Vec3 GetEulersFromMat4( Mat4 m ) {
+	Vec3 r1 = { m[0][0], m[0][1], m[0][2] };
+	Vec3 r2 = { m[1][0], m[1][1], m[1][2] };
+	Vec3 r3 = { m[2][0], m[2][1], m[2][2] };
+	Normalize( &r1 );
+	Normalize( &r2 );
+	Normalize( &r3 );
+	return { 
+		atan2( r3.y, r3.z ), 
+		atan2( -r3.x, sqrtf( r3.y * r3.y + r3.z * r3.z ) ), 
+		atan2( r2.x, r1.x ) 
+	};
+}
+
 /*----------------------------------------------------------------------------
                                     Quat
 ------------------------------------------------------------------------------*/
 
-Quat MultQuats (const Quat lQ, const Quat rQ) {
+Quat MultQuats ( const Quat a, const Quat b ) {
 	Quat quat;
-	quat.w = lQ.w * rQ.w - lQ.x * rQ.x - lQ.y * rQ.y - lQ.z * rQ.z;
-	quat.x = lQ.w * rQ.x + lQ.x * rQ.w + lQ.y * rQ.z - lQ.z * rQ.y;
-	quat.y = lQ.w * rQ.y + lQ.y * rQ.w + lQ.z * rQ.x - lQ.x * rQ.z;
-	quat.z = lQ.w * rQ.z + lQ.z * rQ.w + lQ.x * rQ.y - lQ.y * rQ.x;
+	quat.w = -a.x * b.x - a.y * b.y - a.z * b.z + a.w * b.w;
+	quat.x = a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x;
+	quat.y = -a.x * b.z + a.y * b.w + a.z * b.x + a.w * b.y;
+	quat.z = a.x * b.y - a.y * b.x + a.z * b.w + a.w * b.z;
 	return quat;
+}
+
+Quat RotationBtwnVec3( Vec3 a, Vec3 b ) {
+	Normalize( &a );
+	Normalize( &b );
+	float cosTheta = Dot( a, b );
+
+	Vec3 rotationAxis;
+	if( cosTheta < -0.999f ) {
+		rotationAxis = Cross( { 0.0f, 0.0f, 1.0f }, a );
+
+	}
+
+	rotationAxis = Cross( a, b );
+	float s = sqrtf( ( 1.0f + cosTheta ) * 2.0f );
+	float invs = 1.0f / s;
+
+	return {
+		s * 0.5f,
+		rotationAxis.x * invs,
+		rotationAxis.y * invs,
+		rotationAxis.z * invs
+	};
 }
 
 Quat FromAngleAxis(const float axisX, const float axisY, const float axisZ, const float angle) {
@@ -354,7 +373,7 @@ Quat Slerp( const Quat q1, const Quat q2, float weight ) {
 	return qr;
 }
 
-Vec3 ApplyTo( Quat q, Vec3 v ) {
+Vec3 ApplyQuatToVec( Quat q, Vec3 v ) {
 	//Credit to Casey Muratori
 	Vec3 t = Cross( {q.x, q.y, q.z }, v ) * 2.0f;
 	return v + t * q.w + Cross( {q.x, q.y, q.z}, t );
@@ -446,64 +465,66 @@ Quat QuatFromMatrix( const Mat4 matrix ) {
 	return quat;
 }
 
+Vec3 QuatToEuler( const Quat q ) {
+	return {
+		atan2( 2.0f * ( q.w * q.x + q.y * q.z ), 1.0f - 2.0f * ( q.x * q.x + q.y * q.y ) ),
+		asinf( 2.0f * ( q.w * q.y - q.z * q.x ) ),
+		atan2( 2.0f * ( q.w * q.z + q.x * q.y ), 1.0f - 2.0f * ( q.y * q.y + q.z * q.z ) )
+	};
+}
+
 /*---------------------------------------------------------------------------------------------------
                                            Extra Utility Functions
 -----------------------------------------------------------------------------------------------------*/
 
 Mat4 Mat4FromComponents( Vec3 scale, Quat rotation, Vec3 translation ) {
-	Mat4 s, r, t;
-	SetToIdentity( &s ); r = s; t = r;
+	Vec3 x = ApplyQuatToVec( rotation, { 1.0f, 0.0f, 0.0f } );
+	Vec3 y = ApplyQuatToVec( rotation, { 0.0f, 1.0f, 0.0f } );
+	Vec3 z = ApplyQuatToVec( rotation, { 0.0f, 0.0f, 1.0f } );
 
-	SetScale( &s, scale.x, scale.y, scale.z );
-	r = MatrixFromQuat( rotation );
-	r = MultMatrix( s, r);
-	SetTranslation( &r, translation.x, translation.y, translation.z );
-	return r;
+	Mat4 m = {
+		x.x, x.y, x.z, 0.0f,
+		y.x, y.y, y.z, 0.0f,
+		z.x, z.y, z.z, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f
+	};
+
+	m[0][0] *= scale.x;
+	m[1][1] *= scale.y;
+	m[2][2] *= scale.z;
+
+	m[3][0] = translation.x;
+	m[3][1] = translation.y;
+	m[3][2] = translation.z;
+
+	return m;
 }
 
-//Sets scale scale and translation to 0 and rotation to { 0,0,0,1 } if it cannot be decomposed
+//Sets scale scale and translation to 0 and rotation to { 1,0,0,0 } if it cannot be decomposed
 void DecomposeMat4( Mat4 m, Vec3* scale, Quat* rotation, Vec3* translation ) {
-	translation->x = m.m[3][0];
-	translation->y = m.m[3][1];
-	translation->z = m.m[3][2];
+	Vec3 p = { 0.0f, 0.0f, 0.0f };
+	Vec3 xp = { 1.0f, 0.0f, 0.0f };
+	Vec3 yp = { 0.0f, 1.0f, 0.0f };
+	Vec3 zp = { 0.0f, 0.0f, 1.0f };
+	p = MultVec( m, p );
+	xp = MultVec( m, xp );
+	yp = MultVec( m, yp );
+	zp = MultVec( m, zp );
+	*translation = p;
+	Vec3 x = DiffVec( p, xp );
+	Vec3 y = DiffVec( p, yp );
+	Vec3 z = DiffVec( p, zp );
+	scale->x = Vec3Length( x );
+	scale->y = Vec3Length( y );
+	scale->z = Vec3Length( z );
+	Normalize( &x );
+	Normalize( &y );
+	Normalize( &z );
 
-	scale->x = sqrtf( m.m[0][0] * m.m[0][0] + m.m[0][1] * m.m[0][1] + m.m[0][2] * m.m[0][2] );
-	scale->y = sqrtf( m.m[1][0] * m.m[1][0] + m.m[1][1] * m.m[1][1] + m.m[1][2] * m.m[1][2] );
-	scale->z = sqrtf( m.m[2][0] * m.m[2][0] + m.m[2][1] * m.m[2][1] + m.m[2][2] * m.m[2][2] );
-
-	if( scale->x == 0.0f || scale->y == 0.0f || scale->z == 0.0f ) {
-		memset( translation, 0, sizeof( float ) * 3 );
-		memset( scale, 0, sizeof( float ) * 3 );
-		memset( rotation, 0, sizeof( float ) * 3 );
-		rotation->w = 1.0f;
-		return;
-	}
-
-	Vec3 row0Vec = { m.m[0][0], m.m[0][1], m.m[0][2] };
-	Vec3 row1Vec = { m.m[1][0], m.m[1][1], m.m[1][2] };
-	Vec3 row2Vec = { m.m[2][0], m.m[2][1], m.m[2][2] };
-
-	Vec3 tempZ = Cross( row0Vec, row1Vec );
-	float dot = Dot( row2Vec, tempZ );
-	//TODO: Bad Math? Example I was going off uses dot < 0.0 as test, but this gives correct results in my test cases
-	if( dot <= 0.0f ) {
-		scale->x *= -1.0f;
-		row0Vec.x *= -1.0f;
-		row0Vec.y *= -1.0f;
-		row0Vec.z *= -1.0f;
-	}
-
-	Normalize( &row0Vec );
-	Normalize( &row1Vec );
-	Normalize( &row2Vec );
-
-	Mat4 r = {
-		row0Vec.x, row0Vec.y, row0Vec.z, 0.0f,
-		row1Vec.x, row1Vec.y, row1Vec.z, 0.0f,
-		row2Vec.x, row2Vec.y, row2Vec.z, 0.0f,
-		0, 0, 0, 0
-	};
-	*rotation = QuatFromMatrix( r );
+	Quat rot1 = RotationBtwnVec3( { 0.0f, 0.0f, 1.0f }, z );
+	Vec3 halfUp = ApplyQuatToVec( rot1, { 0.0f, 1.0f, 0.0f } );
+	Quat rot2 = RotationBtwnVec3( halfUp, y );
+	*rotation = MultQuats( rot2, rot1 );
 }
 
 #endif

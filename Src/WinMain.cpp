@@ -18,7 +18,6 @@
 #include "stb/stb_image.h"
 
 #include "App.h"
-#include "..\App.cpp"
 
 //Win32 function prototypes, allows the entry point to be the first function
 static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
@@ -194,7 +193,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 		if(computeTime <= appInfo.mSecsPerFrame ) {
 			Sleep(appInfo.mSecsPerFrame - computeTime);
 		} else {
-			printf("Didn't sleep, compute was %ld, target: %ld \n", computeTime, appInfo.mSecsPerFrame );
+			//printf("Didn't sleep, compute was %ld, target: %ld \n", computeTime, appInfo.mSecsPerFrame );
 		}
 
 	} while( appInfo.running );
@@ -650,13 +649,88 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyfr
 			boneLocalTransform = MultMatrix( boneLocalTransform, correction );
 		}
 		BoneKeyFrame* key = &keyframe->localBoneTransforms[ targetBone->boneIndex ];
-		//key->rawMatrix = boneLocalTransform;
-		DecomposeMat4( boneLocalTransform, &key->scale, &key->rotation, &key->position );
-		Mat4 m = Mat4FromComponents( key->scale, key->rotation, key->position );
+		key->rawMatrix = boneLocalTransform;
+		DecomposeMat4( boneLocalTransform, &key->scale, &key->rotation, &key->translation );
+		Mat4 m = Mat4FromComponents( key->scale, key->rotation, key->translation );
 
 		animationNode = animationNode->NextSibling();
 	}
+
+	//Pre multiply bones with parents to save doing it during runtime
+	struct {
+		ArmatureKeyFrame* keyframe;
+		void PremultiplyKeyFrame( Bone* target, Mat4 parentTransform ) {
+			BoneKeyFrame* boneKey = &keyframe->localBoneTransforms[ target->boneIndex ];
+			Mat4 netMatrix = MultMatrix( boneKey->rawMatrix, parentTransform );
+
+			for( uint8 boneIndex = 0; boneIndex < target->childCount; boneIndex++ ) {
+				PremultiplyKeyFrame( target->children[ boneIndex ], netMatrix );
+			}
+			boneKey->rawMatrix = netMatrix;
+			DecomposeMat4( boneKey->rawMatrix, &boneKey->scale, &boneKey->rotation, &boneKey->translation );
+		}
+	}LocalRecursiveScope;
+	LocalRecursiveScope.keyframe = keyframe;
+	Mat4 i; SetToIdentity( &i );
+	LocalRecursiveScope.PremultiplyKeyFrame( armature->rootBone, i );
 }
+
+void ApplyKeyFrameToArmature( ArmatureKeyFrame* pose, Armature* armature, bool doPrint ) {
+	struct {
+		static void ApplyKeyFrameRecursive( Bone* bone, Mat4 parentTransform, ArmatureKeyFrame* pose, bool doPrint ) {
+			BoneKeyFrame* boneKey = &pose->localBoneTransforms[ bone->boneIndex ];
+
+			//Mat4 baseComponentMat = boneKey->rawMatrix; //Mat4FromComponents( boneKey->scale, boneKey->rotation, boneKey->position );
+			//Mat4 resultComponentMat = MultMatrix( baseComponentMat, parentTransform );
+			*bone->currentTransform = boneKey->rawMatrix; //resultComponentMat;
+
+			for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
+				ApplyKeyFrameRecursive( bone->children[ childIndex ], *bone->currentTransform, pose, doPrint );
+			}
+
+			*bone->currentTransform = MultMatrix( bone->invBindPose, *bone->currentTransform );
+		};
+	}LocalFunctions;
+
+	Mat4 i; SetToIdentity( &i );
+	LocalFunctions.ApplyKeyFrameRecursive( armature->rootBone, i, pose, doPrint );
+}
+
+ArmatureKeyFrame BlendKeyFrames( ArmatureKeyFrame* keyframeA, ArmatureKeyFrame* keyframeB, float weight, uint8 boneCount, bool doPrint ) {
+	float keyAWeight, keyBWeight;
+	ArmatureKeyFrame out;
+	keyAWeight = weight;
+	keyBWeight = 1.0f - keyAWeight;
+
+	for( uint8 boneIndex = 0; boneIndex < boneCount; ++boneIndex ) {
+		BoneKeyFrame* netBoneKey = &out.localBoneTransforms[ boneIndex ];
+		BoneKeyFrame* bonekeyA = &keyframeA->localBoneTransforms[ boneIndex ];
+		BoneKeyFrame* bonekeyB = &keyframeB->localBoneTransforms[ boneIndex ];
+
+		netBoneKey->translation = { 
+			bonekeyA->translation.x * keyAWeight + bonekeyB->translation.x * keyBWeight,
+			bonekeyA->translation.y * keyAWeight + bonekeyB->translation.y * keyBWeight,
+			bonekeyA->translation.z * keyAWeight + bonekeyB->translation.z * keyBWeight
+		};
+		netBoneKey->scale = {
+			bonekeyA->scale.x * keyAWeight + bonekeyB->scale.x * keyBWeight,
+			bonekeyA->scale.y * keyAWeight + bonekeyB->scale.y * keyBWeight,
+			bonekeyA->scale.z * keyAWeight + bonekeyB->scale.z * keyBWeight
+		};
+		netBoneKey->rotation = {
+			bonekeyA->rotation.w * keyAWeight + bonekeyB->rotation.w * keyBWeight,
+			bonekeyA->rotation.x * keyAWeight + bonekeyB->rotation.x * keyBWeight,
+			bonekeyA->rotation.y * keyAWeight + bonekeyB->rotation.y * keyBWeight,
+			bonekeyA->rotation.z * keyAWeight + bonekeyB->rotation.z * keyBWeight
+		};
+
+		netBoneKey->rawMatrix = Mat4FromComponents( netBoneKey->scale, netBoneKey->rotation, netBoneKey->translation );
+	}
+
+	return out;
+}
+
+#include "..\App.cpp"
 
 void LoadTextureDataFromDisk( const char* fileName, TextureData* storage ) {
     storage->data = (uint8*)stbi_load( fileName, (int*)&storage->width, (int*)&storage->height, (int*)&storage->channelsPerPixel, 0 );

@@ -53,7 +53,7 @@ bool Update( MemorySlab* gameMemory ) {
     if( IsKeyDown( 'r' ) )
         i = MultMatrix( i, r );
 
-    float weights[2];
+    float weight;
     ArmatureKeyFrame* keys[2];
     keys[0] = &gMem->pose;
     keys[1] = &gMem->pose2;
@@ -67,24 +67,27 @@ bool Update( MemorySlab* gameMemory ) {
     static bool wasPDown = false;
     bool pDown = IsKeyDown( 'p' );
 
-    weights[0] = ( cosf( current ) + 1.0f ) / 2.0f;
-    weights[1] = ( 1.0f - weights[0] );
+    weight = ( cosf( current ) + 1.0f ) / 2.0f;
 
     if( IsKeyDown( 'z' ) ) {
         if( IsKeyDown( '1' ) ) {
-            weights[0] = 1.0f; weights[1] = 0.0f;
+            weight = 1.0f;
         }
         if( IsKeyDown( '2' ) ) {
-            weights[0] = 0.0f; weights[1] = 1.0f;
+            weight = 0.0f;
         }
-        ApplyBlendedArmatureKeyFrames( 2, keys, (float*)weights, &gMem->arm, ( !wasPDown && pDown ) );
+        ArmatureKeyFrame blended = BlendKeyFrames( &gMem->pose, &gMem->pose2, weight, gMem->arm.boneCount, ( !wasPDown && pDown ) );
+        ApplyKeyFrameToArmature( &blended, &gMem->arm, ( !wasPDown && pDown ) );
     } else {
         if( IsKeyDown( '1' ) ) {
-            ApplyArmatureKeyFrame( keys[0], &gMem->arm, ( !wasPDown && pDown ) );
+            ApplyKeyFrameToArmature( keys[0], &gMem->arm, ( !wasPDown && pDown ) );
         } else {
-            ApplyArmatureKeyFrame( keys[1], &gMem->arm, ( !wasPDown && pDown ) );
+            ApplyKeyFrameToArmature( keys[1], &gMem->arm, ( !wasPDown && pDown ) );
         }
     }
+
+    ArmatureKeyFrame testPose = gMem->pose;
+    ArmatureKeyFrame blendedPose = BlendKeyFrames( &gMem->pose, &gMem->pose2, 1.0f, gMem->arm.boneCount, false );
 
     wasPDown = pDown;
 
@@ -102,7 +105,7 @@ void Render( MemorySlab* gameMemory ) {
 
     *gMem->params.modelMatrix = i;
     RenderBoundData( &gMem->meshBinding, &gMem->shader, gMem->params );
-    RenderArmatureAsLines( &gMem->arm, i, { 1.0f, 0.0f, 0.0f } );
+    RenderArmatureAsLines( &gMem->arm, i, { 1.0f, 1.0f, 1.0f } );
 
     //RenderTexturedQuad( &gMem->texBinding, 0.5f, 0.5f, -0.5f, 0.5f );
 

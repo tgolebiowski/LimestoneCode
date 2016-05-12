@@ -43,8 +43,8 @@ struct Armature {
 };
 
 struct BoneKeyFrame {
-	//Mat4 rawMatrix;
-	Vec3 position, scale;
+	Mat4 rawMatrix;
+	Vec3 translation, scale;
 	Quat rotation;
 };
 
@@ -109,93 +109,12 @@ static struct {
                                       PLATFORM INDEPENDENT FUNCTIONS
 -----------------------------------------------------------------------------------------------------------------*/
 
-void ApplyArmatureKeyFrame( ArmatureKeyFrame* pose, Armature* armature, bool doPrint ) {
-	struct {
-		static void ApplyKeyFrameRecursive( Bone* bone, Mat4 parentTransform, ArmatureKeyFrame* pose, bool doPrint ) {
-			BoneKeyFrame* boneKey = &pose->localBoneTransforms[ bone->boneIndex ];
-
-			if( doPrint ) {
-				printf( "%s\n position: %f, %f, %f\n scale %f, %f, %f\n rotation %f, %f, %f, %f\n", bone->name, boneKey->position.x, boneKey->position.y, boneKey->position.z,
-					boneKey->scale.x, boneKey->scale.y, boneKey->scale.z, boneKey->rotation.w, boneKey->rotation.x, boneKey->rotation.y, boneKey->rotation.z );
-			}
-
-			Mat4 baseComponentMat = Mat4FromComponents( boneKey->scale, boneKey->rotation, boneKey->position );
-			Mat4 resultComponentMat = MultMatrix( baseComponentMat, parentTransform );
-			*bone->currentTransform = resultComponentMat;
-
-			for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
-				ApplyKeyFrameRecursive( bone->children[ childIndex ], *bone->currentTransform, pose, doPrint );
-			}
-
-			*bone->currentTransform = MultMatrix( bone->invBindPose, *bone->currentTransform );
-		};
-	}LocalFunctions;
-
-	Mat4 i; SetToIdentity( &i );
-	LocalFunctions.ApplyKeyFrameRecursive( armature->rootBone, i, pose, doPrint );
-}
-
-void ApplyBlendedArmatureKeyFrames( uint8 keyframeCount, ArmatureKeyFrame** keyframes, float* weights, Armature* armature, bool doPrint ) {
-	struct {
-		static void ApplyBlendedKeyFramesRecursive( uint8 keyframeCount, ArmatureKeyFrame** keyframes, float* weights, Mat4* parentTransforms, Bone* target, bool doPrint ) {
-			Mat4 worldTransforms[4];
-			for( uint8 keyframeIndex = 0; keyframeIndex < keyframeCount; keyframeIndex++ ) {
-				BoneKeyFrame* bonekey = &keyframes[ keyframeIndex ]->localBoneTransforms[ target->boneIndex ];
-				Mat4 localBoneMat = Mat4FromComponents( bonekey->scale, bonekey->rotation, bonekey->position );
-				Mat4 worldBoneMat = MultMatrix( localBoneMat, parentTransforms[ keyframeIndex ] );
-				worldTransforms[ keyframeIndex ] = worldBoneMat;
-			}
-
-			for( uint8 childIndex = 0; childIndex < target->childCount; childIndex++ ) {
-				ApplyBlendedKeyFramesRecursive( keyframeCount, keyframes, weights, &worldTransforms[0], target->children[ childIndex ], doPrint );
-			}
-
-			BoneKeyFrame localKey = { { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f, 0.0f } };
-			for( uint8 keyframeIndex = 0; keyframeIndex < keyframeCount; keyframeIndex++ ) {
-				BoneKeyFrame calculatedKey;
-				DecomposeMat4( worldTransforms[ keyframeIndex ], &calculatedKey.scale, &calculatedKey.rotation, &calculatedKey.position );
-
-				localKey.position.x += weights[ keyframeIndex ] * calculatedKey.position.x;
-				localKey.position.y += weights[ keyframeIndex ] * calculatedKey.position.y;
-				localKey.position.z += weights[ keyframeIndex ] * calculatedKey.position.z;
-				localKey.scale.x += weights[ keyframeIndex ] * calculatedKey.scale.x;
-				localKey.scale.y += weights[ keyframeIndex ] * calculatedKey.scale.y;
-				localKey.scale.z += weights[ keyframeIndex ] * calculatedKey.scale.z;
-
-				localKey.rotation = Slerp( localKey.rotation, calculatedKey.rotation, weights[ keyframeIndex ] );
-
-				//localKey.rotation.w += weights[ keyframeIndex ] * calculatedKey.rotation.w;
- 			    //localKey.rotation.x += weights[ keyframeIndex ] * calculatedKey.rotation.x;
-				//localKey.rotation.y += weights[ keyframeIndex ] * calculatedKey.rotation.y;
-				//localKey.rotation.z += weights[ keyframeIndex ] * calculatedKey.rotation.z;
-			}
-
-			//float rotLen = sqrtf( localKey.rotation.w * localKey.rotation.w + localKey.rotation.x * localKey.rotation.x + 
-			//localKey.rotation.y * localKey.rotation.y + localKey.rotation.z * localKey.rotation.z );
-			//localKey.rotation.w /= rotLen;
-			//localKey.rotation.x /= rotLen;
-			//localKey.rotation.y /= rotLen;
-			//localKey.rotation.z /= rotLen;
-
-			if( doPrint )
-				printf( "%s\n position: %f, %f, %f\n scale %f, %f, %f\n rotation %f, %f, %f, %f\n", target->name, localKey.position.x, localKey.position.y, localKey.position.z,
-				localKey.scale.x, localKey.scale.y, localKey.scale.z, localKey.rotation.w, localKey.rotation.x, localKey.rotation.y, localKey.rotation.z );
-
-			Mat4 netMatrix = Mat4FromComponents( localKey.scale, localKey.rotation, localKey.position );
-			*target->currentTransform = MultMatrix( target->invBindPose, netMatrix );
-		}
-	} LocalFunctions;
-	Mat4 i[4]; SetToIdentity( &i[0] ); SetToIdentity( &i[1] ); SetToIdentity( &i[2] ); SetToIdentity( &i[3] );
-	LocalFunctions.ApplyBlendedKeyFramesRecursive( keyframeCount, keyframes, weights, &i[0], armature->rootBone, doPrint );
-}
-
 void CreateEmptyTexture( TextureData* texData, uint16 width, uint16 height ) {
 	texData->data = ( uint8* )malloc( sizeof( uint8 ) * 4 * width * height );
     texData->width = width;
     texData->height = height;
     texData->channelsPerPixel = 4;
 }
-
 
 void SetRendererCameraProjection( float width, float height, float nearPlane, float farPlane ) {
     Mat4* m = &rendererStorage.baseProjectionMatrix;
@@ -419,7 +338,6 @@ void CreateRenderBinding( MeshGeometryData* meshDataStorage, MeshGPUBinding* bin
 	bindDataStorage->dataCount = meshDataStorage->dataCount;
 }
 
-
 bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
 	printf( "Vendor: %s\n", glGetString( GL_VENDOR ) );
     printf( "Renderer: %s\n", glGetString( GL_RENDERER ) );
@@ -634,38 +552,56 @@ void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color ) {
     }
 
     uint8 dataCount = 0;
-    Vec3 linePositions [64];
+    uint8 jointData = 0;
+    Vec3 boneLines [64];
+    Vec3 jointXAxes [64];
+    Vec3 jointYAxes [64];
+    Vec3 jointZAxes [64];
 
-    for( uint8 boneIndex = 0; boneIndex < armature->boneCount; boneIndex++ ) {
+    for( uint8 boneIndex = 0; boneIndex < armature->boneCount; ++boneIndex ) {
         Bone* bone = &armature->allBones[ boneIndex ];
+
         Vec3 p1 = { 0.0f, 0.0f, 0.0f };
         p1 = MultVec( InverseMatrix( bone->invBindPose ), p1 );
         p1 = MultVec( *bone->currentTransform, p1 );
-
         RenderDebugCircle( MultVec( transform, p1 ), 0.05 );
 
         if( bone->childCount > 0 ) {
-            for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
+            for( uint8 childIndex = 0; childIndex < bone->childCount; ++childIndex ) {
                 Bone* child = bone->children[ childIndex ];
 
                 Vec3 p2 = { 0.0f, 0.0f, 0.0f };
                 p2 = MultVec( InverseMatrix( child->invBindPose ), p2 );
                 p2 = MultVec( *child->currentTransform, p2 );
 
-                linePositions[ dataCount++ ] = p1;
-                linePositions[ dataCount++ ] = p2;
+                boneLines[ dataCount++ ] = p1;
+                boneLines[ dataCount++ ] = p2;
             }
-        } else {
-            Vec3 p2 = { 0.0f, 1.5f, 0.0f };
-            p2 = MultVec( InverseMatrix( bone->invBindPose ), p2 );
-            p2 = MultVec( *bone->currentTransform, p2 );
-
-            linePositions[ dataCount++ ] = p1;
-            linePositions[ dataCount++ ] = p2;
         }
+
+        Vec3 px = { 1.0f, 0.0f, 0.0f };
+        Vec3 py = { 0.0f, 1.0f, 0.0f };
+        Vec3 pz = { 0.0f, 0.0f, 1.0f };
+        px = MultVec( InverseMatrix( bone->invBindPose ), px );
+        px = MultVec( *bone->currentTransform, px );
+        py = MultVec( InverseMatrix( bone->invBindPose ), py );
+        py = MultVec( *bone->currentTransform, py );
+        pz = MultVec( InverseMatrix( bone->invBindPose ), pz );
+        pz = MultVec( *bone->currentTransform, pz );
+        jointXAxes[ jointData ] = p1; 
+        jointYAxes[ jointData ] = p1; 
+        jointZAxes[ jointData ] = p1;
+        jointData++;
+        jointXAxes[ jointData ] = px;
+        jointYAxes[ jointData ] = py;
+        jointZAxes[ jointData ] = pz;
+        jointData++;
     }
 
-    RenderDebugLines( (float*)&linePositions[0], dataCount, transform, color );
+    RenderDebugLines( (float*)&boneLines[0], dataCount, transform, color );
+    RenderDebugLines( (float*)&jointXAxes[0], jointData, transform, { 0.09, 0.85, 0.15 } );
+    RenderDebugLines( (float*)&jointYAxes[0], jointData, transform, { 0.85, 0.85, 0.14 } );
+    RenderDebugLines( (float*)&jointZAxes[0], jointData, transform, { 0.09, 0.11, 0.85 } );
 
     if( isDepthTesting ) {
         glEnable( GL_DEPTH_TEST );
