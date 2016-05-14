@@ -76,18 +76,18 @@ bool Update( MemorySlab* gameMemory ) {
         if( IsKeyDown( '2' ) ) {
             weight = 0.0f;
         }
-        ArmatureKeyFrame blended = BlendKeyFrames( &gMem->pose, &gMem->pose2, weight, gMem->arm.boneCount, ( !wasPDown && pDown ) );
-        ApplyKeyFrameToArmature( &blended, &gMem->arm, ( !wasPDown && pDown ) );
+        ArmatureKeyFrame blended = BlendKeyFrames( &gMem->pose, &gMem->pose2, weight, gMem->arm.boneCount );
+        ApplyKeyFrameToArmature( &blended, &gMem->arm );
     } else {
         if( IsKeyDown( '1' ) ) {
-            ApplyKeyFrameToArmature( keys[0], &gMem->arm, ( !wasPDown && pDown ) );
+            ApplyKeyFrameToArmature( keys[0], &gMem->arm );
         } else {
-            ApplyKeyFrameToArmature( keys[1], &gMem->arm, ( !wasPDown && pDown ) );
+            ApplyKeyFrameToArmature( keys[1], &gMem->arm);
         }
     }
 
     ArmatureKeyFrame testPose = gMem->pose;
-    ArmatureKeyFrame blendedPose = BlendKeyFrames( &gMem->pose, &gMem->pose2, 1.0f, gMem->arm.boneCount, false );
+    ArmatureKeyFrame blendedPose = BlendKeyFrames( &gMem->pose, &gMem->pose2, 1.0f, gMem->arm.boneCount );
 
     wasPDown = pDown;
 

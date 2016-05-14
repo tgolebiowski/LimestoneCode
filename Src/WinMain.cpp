@@ -18,6 +18,7 @@
 #include "stb/stb_image.h"
 
 #include "App.h"
+#include "..\App.cpp"
 
 //Win32 function prototypes, allows the entry point to be the first function
 static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
@@ -456,7 +457,7 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 		//Parsing basic bone data from XML
 		std::function< Bone* ( tinyxml2::XMLElement*, Armature*, Bone*  ) > ParseColladaBoneData = 
 		[&]( tinyxml2::XMLElement* boneElement, Armature* armature, Bone* parentBone ) -> Bone* {
-			Bone* bone = &armature->allBones[ armature->boneCount ];
+			Bone* bone = &armature->bones[ armature->boneCount ];
 			bone->parent = parentBone;
 			bone->currentTransform = &armature->boneTransforms[ armature->boneCount ];
 			SetToIdentity( bone->currentTransform );
@@ -535,7 +536,7 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 
 				Bone* targetBone = NULL;
 				for( uint8 boneIndex = 0; boneIndex < armature->boneCount; boneIndex++ ) {
-					Bone* bone = &armature->allBones[ boneIndex ];
+					Bone* bone = &armature->bones[ boneIndex ];
 					if( strcmp( bone->name, boneName ) == 0 ) {
 						targetBone = bone;
 						break;
@@ -618,8 +619,8 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyfr
 		nameLen = nameEnd - transformNameCopy;
 		memcpy( transformNameCopy, transformName, nameLen );
 		for( uint8 boneIndex = 0; boneIndex < armature->boneCount; boneIndex++ ) {
-			if( strcmp( armature->allBones[ boneIndex ].name, transformNameCopy ) == 0 ) {
-				targetBone = &armature->allBones[ boneIndex ];
+			if( strcmp( armature->bones[ boneIndex ].name, transformNameCopy ) == 0 ) {
+				targetBone = &armature->bones[ boneIndex ];
 				break;
 			}
 		}
@@ -648,8 +649,8 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyfr
 			correction.m[3][0] = 0.0f; correction.m[3][1] = 0.0f; correction.m[3][2] = 0.0f; correction.m[3][3] = 1.0f;
 			boneLocalTransform = MultMatrix( boneLocalTransform, correction );
 		}
-		BoneKeyFrame* key = &keyframe->localBoneTransforms[ targetBone->boneIndex ];
-		key->rawMatrix = boneLocalTransform;
+		BoneKeyFrame* key = &keyframe->targetBoneTransforms[ targetBone->boneIndex ];
+		key->combinedMatrix = boneLocalTransform;
 		DecomposeMat4( boneLocalTransform, &key->scale, &key->rotation, &key->translation );
 		Mat4 m = Mat4FromComponents( key->scale, key->rotation, key->translation );
 
@@ -660,77 +661,20 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyfr
 	struct {
 		ArmatureKeyFrame* keyframe;
 		void PremultiplyKeyFrame( Bone* target, Mat4 parentTransform ) {
-			BoneKeyFrame* boneKey = &keyframe->localBoneTransforms[ target->boneIndex ];
-			Mat4 netMatrix = MultMatrix( boneKey->rawMatrix, parentTransform );
+			BoneKeyFrame* boneKey = &keyframe->targetBoneTransforms[ target->boneIndex ];
+			Mat4 netMatrix = MultMatrix( boneKey->combinedMatrix, parentTransform );
 
 			for( uint8 boneIndex = 0; boneIndex < target->childCount; boneIndex++ ) {
 				PremultiplyKeyFrame( target->children[ boneIndex ], netMatrix );
 			}
-			boneKey->rawMatrix = netMatrix;
-			DecomposeMat4( boneKey->rawMatrix, &boneKey->scale, &boneKey->rotation, &boneKey->translation );
+			boneKey->combinedMatrix = netMatrix;
+			DecomposeMat4( boneKey->combinedMatrix, &boneKey->scale, &boneKey->rotation, &boneKey->translation );
 		}
 	}LocalRecursiveScope;
 	LocalRecursiveScope.keyframe = keyframe;
 	Mat4 i; SetToIdentity( &i );
 	LocalRecursiveScope.PremultiplyKeyFrame( armature->rootBone, i );
 }
-
-void ApplyKeyFrameToArmature( ArmatureKeyFrame* pose, Armature* armature, bool doPrint ) {
-	struct {
-		static void ApplyKeyFrameRecursive( Bone* bone, Mat4 parentTransform, ArmatureKeyFrame* pose, bool doPrint ) {
-			BoneKeyFrame* boneKey = &pose->localBoneTransforms[ bone->boneIndex ];
-
-			//Mat4 baseComponentMat = boneKey->rawMatrix; //Mat4FromComponents( boneKey->scale, boneKey->rotation, boneKey->position );
-			//Mat4 resultComponentMat = MultMatrix( baseComponentMat, parentTransform );
-			*bone->currentTransform = boneKey->rawMatrix; //resultComponentMat;
-
-			for( uint8 childIndex = 0; childIndex < bone->childCount; childIndex++ ) {
-				ApplyKeyFrameRecursive( bone->children[ childIndex ], *bone->currentTransform, pose, doPrint );
-			}
-
-			*bone->currentTransform = MultMatrix( bone->invBindPose, *bone->currentTransform );
-		};
-	}LocalFunctions;
-
-	Mat4 i; SetToIdentity( &i );
-	LocalFunctions.ApplyKeyFrameRecursive( armature->rootBone, i, pose, doPrint );
-}
-
-ArmatureKeyFrame BlendKeyFrames( ArmatureKeyFrame* keyframeA, ArmatureKeyFrame* keyframeB, float weight, uint8 boneCount, bool doPrint ) {
-	float keyAWeight, keyBWeight;
-	ArmatureKeyFrame out;
-	keyAWeight = weight;
-	keyBWeight = 1.0f - keyAWeight;
-
-	for( uint8 boneIndex = 0; boneIndex < boneCount; ++boneIndex ) {
-		BoneKeyFrame* netBoneKey = &out.localBoneTransforms[ boneIndex ];
-		BoneKeyFrame* bonekeyA = &keyframeA->localBoneTransforms[ boneIndex ];
-		BoneKeyFrame* bonekeyB = &keyframeB->localBoneTransforms[ boneIndex ];
-
-		netBoneKey->translation = { 
-			bonekeyA->translation.x * keyAWeight + bonekeyB->translation.x * keyBWeight,
-			bonekeyA->translation.y * keyAWeight + bonekeyB->translation.y * keyBWeight,
-			bonekeyA->translation.z * keyAWeight + bonekeyB->translation.z * keyBWeight
-		};
-		netBoneKey->scale = {
-			bonekeyA->scale.x * keyAWeight + bonekeyB->scale.x * keyBWeight,
-			bonekeyA->scale.y * keyAWeight + bonekeyB->scale.y * keyBWeight,
-			bonekeyA->scale.z * keyAWeight + bonekeyB->scale.z * keyBWeight
-		};
-		netBoneKey->rotation = {
-			bonekeyA->rotation.w * keyAWeight + bonekeyB->rotation.w * keyBWeight,
-			bonekeyA->rotation.x * keyAWeight + bonekeyB->rotation.x * keyBWeight,
-			bonekeyA->rotation.y * keyAWeight + bonekeyB->rotation.y * keyBWeight,
-			bonekeyA->rotation.z * keyAWeight + bonekeyB->rotation.z * keyBWeight
-		};
-
-		netBoneKey->rawMatrix = Mat4FromComponents( netBoneKey->scale, netBoneKey->rotation, netBoneKey->translation );
-	}
-
-	return out;
-}
-
-#include "..\App.cpp"
 
 void LoadTextureDataFromDisk( const char* fileName, TextureData* storage ) {
     storage->data = (uint8*)stbi_load( fileName, (int*)&storage->width, (int*)&storage->height, (int*)&storage->channelsPerPixel, 0 );

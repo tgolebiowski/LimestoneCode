@@ -489,6 +489,9 @@ Mat4 Mat4FromComponents( Vec3 scale, Quat rotation, Vec3 translation ) {
 		0.0f, 0.0f, 0.0f, 1.0f
 	};
 
+	//TODO: Make this work! Stop doing things the dumb way
+	//Mat4 m = MatrixFromQuat( rotation );
+
 	m[0][0] *= scale.x;
 	m[1][1] *= scale.y;
 	m[2][2] *= scale.z;
@@ -502,6 +505,7 @@ Mat4 Mat4FromComponents( Vec3 scale, Quat rotation, Vec3 translation ) {
 
 //Sets scale scale and translation to 0 and rotation to { 1,0,0,0 } if it cannot be decomposed
 void DecomposeMat4( Mat4 m, Vec3* scale, Quat* rotation, Vec3* translation ) {
+	//TODO: simpler decomposition code
 	Vec3 p = { 0.0f, 0.0f, 0.0f };
 	Vec3 xp = { 1.0f, 0.0f, 0.0f };
 	Vec3 yp = { 0.0f, 1.0f, 0.0f };

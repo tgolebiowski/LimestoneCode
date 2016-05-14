@@ -36,20 +36,20 @@ struct Bone {
 };
 
 struct Armature {
-	Bone allBones[ MAXBONES ];
+	Bone bones[ MAXBONES ];
 	Mat4 boneTransforms[ MAXBONES ];
 	Bone* rootBone;
 	uint8 boneCount;
 };
 
 struct BoneKeyFrame {
-	Mat4 rawMatrix;
+	Mat4 combinedMatrix;
+    Quat rotation;
 	Vec3 translation, scale;
-	Quat rotation;
 };
 
 struct ArmatureKeyFrame {
-	BoneKeyFrame localBoneTransforms[ MAXBONES ];
+	BoneKeyFrame targetBoneTransforms[ MAXBONES ];
 };
 
 struct MeshGPUBinding {
@@ -132,6 +132,48 @@ void SetRendererCameraTransform( Vec3 position, Vec3 lookatTarget ) {
 	Mat4 cameraTransform = LookAtMatrix( position, { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } );
     SetTranslation( &cameraTransform, position.x, position.y, position.z );
     rendererStorage.cameraTransform = MultMatrix( cameraTransform, rendererStorage.baseProjectionMatrix );
+}
+
+void ApplyKeyFrameToArmature( ArmatureKeyFrame* pose, Armature* armature ) {
+    for( uint8 boneIndex = 0; boneIndex < armature->boneCount; ++boneIndex ) {
+        Bone* bone = &armature->bones[ boneIndex ];
+        *bone->currentTransform = MultMatrix( bone->invBindPose, pose->targetBoneTransforms[ boneIndex ].combinedMatrix );
+    }
+}
+
+ArmatureKeyFrame BlendKeyFrames( ArmatureKeyFrame* keyframeA, ArmatureKeyFrame* keyframeB, float weight, uint8 boneCount ) {
+    float keyAWeight, keyBWeight;
+    ArmatureKeyFrame out;
+    keyAWeight = weight;
+    keyBWeight = 1.0f - keyAWeight;
+
+    for( uint8 boneIndex = 0; boneIndex < boneCount; ++boneIndex ) {
+        BoneKeyFrame* netBoneKey = &out.targetBoneTransforms[ boneIndex ];
+        BoneKeyFrame* bonekeyA = &keyframeA->targetBoneTransforms[ boneIndex ];
+        BoneKeyFrame* bonekeyB = &keyframeB->targetBoneTransforms[ boneIndex ];
+
+        netBoneKey->translation = { 
+            bonekeyA->translation.x * keyAWeight + bonekeyB->translation.x * keyBWeight,
+            bonekeyA->translation.y * keyAWeight + bonekeyB->translation.y * keyBWeight,
+            bonekeyA->translation.z * keyAWeight + bonekeyB->translation.z * keyBWeight
+        };
+        netBoneKey->scale = {
+            bonekeyA->scale.x * keyAWeight + bonekeyB->scale.x * keyBWeight,
+            bonekeyA->scale.y * keyAWeight + bonekeyB->scale.y * keyBWeight,
+            bonekeyA->scale.z * keyAWeight + bonekeyB->scale.z * keyBWeight
+        };
+        //TODO: Slerp Option
+        netBoneKey->rotation = {
+            bonekeyA->rotation.w * keyAWeight + bonekeyB->rotation.w * keyBWeight,
+            bonekeyA->rotation.x * keyAWeight + bonekeyB->rotation.x * keyBWeight,
+            bonekeyA->rotation.y * keyAWeight + bonekeyB->rotation.y * keyBWeight,
+            bonekeyA->rotation.z * keyAWeight + bonekeyB->rotation.z * keyBWeight
+        };
+
+        netBoneKey->combinedMatrix = Mat4FromComponents( netBoneKey->scale, netBoneKey->rotation, netBoneKey->translation );
+    }
+
+    return out;
 }
 
 /*-----------------------------------------------------------------------------------------------------------------
@@ -457,7 +499,7 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
 
     if( meshBinding->hasBoneData && params.armature != NULL ) {
         glUniform1i( programBinding->isArmatureAnimated, 1 );
-        glUniformMatrix4fv( programBinding->armatureUniformPtr, MAXBONES, GL_FALSE, (float*)&params.armature->boneTransforms->m[0] );
+        glUniformMatrix4fv( programBinding->armatureUniformPtr, MAXBONES, GL_FALSE, (float*)&params.armature->boneTransforms );
 
         glBindBuffer( GL_ARRAY_BUFFER, meshBinding->boneWeightDataPtr );
         glEnableVertexAttribArray( programBinding->boneWeightsAttribute );
@@ -559,7 +601,7 @@ void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color ) {
     Vec3 jointZAxes [64];
 
     for( uint8 boneIndex = 0; boneIndex < armature->boneCount; ++boneIndex ) {
-        Bone* bone = &armature->allBones[ boneIndex ];
+        Bone* bone = &armature->bones[ boneIndex ];
 
         Vec3 p1 = { 0.0f, 0.0f, 0.0f };
         p1 = MultVec( InverseMatrix( bone->invBindPose ), p1 );
