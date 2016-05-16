@@ -33,6 +33,7 @@ static struct {
 
 	HGLRC openglRenderContext;
 	LPRECT windowRect;
+	LARGE_INTEGER timerResolution;
 
 	uint16 windowPosX;
 	uint16 windowPosY;
@@ -48,7 +49,7 @@ static struct {
 		bool specialButtonLeft, specialButtonRight;
 	} controllerState;
 
-	DWORD mSecsPerFrame;
+	int64 mSecsPerFrame;
 } appInfo;
 
 static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow ) {
@@ -64,7 +65,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 	appInfo.running = true;
 	appInfo.isFullScreen = false;
-	appInfo.mSecsPerFrame = 1000 / 60;
+	appInfo.mSecsPerFrame = 16; //60FPS
 
 	appInfo.wc.cbSize = sizeof(WNDCLASSEX);
 	appInfo.wc.style = 0;
@@ -145,6 +146,9 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	gameSlab.slabStart = VirtualAlloc( NULL, gameSlab.slabSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
 	assert( gameSlab.slabStart != NULL );
 
+	BOOL canSupportHiResTimer = QueryPerformanceFrequency( &appInfo.timerResolution );
+	assert( canSupportHiResTimer );
+
 	GameInit( &gameSlab );
 
 	MSG Msg;
@@ -154,9 +158,9 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			DispatchMessage( &Msg );
 		}
 
-		static DWORD startTime;
-		static DWORD endTime;
-		startTime = GetTickCount();
+		static LARGE_INTEGER startTime;
+		LARGE_INTEGER lastTime = startTime;
+		QueryPerformanceCounter( &startTime );
 
 		//GAME LOOP
 		if(appInfo.running) {
@@ -184,17 +188,24 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 			}
 
-			appInfo.running = Update( &gameSlab );
+			LARGE_INTEGER elapsedTime;
+			elapsedTime.QuadPart = startTime.QuadPart - lastTime.QuadPart;
+			elapsedTime.QuadPart *= 1000;
+			elapsedTime.QuadPart /= appInfo.timerResolution.QuadPart;
+			appInfo.running = Update( &gameSlab, (float)elapsedTime.QuadPart );
 			Render( &gameSlab );
 			SwapBuffers( appInfo.deviceContext );
 		}
 
-		endTime = GetTickCount();
-		DWORD computeTime = endTime - startTime;
-		if(computeTime <= appInfo.mSecsPerFrame ) {
-			Sleep(appInfo.mSecsPerFrame - computeTime);
+		LARGE_INTEGER endTime, computeTime;
+		QueryPerformanceCounter( &endTime );
+		computeTime.QuadPart = endTime.QuadPart - startTime.QuadPart;
+		computeTime.QuadPart *= 1000;
+		computeTime.QuadPart /= appInfo.timerResolution.QuadPart;
+		if( computeTime.QuadPart <= appInfo.mSecsPerFrame ) {
+			Sleep(appInfo.mSecsPerFrame - computeTime.QuadPart );
 		} else {
-			//printf("Didn't sleep, compute was %ld, target: %ld \n", computeTime, appInfo.mSecsPerFrame );
+			printf("Didn't sleep, compute was %ld, target: %ld \n", computeTime.QuadPart, appInfo.mSecsPerFrame );
 		}
 
 	} while( appInfo.running );

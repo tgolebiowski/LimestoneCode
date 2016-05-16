@@ -29,7 +29,7 @@ float GetTriggerState( uint8 triggerIndex );
 /* --------------------------------------------------------------------------
 	                      STUFF THE GAME PROVIDES THE OS
  ----------------------------------------------------------------------------*/
-bool Update( MemorySlab* gameMemory );
+bool Update( MemorySlab* gameMemory, float millisecondsElapsed );
 void Render( MemorySlab* gameMemory );
 void GameInit( MemorySlab* gameMemory );
 
