@@ -197,7 +197,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			elapsedTime.QuadPart *= 1000;
 			elapsedTime.QuadPart /= appInfo.timerResolution.QuadPart;
 			appInfo.running = Update( &gameSlab, (float)elapsedTime.QuadPart );
-			UpdateSound();
+			PushInfoToSoundCard();
 			Render( &gameSlab );
 			SwapBuffers( appInfo.deviceContext );
 		}
