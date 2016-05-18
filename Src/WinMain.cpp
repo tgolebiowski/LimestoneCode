@@ -68,7 +68,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	appInfo.mSecsPerFrame = 16; //60FPS
 
 	appInfo.wc.cbSize = sizeof(WNDCLASSEX);
-	appInfo.wc.style = 0;
+	appInfo.wc.style = CS_OWNDC;
 	appInfo.wc.lpfnWndProc = WndProc;
 	appInfo.wc.cbClsExtra = 0;
 	appInfo.wc.cbWndExtra = 0;
@@ -80,7 +80,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	appInfo.wc.lpszClassName = WindowName;
 	appInfo.wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
 
-	if(!RegisterClassEx(&appInfo.wc)) {
+	if( !RegisterClassEx( &appInfo.wc ) ) {
 		printf( "Failed to register class\n" );
 		appInfo.running = false;
 		return -1;
@@ -110,7 +110,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	GetClientRect( appInfo.hwnd, appInfo.windowRect );
 
 	PIXELFORMATDESCRIPTOR pfd = {
-		sizeof(PIXELFORMATDESCRIPTOR),
+		sizeof( PIXELFORMATDESCRIPTOR ),
 		1,
 	    PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
 		PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
@@ -123,7 +123,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 		0, 0, 0, 0
 	};
 
-	appInfo.deviceContext = GetDC(appInfo.hwnd);
+	appInfo.deviceContext = GetDC( appInfo.hwnd );
 
 	int letWindowsChooseThisPixelFormat;
 	letWindowsChooseThisPixelFormat = ChoosePixelFormat( appInfo.deviceContext, &pfd ); 
@@ -136,6 +136,10 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	}
 
 	glewInit();
+
+	const int32 soundSamplePerSec = 48000;
+	const int32 secondaryBufferSize = soundSamplePerSec * sizeof( int16 ) * 2;
+	InitSound( (void*)appInfo.hwnd, soundSamplePerSec, secondaryBufferSize );
 
 	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
 	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
@@ -193,6 +197,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			elapsedTime.QuadPart *= 1000;
 			elapsedTime.QuadPart /= appInfo.timerResolution.QuadPart;
 			appInfo.running = Update( &gameSlab, (float)elapsedTime.QuadPart );
+			UpdateSound();
 			Render( &gameSlab );
 			SwapBuffers( appInfo.deviceContext );
 		}

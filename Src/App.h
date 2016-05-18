@@ -13,6 +13,7 @@ typedef int64_t int64;
 #include "Memory.h"
 #include "Math3D.h"
 #include "Renderer.h"
+#include "Sound.h"
 
 /* --------------------------------------------------------------------------
 	                      STUFF THE OS PROVIDES THE GAME

@@ -58,7 +58,7 @@ bool Update( MemorySlab* gameMemory, float millisecondsElapsed ) {
     keys[0] = &gMem->pose;
     keys[1] = &gMem->pose2;
 
-    const float rate = PI / 1000.0f;
+    const float rate = ( 2.0f * PI ) / 1000.0f;
     static float current = 0.0f;
     if( IsKeyDown( 'd' ) ) {
         current += ( rate * millisecondsElapsed );
