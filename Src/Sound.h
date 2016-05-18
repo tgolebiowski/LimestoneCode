@@ -2,27 +2,29 @@ void InitSound( const void* platformSpecificThing, int32 SamplesPerSecond, int32
 void PushInfoToSoundCard();
 
 struct SoundRenderBuffer {
-	int32 samplesToPush;
-
 	int32 samplesPerSecond;
 	int32 sampleCount;
 	int16* samples;
 };
 
-void OutputTestTone( SoundRenderBuffer* srb, int32 samplesToWrite, int hz = 440 ) {
+void OutputTestTone( SoundRenderBuffer* srb, int hz = 440 ) {
 	const int volume = 3000;
 	const int WavePeriod = srb->samplesPerSecond / hz;
-	static float tSine = 0;
+	static float tSine = 0.0f;
+	const float tSineStep = 2.0f * PI / (float)WavePeriod;
 
-	samplesToWrite /= 2;
+	int32 samplesToWrite = srb->sampleCount / 2;
 
 	for( int32 sampleIndex = 0; sampleIndex < samplesToWrite; ++sampleIndex ) {
-		tSine += 2.0f * PI / (float)WavePeriod;
+		tSine += tSineStep;
+		if( tSine > ( 2.0f * PI ) ) {
+			tSine -= ( 2.0f * PI );
+		}
+
 		int16 sampleValue = volume * sinf( tSine );
 		int32 i = sampleIndex * 2;
 		srb->samples[ i ] = sampleValue; //Left Channel
 		srb->samples[ i + 1 ] = sampleValue; //Right Channel
-		++srb->samplesToPush;
 	}
 }
 
@@ -34,23 +36,42 @@ void OutputTestTone( SoundRenderBuffer* srb, int32 samplesToWrite, int hz = 440 
 typedef DIRECT_SOUND_CREATE( direct_sound_create );
 
 static struct {
-	int32 samplesPerSecond;
 	int32 writeBufferSize;
 	uint8 bytesPerSample;
 	LPDIRECTSOUNDBUFFER writeBuffer;
 
-	uint32 runningSampleIndex;
+	uint64 runningSampleIndex;
+	DWORD bytesToWrite, byteToLock;
+
 	SoundRenderBuffer srb;
 } SoundRendererStorage;
 
+void PrepSound() {
+	DWORD playCursorPosition, writeCursorPosition;
+	if( !SUCCEEDED( SoundRendererStorage.writeBuffer->GetCurrentPosition( &playCursorPosition, &writeCursorPosition) ) ){
+		printf("couldn't get cursor\n");
+		return;
+	}
 
-void Win32FillSoundBuffer( DWORD byteToLock, DWORD bytesToWrite ) {
+	SoundRendererStorage.byteToLock = ( SoundRendererStorage.runningSampleIndex * SoundRendererStorage.bytesPerSample * 2 ) % SoundRendererStorage.writeBufferSize;
+	if( SoundRendererStorage.byteToLock > playCursorPosition ) {
+		SoundRendererStorage.bytesToWrite = SoundRendererStorage.writeBufferSize - SoundRendererStorage.byteToLock;
+		SoundRendererStorage.bytesToWrite += playCursorPosition;
+	} else {
+		SoundRendererStorage.bytesToWrite = playCursorPosition - SoundRendererStorage.byteToLock;
+	}
+
+	SoundRendererStorage.srb.sampleCount = SoundRendererStorage.bytesToWrite / SoundRendererStorage.bytesPerSample;
+}
+
+void PushInfoToSoundCard() {
+	//Win32FillSoundBuffer( byteToLock, bytesToWrite );
 	VOID* region0;
 	DWORD region0Size;
 	VOID* region1;
 	DWORD region1Size;
 
-	HRESULT result = SoundRendererStorage.writeBuffer->Lock( byteToLock, bytesToWrite,
+	HRESULT result = SoundRendererStorage.writeBuffer->Lock( SoundRendererStorage.byteToLock, SoundRendererStorage.bytesToWrite,
 		&region0, &region0Size,
 		&region1, &region1Size,
 		0 );
@@ -129,19 +150,19 @@ void InitSound( const void* platformSpecificThing, int32 SamplesPerSecond, int32
 				printf("Couldn't secure a writable buffer\n");
 			}
 
-			SoundRendererStorage.samplesPerSecond = SamplesPerSecond;
+			SoundRendererStorage.byteToLock = 0;
+			SoundRendererStorage.bytesToWrite = 0;
 			SoundRendererStorage.writeBufferSize = buffersize;
 			SoundRendererStorage.bytesPerSample = sizeof( int16 );
 			SoundRendererStorage.runningSampleIndex = 0;
 
-			SoundRendererStorage.srb.samplesToPush = 0;
 			SoundRendererStorage.srb.samplesPerSecond = SamplesPerSecond;
 			SoundRendererStorage.srb.sampleCount = buffersize / sizeof( int16 );
 			SoundRendererStorage.srb.samples = (int16*)malloc( buffersize );
 			memset( SoundRendererStorage.srb.samples, 0, buffersize );
 
-			OutputTestTone( &SoundRendererStorage.srb, SoundRendererStorage.srb.sampleCount );
-			Win32FillSoundBuffer( 0, buffersize );
+			PushInfoToSoundCard();
+			//Win32FillSoundBuffer( 0, buffersize );
 
 			HRESULT playResult = SoundRendererStorage.writeBuffer->Play( 0, 0, DSBPLAY_LOOPING );
 			if( !SUCCEEDED( playResult ) ) {
@@ -154,30 +175,6 @@ void InitSound( const void* platformSpecificThing, int32 SamplesPerSecond, int32
 	} else {
 		printf("couldn't create direct sound object\n");
 	}
-}
-
-void PushInfoToSoundCard() {
-	DWORD playCursorPosition, writeCursorPosition;
-	if( !SUCCEEDED( SoundRendererStorage.writeBuffer->GetCurrentPosition( &playCursorPosition, &writeCursorPosition) ) ){
-		printf("couldn't get cursor\n");
-		return;
-	}
-
-	DWORD bytesToWrite;
-	DWORD byteToLock = ( SoundRendererStorage.runningSampleIndex * SoundRendererStorage.bytesPerSample * 2 ) % SoundRendererStorage.writeBufferSize;
-	if( byteToLock > playCursorPosition ) {
-		bytesToWrite = SoundRendererStorage.writeBufferSize - byteToLock;
-		bytesToWrite += playCursorPosition;
-	} else {
-		bytesToWrite = playCursorPosition - byteToLock;
-	}
-
-	if( IsKeyDown( 'h' ) ) {
-		OutputTestTone( &SoundRendererStorage.srb, bytesToWrite / sizeof( int16 ), 880 );
-	} else {
-		OutputTestTone( &SoundRendererStorage.srb, bytesToWrite / sizeof( int16 ) );
-	}
-	Win32FillSoundBuffer( byteToLock, bytesToWrite );
 }
 
 #endif //WIN32 specific implementation

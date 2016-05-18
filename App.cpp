@@ -89,8 +89,8 @@ bool Update( MemorySlab* gameMemory, float millisecondsElapsed ) {
     ArmatureKeyFrame testPose = gMem->pose;
     ArmatureKeyFrame blendedPose = BlendKeyFrames( &gMem->pose, &gMem->pose2, 1.0f, gMem->arm.boneCount );
 
-    wasPDown = pDown;
-
+    OutputTestTone( &SoundRendererStorage.srb );
+    
     return true;
 }
 
@@ -105,7 +105,6 @@ void Render( MemorySlab* gameMemory ) {
 
     *gMem->params.modelMatrix = i;
     RenderBoundData( &gMem->meshBinding, &gMem->shader, gMem->params );
-    RenderArmatureAsLines( &gMem->arm, i, { 1.0f, 1.0f, 1.0f } );
 
     //RenderTexturedQuad( &gMem->texBinding, 0.5f, 0.5f, -0.5f, 0.5f );
 
