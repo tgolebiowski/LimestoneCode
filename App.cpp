@@ -88,8 +88,6 @@ bool Update( MemorySlab* gameMemory, float millisecondsElapsed ) {
 
     ArmatureKeyFrame testPose = gMem->pose;
     ArmatureKeyFrame blendedPose = BlendKeyFrames( &gMem->pose, &gMem->pose2, 1.0f, gMem->arm.boneCount );
-
-    OutputTestTone( &SoundRendererStorage.srb );
     
     return true;
 }

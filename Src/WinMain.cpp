@@ -137,9 +137,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 	glewInit();
 
-	const int32 soundSamplePerSec = 48000;
-	const int32 secondaryBufferSize = soundSamplePerSec * sizeof( int16 ) * 2;
-	InitSound( (void*)appInfo.hwnd, soundSamplePerSec, secondaryBufferSize );
+	InitSound( (void*)appInfo.hwnd, 60 );
 
 	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
 	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
@@ -197,12 +195,65 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			elapsedTime.QuadPart *= 1000;
 			elapsedTime.QuadPart /= appInfo.timerResolution.QuadPart;
 
-			PrepSound();
-
 			appInfo.running = Update( &gameSlab, (float)elapsedTime.QuadPart );
 			Render( &gameSlab );
 
-			PushInfoToSoundCard();
+			{
+				DWORD playCursorPosition, writeCursorPosition;
+				if( SUCCEEDED( SoundRendererStorage.writeBuffer->GetCurrentPosition( &playCursorPosition, &writeCursorPosition) ) ) {
+					static bool firstTime = true;
+					if( firstTime ) {
+						SoundRendererStorage.runningSampleIndex = writeCursorPosition / SoundRendererStorage.bytesPerSample;
+						firstTime = false;
+					}
+
+	                //Pick up where we left off
+					SoundRendererStorage.byteToLock = ( SoundRendererStorage.runningSampleIndex * SoundRendererStorage.bytesPerSample * 2 ) % SoundRendererStorage.writeBufferSize;
+
+	                //Calculate how much to write
+					const DWORD ExpectedBytesPerFrame = ( 48000 * sizeof( int16 ) * 2 ) / 60;
+					SoundRendererStorage.safetySampleBytes;
+					DWORD ExpectedFrameBoundaryByte = playCursorPosition + ExpectedBytesPerFrame;
+
+					DWORD safeWriteCursor = writeCursorPosition;
+					if( safeWriteCursor < playCursorPosition ) {
+						safeWriteCursor += SoundRendererStorage.writeBufferSize;
+					}
+					safeWriteCursor += SoundRendererStorage.safetySampleBytes;
+					bool AudioCardIsLowLatency = safeWriteCursor < ExpectedFrameBoundaryByte;
+
+					DWORD targetCursor = 0;
+					if( AudioCardIsLowLatency ) {
+						targetCursor = ( ExpectedFrameBoundaryByte + ExpectedBytesPerFrame );
+					} else {
+						targetCursor = ( writeCursorPosition + ExpectedBytesPerFrame + SoundRendererStorage.safetySampleBytes );
+					}
+					targetCursor = targetCursor % SoundRendererStorage.writeBufferSize;
+
+					if( SoundRendererStorage.byteToLock > targetCursor ) {
+						SoundRendererStorage.bytesToWrite = SoundRendererStorage.writeBufferSize - SoundRendererStorage.byteToLock;
+						SoundRendererStorage.bytesToWrite += targetCursor;
+					} else {
+						SoundRendererStorage.bytesToWrite = targetCursor - SoundRendererStorage.byteToLock;
+					}
+
+	                //Save number of samples that can be written to platform independent struct
+					SoundRendererStorage.srb.samplesToWrite = SoundRendererStorage.bytesToWrite / SoundRendererStorage.bytesPerSample;
+				} else {
+					printf("couldn't get cursor\n");
+				}
+		    }
+
+		    //Do Sound/Mixing and such here
+		    {
+		    	if( !IsKeyDown( 'h' ) )
+		    		OutputTestTone( &SoundRendererStorage.srb );
+		    	else
+		    		OutputTestTone( &SoundRendererStorage.srb, 220 );
+		    }
+
+		    PushInfoToSoundCard();
+
 			SwapBuffers( appInfo.deviceContext );
 		}
 
