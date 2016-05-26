@@ -198,61 +198,12 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			appInfo.running = Update( &gameSlab, (float)elapsedTime.QuadPart );
 			Render( &gameSlab );
 
-			{
-				DWORD playCursorPosition, writeCursorPosition;
-				if( SUCCEEDED( SoundRendererStorage.writeBuffer->GetCurrentPosition( &playCursorPosition, &writeCursorPosition) ) ) {
-					static bool firstTime = true;
-					if( firstTime ) {
-						SoundRendererStorage.runningSampleIndex = writeCursorPosition / SoundRendererStorage.bytesPerSample;
-						firstTime = false;
-					}
+			PrepAudio();
 
-	                //Pick up where we left off
-					SoundRendererStorage.byteToLock = ( SoundRendererStorage.runningSampleIndex * SoundRendererStorage.bytesPerSample * 2 ) % SoundRendererStorage.writeBufferSize;
+            //Do Sound/Mixing and such here
+			OutputAudio( &SoundRendererStorage.srb );
 
-	                //Calculate how much to write
-					const DWORD ExpectedBytesPerFrame = ( 48000 * sizeof( int16 ) * 2 ) / 60;
-					SoundRendererStorage.safetySampleBytes;
-					DWORD ExpectedFrameBoundaryByte = playCursorPosition + ExpectedBytesPerFrame;
-
-					DWORD safeWriteCursor = writeCursorPosition;
-					if( safeWriteCursor < playCursorPosition ) {
-						safeWriteCursor += SoundRendererStorage.writeBufferSize;
-					}
-					safeWriteCursor += SoundRendererStorage.safetySampleBytes;
-					bool AudioCardIsLowLatency = safeWriteCursor < ExpectedFrameBoundaryByte;
-
-					DWORD targetCursor = 0;
-					if( AudioCardIsLowLatency ) {
-						targetCursor = ( ExpectedFrameBoundaryByte + ExpectedBytesPerFrame );
-					} else {
-						targetCursor = ( writeCursorPosition + ExpectedBytesPerFrame + SoundRendererStorage.safetySampleBytes );
-					}
-					targetCursor = targetCursor % SoundRendererStorage.writeBufferSize;
-
-					if( SoundRendererStorage.byteToLock > targetCursor ) {
-						SoundRendererStorage.bytesToWrite = SoundRendererStorage.writeBufferSize - SoundRendererStorage.byteToLock;
-						SoundRendererStorage.bytesToWrite += targetCursor;
-					} else {
-						SoundRendererStorage.bytesToWrite = targetCursor - SoundRendererStorage.byteToLock;
-					}
-
-	                //Save number of samples that can be written to platform independent struct
-					SoundRendererStorage.srb.samplesToWrite = SoundRendererStorage.bytesToWrite / SoundRendererStorage.bytesPerSample;
-				} else {
-					printf("couldn't get cursor\n");
-				}
-		    }
-
-		    //Do Sound/Mixing and such here
-		    {
-		    	if( !IsKeyDown( 'h' ) )
-		    		OutputTestTone( &SoundRendererStorage.srb );
-		    	else
-		    		OutputTestTone( &SoundRendererStorage.srb, 220 );
-		    }
-
-		    PushInfoToSoundCard();
+		    PushAudioToSoundCard();
 
 			SwapBuffers( appInfo.deviceContext );
 		}

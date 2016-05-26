@@ -92,6 +92,16 @@ bool Update( MemorySlab* gameMemory, float millisecondsElapsed ) {
     return true;
 }
 
+void OutputAudio( SoundRenderBuffer* sound ) {
+
+    if( !IsKeyDown( 'h' ) ) {
+        OutputTestTone( sound );
+    } else {
+        OutputTestTone( sound, 220 );
+    }
+
+}
+
 void Render( MemorySlab* gameMemory ) {
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
 

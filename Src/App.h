@@ -32,6 +32,7 @@ float GetTriggerState( uint8 triggerIndex );
  ----------------------------------------------------------------------------*/
 bool Update( MemorySlab* gameMemory, float millisecondsElapsed );
 void Render( MemorySlab* gameMemory );
+void OutputAudio( SoundRenderBuffer* sound );
 void GameInit( MemorySlab* gameMemory );
 
 #define APP_H

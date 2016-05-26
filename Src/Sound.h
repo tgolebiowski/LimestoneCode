@@ -39,6 +39,7 @@ typedef DIRECT_SOUND_CREATE( direct_sound_create );
 static struct {
 	int32 writeBufferSize;
 	int32 safetySampleBytes;
+	int32 expectedBytesPerFrame;
 	uint8 bytesPerSample;
 	LPDIRECTSOUNDBUFFER writeBuffer;
 
@@ -48,8 +49,59 @@ static struct {
 	SoundRenderBuffer srb;
 } SoundRendererStorage;
 
-void PushInfoToSoundCard() {
-	//Win32FillSoundBuffer( byteToLock, bytesToWrite );
+void PrepAudio() {
+	DWORD playCursorPosition, writeCursorPosition;
+	if( SUCCEEDED( SoundRendererStorage.writeBuffer->GetCurrentPosition( &playCursorPosition, &writeCursorPosition) ) ) {
+		static bool firstTime = true;
+		if( firstTime ) {
+			SoundRendererStorage.runningSampleIndex = writeCursorPosition / SoundRendererStorage.bytesPerSample;
+			firstTime = false;
+		}
+
+	    //Pick up where we left off
+		SoundRendererStorage.byteToLock = ( SoundRendererStorage.runningSampleIndex * SoundRendererStorage.bytesPerSample * 2 ) % SoundRendererStorage.writeBufferSize;
+
+	    //Calculate how much to write
+		SoundRendererStorage.safetySampleBytes;
+		DWORD ExpectedFrameBoundaryByte = playCursorPosition + SoundRendererStorage.expectedBytesPerFrame;
+
+		//DSound can be latent sometimes when reporting the current writeCursor, so this is 
+		//the farthest ahead that the cursor could possibly be
+		DWORD safeWriteCursor = writeCursorPosition;
+		if( safeWriteCursor < playCursorPosition ) {
+			safeWriteCursor += SoundRendererStorage.writeBufferSize;
+		}
+		safeWriteCursor += SoundRendererStorage.safetySampleBytes;
+
+		bool AudioCardIsLowLatency = safeWriteCursor < ExpectedFrameBoundaryByte;
+
+		//Determine up to which byte we should write
+		DWORD targetCursor = 0;
+		if( AudioCardIsLowLatency ) {
+			targetCursor = ( ExpectedFrameBoundaryByte + SoundRendererStorage.expectedBytesPerFrame );
+		} else {
+			targetCursor = ( writeCursorPosition + SoundRendererStorage.expectedBytesPerFrame + SoundRendererStorage.safetySampleBytes );
+		}
+		targetCursor = targetCursor % SoundRendererStorage.writeBufferSize;
+
+		//Wrap up on math, how many bytes do we actually write
+		if( SoundRendererStorage.byteToLock > targetCursor ) {
+			SoundRendererStorage.bytesToWrite = SoundRendererStorage.writeBufferSize - SoundRendererStorage.byteToLock;
+			SoundRendererStorage.bytesToWrite += targetCursor;
+		} else {
+			SoundRendererStorage.bytesToWrite = targetCursor - SoundRendererStorage.byteToLock;
+		}
+
+	    //Save number of samples that can be written to platform independent struct
+		SoundRendererStorage.srb.samplesToWrite = SoundRendererStorage.bytesToWrite / SoundRendererStorage.bytesPerSample;
+	} else {
+		printf("couldn't get cursor\n");
+		return;
+	}
+
+}
+
+void PushAudioToSoundCard() {
 	VOID* region0;
 	DWORD region0Size;
 	VOID* region1;
@@ -147,6 +199,7 @@ void InitSound( const void* platformSpecificThing, int targetGameHZ ) {
 			SoundRendererStorage.writeBufferSize = BufferSize;
 			SoundRendererStorage.bytesPerSample = sizeof( int16 );
  			SoundRendererStorage.safetySampleBytes = ( ( SamplesPerSecond / targetGameHZ ) / 2 ) * SoundRendererStorage.bytesPerSample;
+ 			SoundRendererStorage.expectedBytesPerFrame = ( 48000 * SoundRendererStorage.bytesPerSample * 2 ) / targetGameHZ;
 			SoundRendererStorage.runningSampleIndex = 0;
 
 			SoundRendererStorage.srb.samplesPerSecond = SamplesPerSecond;
