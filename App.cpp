@@ -9,6 +9,7 @@ struct GameMemory {
     Armature arm;
     ArmatureKeyFrame pose;
     ArmatureKeyFrame pose2;
+    LoadedSound testSound;
 };
 static Mat4 i;
 static Mat4 r;
@@ -30,6 +31,9 @@ void GameInit( MemorySlab* gameMemory ) {
     LoadAnimationDataFromCollada( "Data/SkeletonDebug.dae", &gMem->pose, &gMem->arm );
     LoadAnimationDataFromCollada( "Data/SkeletonDebugPose_2.dae", &gMem->pose2, &gMem->arm );
     LoadTextureDataFromDisk( "Data/Textures/green_texture.png", &gMem->texData );
+
+    gMem->testSound = LoadWaveFile( "Data/Sounds/test2.wav" );
+
     CreateRenderBinding( &gMem->meshData, &gMem->meshBinding );
     CreateShaderProgram( "Data/Shaders/Basic.vert", "Data/Shaders/Basic.frag", &gMem->shader );
     CreateTextureBinding( &gMem->texData, &gMem->texBinding );
@@ -92,14 +96,9 @@ bool Update( MemorySlab* gameMemory, float millisecondsElapsed ) {
     return true;
 }
 
-void OutputAudio( SoundRenderBuffer* sound ) {
-
-    if( !IsKeyDown( 'h' ) ) {
-        OutputTestTone( sound );
-    } else {
-        OutputTestTone( sound, 220 );
-    }
-
+void OutputAudio( MemorySlab* gameMemory, SoundRenderBuffer* sound ) {
+    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
+    OutputTestSound( sound, gMem->testSound );
 }
 
 void Render( MemorySlab* gameMemory ) {

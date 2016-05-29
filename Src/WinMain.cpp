@@ -201,7 +201,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			PrepAudio();
 
             //Do Sound/Mixing and such here
-			OutputAudio( &SoundRendererStorage.srb );
+			OutputAudio( &gameSlab, &SoundRendererStorage.srb );
 
 		    PushAudioToSoundCard();
 
@@ -282,6 +282,45 @@ float GetTriggerState( uint8 triggerIndex ) {
 	}
 
 	return 0.0f;
+}
+
+#include <strsafe.h>
+void* ReadWholeFile( char* filename, int64* bytesRead ) {
+	//Open
+	HANDLE fileHandle;
+	//TODO: look into other options, such as: Overlapped, No_Bufffering, and Random_Access
+	fileHandle = CreateFile( filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0 );
+	if( fileHandle == INVALID_HANDLE_VALUE ) {
+		assert( false );
+	}
+
+	//Determine amount of data
+	LARGE_INTEGER fileSize;
+	GetFileSizeEx( fileHandle, &fileSize );
+	if( fileSize.QuadPart == 0 ) {
+		assert( false );
+	}
+	assert( fileSize.QuadPart <= 0xFFFFFFFF );
+
+	//Reserve Space
+	void* data = 0;
+	data = malloc( fileSize.QuadPart );
+	assert( data != 0 );
+
+	//Read data
+	DWORD dataRead = 0;
+	//TODO: adjust for overlapped or async stuff?
+	BOOL readSuccess = ReadFile( fileHandle, data, fileSize.QuadPart, &dataRead, 0 );
+	if( !readSuccess || dataRead != fileSize.QuadPart ) {
+
+	}
+
+	//Close
+	BOOL closeReturnValue = CloseHandle( fileHandle );
+	assert( closeReturnValue );
+
+	*bytesRead = fileSize.QuadPart;
+	return data;
 }
 
 /*----------------------------------------------------------------------------------------

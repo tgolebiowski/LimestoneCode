@@ -1,11 +1,131 @@
-void InitSound( const void* platformSpecificThing, int32 SamplesPerSecond, int32 buffersize );
-void PushInfoToSoundCard();
+struct LoadedSound {
+	int32 sampleCount;
+	int32 channelCount;
+	int16* samples [2];
+};
 
 struct SoundRenderBuffer {
 	int32 samplesPerSecond;
 	int32 samplesToWrite;
 	int16* samples;
 };
+
+#pragma pack( push, 1 )
+struct WaveHeader{
+	uint32 RIFFID;
+	uint32 size;
+	uint32 WAVEID;
+};
+
+#define RIFF_CODE( a, b, c, d ) ( ( (uint32)(a) << 0 ) | ( (uint32)(b) << 8 ) | ( (uint32)(c) << 16 ) | ( (uint32)(d) << 24 ) )
+enum {
+	WAVE_ChunkID_fmt = RIFF_CODE( 'f', 'm', 't', ' ' ),
+	WAVE_ChunkID_data = RIFF_CODE( 'd', 'a', 't', 'a' ),
+	WAVE_ChunkID_RIFF = RIFF_CODE( 'R', 'I', 'F', 'F' ),
+	WAVE_ChunkID_WAVE = RIFF_CODE( 'W', 'A', 'V', 'E' )
+};
+
+struct WaveChunk {
+	uint32 ID;
+	uint32 size;
+};
+
+struct Wave_fmt {
+	uint16 wFormatTag;
+	uint16 nChannels;
+	uint32 nSamplesPerSec;
+	uint32 nAvgBytesPerSec;
+	uint16 nBlockAlign;
+	uint16 wBitsPerSample;
+	uint16 cbSize;
+	uint16 wValidBitsPerSample;
+	uint32 dwChannelMask;
+	uint8 SubFormat [8];
+};
+
+#pragma pack( pop )
+
+LoadedSound LoadWaveFile( char* filePath ) {
+
+	LoadedSound result = { };
+
+	int64 bytesRead = 0;
+	void* fileData = ReadWholeFile( filePath, &bytesRead );
+
+	if( bytesRead > 0 ) {
+		struct RiffIterator {
+			uint8* currentByte;
+			uint8* stop;
+		};
+
+		auto ParseChunkAt = []( WaveHeader* header, void* stop ) -> RiffIterator {
+			return { (uint8*)header, (uint8*)stop };
+		};
+		auto IsValid = []( RiffIterator iter ) -> bool  {
+			return iter.currentByte < iter.stop;
+		};
+		auto NextChunk = []( RiffIterator iter ) -> RiffIterator {
+			WaveChunk* chunk = (WaveChunk*)iter.currentByte;
+			uint32 size = ( chunk->size + 1 ) & ~1;
+			iter.currentByte += sizeof( WaveChunk ) + size;
+			return iter;
+		};
+		auto GetChunkData = []( RiffIterator iter ) -> void* {
+			void* result = ( iter.currentByte  + sizeof( WaveChunk ) );
+			return result;
+		};
+		auto GetType = []( RiffIterator iter ) -> uint32 {
+			WaveChunk* chunk = (WaveChunk*)iter.currentByte;
+			uint32 result = chunk->ID;
+			return result;
+		};
+		auto GetChunkSize = []( RiffIterator iter) -> uint32 {
+			WaveChunk* chunk = (WaveChunk*)iter.currentByte;
+			uint32 result = chunk->size;
+			return result;
+		};
+
+		WaveHeader* header = (WaveHeader*)fileData;
+		assert( header->RIFFID == WAVE_ChunkID_RIFF );
+		assert( header->WAVEID == WAVE_ChunkID_WAVE );
+
+		uint32 channelCount = 0;
+		uint32 sampleDataSize = 0;
+		void* sampleData = 0;
+		for( RiffIterator iter = ParseChunkAt( header + 1, (uint8*)( header + 1 ) + header->size - 4 ); 
+			IsValid( iter ); iter = NextChunk( iter ) ) {
+			switch( GetType( iter ) ) {
+				case WAVE_ChunkID_fmt: {
+					Wave_fmt* fmt = (Wave_fmt*)GetChunkData( iter );
+					assert( fmt->wFormatTag == 1 ); //NOTE: only supporting PCM
+					assert( fmt->nSamplesPerSec == 48000 );
+					assert( fmt->wBitsPerSample == 16 );
+					channelCount = fmt->nChannels;
+				}break;
+				case WAVE_ChunkID_data: {
+					sampleData = GetChunkData( iter );
+					sampleDataSize = GetChunkSize( iter );
+				}break;
+			}
+		}
+
+		assert( sampleData != 0 );
+
+		result.sampleCount = sampleDataSize / ( channelCount * sizeof( uint16 ) );
+		result.channelCount = channelCount;
+
+		if( channelCount == 1 ) {
+			result.samples[0] = (int16*)sampleData;
+			result.samples[1] = 0;
+		} else if( channelCount == 2 ) {
+
+		} else {
+			assert(false);
+		}
+	}
+	
+	return result;
+}
 
 void OutputTestTone( SoundRenderBuffer* srb, int hz = 440 ) {
 	const int volume = 3000;
@@ -26,6 +146,22 @@ void OutputTestTone( SoundRenderBuffer* srb, int hz = 440 ) {
 		srb->samples[ i ] = sampleValue; //Left Channel
 		srb->samples[ i + 1 ] = sampleValue; //Right Channel
 	}
+}
+
+void OutputTestSound( SoundRenderBuffer* soundBuffer, LoadedSound sound ) {
+
+	uint32 samplesToWrite = soundBuffer->samplesToWrite / 2;
+	static uint32 leftOff = 0;
+
+	for( int32 sampleIndex = 0; sampleIndex < samplesToWrite; ++sampleIndex ) {
+		int16 value = sound.samples[0][ ( sampleIndex + leftOff ) % sound.sampleCount ];
+
+		int32 i = sampleIndex * 2;
+		soundBuffer->samples[ i ] = value;     //Left Channel
+		soundBuffer->samples[ i + 1 ] = value; //Right Channel
+	}
+
+	leftOff += samplesToWrite;
 }
 
 #ifdef WIN32_ENTRY
@@ -90,6 +226,10 @@ void PrepAudio() {
 			SoundRendererStorage.bytesToWrite += targetCursor;
 		} else {
 			SoundRendererStorage.bytesToWrite = targetCursor - SoundRendererStorage.byteToLock;
+		}
+
+		if( SoundRendererStorage.bytesToWrite == 0 ) {
+			printf( "BTW is zero, PC:%lu WC:%lu TC:%lu \n", playCursorPosition, writeCursorPosition, targetCursor );
 		}
 
 	    //Save number of samples that can be written to platform independent struct
@@ -219,5 +359,6 @@ void InitSound( const void* platformSpecificThing, int targetGameHZ ) {
 		printf("couldn't create direct sound object\n");
 	}
 }
+
 
 #endif //WIN32 specific implementation

@@ -10,11 +10,6 @@ typedef int32_t int32;
 typedef uint64_t uint64;
 typedef int64_t int64;
 
-#include "Memory.h"
-#include "Math3D.h"
-#include "Renderer.h"
-#include "Sound.h"
-
 /* --------------------------------------------------------------------------
 	                      STUFF THE OS PROVIDES THE GAME
 -----------------------------------------------------------------------------*/
@@ -22,10 +17,16 @@ typedef int64_t int64;
 void GetMousePosition( float* x, float* y );
 ///Currently limiting it to Ascii Table
 bool IsKeyDown( uint8 keyChar );
-
 bool IsControllerButtonDown( uint8 buttonIndex );
 void GetControllerStickState( uint8 stickIndex, float* x, float* y );
 float GetTriggerState( uint8 triggerIndex );
+
+void* ReadWholeFile( char* filename, int64* bytesRead );
+
+#include "Memory.h"
+#include "Math3D.h"
+#include "Renderer.h"
+#include "Sound.h"
 
 /* --------------------------------------------------------------------------
 	                      STUFF THE GAME PROVIDES THE OS
