@@ -10,6 +10,7 @@ struct GameMemory {
     ArmatureKeyFrame pose;
     ArmatureKeyFrame pose2;
     LoadedSound testSound;
+    LoadedSound sound2;
 };
 static Mat4 i;
 static Mat4 r;
@@ -32,7 +33,8 @@ void GameInit( MemorySlab* gameMemory ) {
     LoadAnimationDataFromCollada( "Data/SkeletonDebugPose_2.dae", &gMem->pose2, &gMem->arm );
     LoadTextureDataFromDisk( "Data/Textures/green_texture.png", &gMem->texData );
 
-    gMem->testSound = LoadWaveFile( "Data/Sounds/test2.wav" );
+    gMem->testSound = LoadWaveFile( "Data/Sounds/Dawn.wav" );
+    gMem->sound2 = LoadWaveFile( "Data/Sounds/SkullKid_Step1_Long.wav" );
 
     CreateRenderBinding( &gMem->meshData, &gMem->meshBinding );
     CreateShaderProgram( "Data/Shaders/Basic.vert", "Data/Shaders/Basic.frag", &gMem->shader );
@@ -92,13 +94,19 @@ bool Update( MemorySlab* gameMemory, float millisecondsElapsed ) {
 
     ArmatureKeyFrame testPose = gMem->pose;
     ArmatureKeyFrame blendedPose = BlendKeyFrames( &gMem->pose, &gMem->pose2, 1.0f, gMem->arm.boneCount );
-    
+
     return true;
 }
 
-void OutputAudio( MemorySlab* gameMemory, SoundRenderBuffer* sound ) {
+void OutputAudio( MemorySlab* gameMemory, SoundRenderBuffer* sound, PlayingSound* activeSoundList ) {
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
-    OutputTestSound( sound, gMem->testSound );
+    static bool hKeyLastState = false;
+    bool hKeyThisState = IsKeyDown( 'h' );
+    if( !hKeyLastState && hKeyThisState ) {
+        QueueLoadedSound( &gMem->testSound, activeSoundList );
+    }
+    hKeyLastState = hKeyThisState;
+
 }
 
 void Render( MemorySlab* gameMemory ) {

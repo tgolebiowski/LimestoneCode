@@ -137,7 +137,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 	glewInit();
 
-	InitSound( (void*)appInfo.hwnd, 60 );
+	InitSound( appInfo.hwnd, 60 );
 
 	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
 	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
@@ -201,11 +201,13 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			PrepAudio();
 
             //Do Sound/Mixing and such here
-			OutputAudio( &gameSlab, &SoundRendererStorage.srb );
+			OutputAudio( &gameSlab, &SoundRendererStorage.srb, SoundRendererStorage.activeSounds );
+			MixSound( &SoundRendererStorage.srb, SoundRendererStorage.activeSounds );
 
 		    PushAudioToSoundCard();
 
 			SwapBuffers( appInfo.deviceContext );
+			glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		}
 
 		LARGE_INTEGER endTime, computeTime;
@@ -258,8 +260,12 @@ bool IsControllerButtonDown( uint8 buttonIndex ) {
 	else if( buttonIndex == 3 )
 	    return appInfo.controllerState.button4;
 	else if( buttonIndex == 4 )
-	    return appInfo.controllerState.specialButtonLeft;
+		return appInfo.controllerState.leftBumper;
 	else if( buttonIndex == 5 )
+		return appInfo.controllerState.rightBumper;
+	else if( buttonIndex == 6)
+	    return appInfo.controllerState.specialButtonLeft;
+	else if( buttonIndex == 7 )
 	    return appInfo.controllerState.specialButtonRight;
 }
 
