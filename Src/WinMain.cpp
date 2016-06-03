@@ -137,7 +137,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 	glewInit();
 
-	InitSound( appInfo.hwnd, 60 );
+	Win32InitSound( appInfo.hwnd, 60 );
 
 	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
 	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
@@ -172,6 +172,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			queryResult = XInputGetState( 0, &state );
 			if( queryResult == ERROR_SUCCESS ) {
 				//Note: polling of the sticks results in the range not quite reaching 1.0 in the positive direction
+				//it is like this to avoid branching on greater or less than 0.0
 				appInfo.controllerState.leftStick_x = ((float)state.Gamepad.sThumbLX / 32768.0f );
 				appInfo.controllerState.leftStick_y = ((float)state.Gamepad.sThumbLY / 32768.0f );
 				appInfo.controllerState.rightStick_x = ((float)state.Gamepad.sThumbRX / 32768.0f );
@@ -187,7 +188,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 				appInfo.controllerState.specialButtonLeft = state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK;
 				appInfo.controllerState.specialButtonRight = state.Gamepad.wButtons & XINPUT_GAMEPAD_START;
 			} else {
-
+				appInfo.controllerState = { };
 			}
 
 			LARGE_INTEGER elapsedTime;
@@ -195,14 +196,8 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			elapsedTime.QuadPart *= 1000;
 			elapsedTime.QuadPart /= appInfo.timerResolution.QuadPart;
 
-			appInfo.running = Update( &gameSlab, (float)elapsedTime.QuadPart );
+			appInfo.running = Update( &gameSlab, (float)elapsedTime.QuadPart, &SoundRendererStorage.srb, SoundRendererStorage.activeSounds );
 			Render( &gameSlab );
-
-			PrepAudio();
-
-            //Do Sound/Mixing and such here
-			OutputAudio( &gameSlab, &SoundRendererStorage.srb, SoundRendererStorage.activeSounds );
-			MixSound( &SoundRendererStorage.srb, SoundRendererStorage.activeSounds );
 
 		    PushAudioToSoundCard();
 
@@ -218,12 +213,10 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 		if( computeTime.QuadPart <= appInfo.mSecsPerFrame ) {
 			Sleep(appInfo.mSecsPerFrame - computeTime.QuadPart );
 		} else {
-			printf("Didn't sleep, compute was %ld, target: %ld \n", computeTime.QuadPart, appInfo.mSecsPerFrame );
+			printf("Didn't sleep, compute was %ld\n", computeTime.QuadPart );
 		}
 
 	} while( appInfo.running );
-
-	printf("Exitting\n");
 
 	FreeConsole();
 

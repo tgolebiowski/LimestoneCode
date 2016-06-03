@@ -12,24 +12,25 @@ struct SoundRenderBuffer {
 	int16* samples;
 };
 
-#define MaxSounds 8
+#define MAXSOUNDSATONCE 16
 struct PlayingSound {
 	LoadedSound* baseSound;
 	uint32 lastPlayLocation;
 };
 
-void QueueLoadedSound( LoadedSound* sound, PlayingSound* activeSoundList ) {
-	for( uint8 soundIndex = 0; soundIndex < MaxSounds; ++soundIndex ) {
+PlayingSound* QueueLoadedSound( LoadedSound* sound, PlayingSound* activeSoundList ) {
+	for( uint8 soundIndex = 0; soundIndex < MAXSOUNDSATONCE; ++soundIndex ) {
 		if( activeSoundList[ soundIndex ].baseSound == NULL ) {
 			activeSoundList[ soundIndex ].baseSound = sound;
 			activeSoundList[ soundIndex ].lastPlayLocation = 0;
-			return;
+			return &activeSoundList[ soundIndex ];
 		}
 	}
+
+	return NULL;
 }
 
-void OutputTestTone( SoundRenderBuffer* srb, int hz = 440 ) {
-	const int volume = 3000;
+void OutputTestTone( SoundRenderBuffer* srb, int hz = 440, int volume = 3000 ) {
 	const int WavePeriod = srb->samplesPerSecond / hz;
 	static float tSine = 0.0f;
 	const float tSineStep = 2.0f * PI / (float)WavePeriod;
@@ -44,41 +45,34 @@ void OutputTestTone( SoundRenderBuffer* srb, int hz = 440 ) {
 
 		int16 sampleValue = volume * sinf( tSine );
 		int32 i = sampleIndex * 2;
-		srb->samples[ i ] = sampleValue; //Left Channel
-		srb->samples[ i + 1 ] = sampleValue; //Right Channel
+		srb->samples[ i ] += sampleValue; //Left Channel
+		srb->samples[ i + 1 ] += sampleValue; //Right Channel
 	}
-}
-
-uint32 OutputTestSound( SoundRenderBuffer* soundBuffer, LoadedSound sound, uint32 startOffset ) {
-	uint32 samplesToWrite = soundBuffer->samplesToWrite / 2;
-	uint32 samplesLeftInSound = sound.sampleCount - startOffset;
-	if( samplesLeftInSound < samplesToWrite ) {
-		samplesToWrite = samplesLeftInSound;
-	}
-	for( int32 sampleIndex = 0; sampleIndex < samplesToWrite; ++sampleIndex ) {
-		int16 value = sound.samples[0][ ( sampleIndex + startOffset ) ];
-
-		int32 i = sampleIndex * 2;
-
-		soundBuffer->samples[ i ] += ( value / 4 );     //Left Channel
-		soundBuffer->samples[ i + 1 ] += ( value / 4 ); //Right Channel
-	}
-
-	return ( startOffset + samplesToWrite );
 }
 
 void MixSound( SoundRenderBuffer* srb, PlayingSound* activeSoundList ) {
-	for( uint8 soundIndex = 0; soundIndex < MaxSounds; ++soundIndex ) {
+	for( uint8 soundIndex = 0; soundIndex < MAXSOUNDSATONCE; ++soundIndex ) {
 		if( activeSoundList[ soundIndex ].baseSound != NULL ) {
-			if( soundIndex >= 1 ) {
-				int skjd = 238;
+			PlayingSound* activeSound = &activeSoundList[ soundIndex ];
+
+			uint32 samplesToWrite = srb->samplesToWrite / 2;
+			uint32 samplesLeftInSound = activeSound->baseSound->sampleCount - activeSound->lastPlayLocation;
+			if( samplesLeftInSound < samplesToWrite ) {
+				samplesToWrite = samplesLeftInSound;
 			}
+			for( int32 sampleIndex = 0; sampleIndex < samplesToWrite; ++sampleIndex ) {
+				int16 value = activeSound->baseSound->samples[0][ ( sampleIndex + activeSound->lastPlayLocation ) ];
 
-			activeSoundList[ soundIndex ].lastPlayLocation = OutputTestSound( srb, *activeSoundList[ soundIndex ].baseSound, activeSoundList[ soundIndex ].lastPlayLocation );
+				int32 i = sampleIndex * 2;
 
-			if( activeSoundList[ soundIndex ].lastPlayLocation >= activeSoundList[ soundIndex ].baseSound->sampleCount ) {
-				activeSoundList[ soundIndex ].baseSound = NULL;
-				activeSoundList[ soundIndex ].lastPlayLocation = 0;
+		        srb->samples[ i ] += value;     //Left Channel
+		        srb->samples[ i + 1 ] += value; //Right Channel
+		    }
+		    activeSound->lastPlayLocation += samplesToWrite;
+
+			if( activeSound->lastPlayLocation >= activeSound->baseSound->sampleCount ) {
+				activeSound->baseSound = NULL;
+				activeSound->lastPlayLocation = 0;
 			}
 		}
 	}
@@ -107,9 +101,10 @@ static struct {
 
 } SoundRendererStorage;
 
-void PrepAudio() {
+void PushAudioToSoundCard() {
 	memset( SoundRendererStorage.srb.samples, 0, SoundRendererStorage.writeBufferSize );
 
+	//Setup info needed for writing (where to, how much, etc.)
 	DWORD playCursorPosition, writeCursorPosition;
 	if( SUCCEEDED( SoundRendererStorage.writeBuffer->GetCurrentPosition( &playCursorPosition, &writeCursorPosition) ) ) {
 		static bool firstTime = true;
@@ -158,14 +153,15 @@ void PrepAudio() {
 
 	    //Save number of samples that can be written to platform independent struct
 		SoundRendererStorage.srb.samplesToWrite = SoundRendererStorage.bytesToWrite / SoundRendererStorage.bytesPerSample;
-		memset( SoundRendererStorage.srb.samples, 0, SoundRendererStorage.srb.samplesToWrite * sizeof( int16 ) );
 	} else {
 		printf("couldn't get cursor\n");
 		return;
 	}
-}
 
-void PushAudioToSoundCard() {
+	//Mix together currently playing sounds
+	MixSound( &SoundRendererStorage.srb, SoundRendererStorage.activeSounds );
+
+	//Push mixed sounds to the actual card
 	VOID* region0;
 	DWORD region0Size;
 	VOID* region1;
@@ -211,7 +207,7 @@ void PushAudioToSoundCard() {
 	}
 }
 
-void InitSound( HWND hwnd, int targetGameHZ ) {
+void Win32InitSound( HWND hwnd, int targetGameHZ ) {
 	const int32 SamplesPerSecond = 48000;
 	const int32 BufferSize = SamplesPerSecond * sizeof( int16 ) * 2;
 	HMODULE DirectSoundDLL = LoadLibraryA( "dsound.dll" );
@@ -274,7 +270,7 @@ void InitSound( HWND hwnd, int targetGameHZ ) {
 			SoundRendererStorage.srb.samples = (int16*)malloc( BufferSize );
 			memset( SoundRendererStorage.srb.samples, 0, BufferSize );
 
-			size_t playingInfoBufferSize = sizeof( PlayingSound ) * MaxSounds;
+			size_t playingInfoBufferSize = sizeof( PlayingSound ) * MAXSOUNDSATONCE;
 			SoundRendererStorage.activeSounds = (PlayingSound*)malloc( playingInfoBufferSize );
 			memset( SoundRendererStorage.activeSounds, 0, playingInfoBufferSize );
 
@@ -291,41 +287,40 @@ void InitSound( HWND hwnd, int targetGameHZ ) {
 	}
 }
 
-#pragma pack( push, 1 )
-struct WaveHeader{
-	uint32 RIFFID;
-	uint32 size;
-	uint32 WAVEID;
-};
-
-#define RIFF_CODE( a, b, c, d ) ( ( (uint32)(a) << 0 ) | ( (uint32)(b) << 8 ) | ( (uint32)(c) << 16 ) | ( (uint32)(d) << 24 ) )
-enum {
-	WAVE_ChunkID_fmt = RIFF_CODE( 'f', 'm', 't', ' ' ),
-	WAVE_ChunkID_data = RIFF_CODE( 'd', 'a', 't', 'a' ),
-	WAVE_ChunkID_RIFF = RIFF_CODE( 'R', 'I', 'F', 'F' ),
-	WAVE_ChunkID_WAVE = RIFF_CODE( 'W', 'A', 'V', 'E' )
-};
-
-struct WaveChunk {
-	uint32 ID;
-	uint32 size;
-};
-
-struct Wave_fmt {
-	uint16 wFormatTag;
-	uint16 nChannels;
-	uint32 nSamplesPerSec;
-	uint32 nAvgBytesPerSec;
-	uint16 nBlockAlign;
-	uint16 wBitsPerSample;
-	uint16 cbSize;
-	uint16 wValidBitsPerSample;
-	uint32 dwChannelMask;
-	uint8 SubFormat [8];
-};
-#pragma pack( pop )
-
 LoadedSound LoadWaveFile( char* filePath ) {
+	#pragma pack( push, 1 )
+	struct WaveHeader{
+		uint32 RIFFID;
+		uint32 size;
+		uint32 WAVEID;
+	};
+
+    #define RIFF_CODE( a, b, c, d ) ( ( (uint32)(a) << 0 ) | ( (uint32)(b) << 8 ) | ( (uint32)(c) << 16 ) | ( (uint32)(d) << 24 ) )
+	enum {
+		WAVE_ChunkID_fmt = RIFF_CODE( 'f', 'm', 't', ' ' ),
+		WAVE_ChunkID_data = RIFF_CODE( 'd', 'a', 't', 'a' ),
+		WAVE_ChunkID_RIFF = RIFF_CODE( 'R', 'I', 'F', 'F' ),
+		WAVE_ChunkID_WAVE = RIFF_CODE( 'W', 'A', 'V', 'E' )
+	};
+
+	struct WaveChunk {
+		uint32 ID;
+		uint32 size;
+	};
+
+	struct Wave_fmt {
+		uint16 wFormatTag;
+		uint16 nChannels;
+		uint32 nSamplesPerSec;
+		uint32 nAvgBytesPerSec;
+		uint16 nBlockAlign;
+		uint16 wBitsPerSample;
+		uint16 cbSize;
+		uint16 wValidBitsPerSample;
+		uint32 dwChannelMask;
+		uint8 SubFormat [8];
+	};
+    #pragma pack( pop )
 
 	LoadedSound result = { };
 
@@ -407,5 +402,4 @@ LoadedSound LoadWaveFile( char* filePath ) {
 	
 	return result;
 }
-
 #endif //WIN32 specific implementation

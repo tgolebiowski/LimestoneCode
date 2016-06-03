@@ -53,7 +53,7 @@ void GameInit( MemorySlab* gameMemory ) {
     return;
 }
 
-bool Update( MemorySlab* gameMemory, float millisecondsElapsed ) {
+bool Update( MemorySlab* gameMemory, float millisecondsElapsed, SoundRenderBuffer* sound, PlayingSound* activeSoundList ) {
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
 
     if( IsKeyDown( 'r' ) )
@@ -95,35 +95,30 @@ bool Update( MemorySlab* gameMemory, float millisecondsElapsed ) {
     ArmatureKeyFrame testPose = gMem->pose;
     ArmatureKeyFrame blendedPose = BlendKeyFrames( &gMem->pose, &gMem->pose2, 1.0f, gMem->arm.boneCount );
 
-    return true;
-}
-
-void OutputAudio( MemorySlab* gameMemory, SoundRenderBuffer* sound, PlayingSound* activeSoundList ) {
-    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
     static bool hKeyLastState = false;
     bool hKeyThisState = IsKeyDown( 'h' );
     if( !hKeyLastState && hKeyThisState ) {
-        QueueLoadedSound( &gMem->testSound, activeSoundList );
+        QueueLoadedSound( &gMem->sound2, activeSoundList );
     }
     hKeyLastState = hKeyThisState;
 
+    static bool kKeyLastState = false;
+    bool kKeyThisState = IsKeyDown( 'k' );
+    if( !kKeyLastState && kKeyThisState ) {
+        QueueLoadedSound( &gMem->testSound, activeSoundList );
+    }
+    kKeyLastState = kKeyThisState;
+
+    return true;
+}
+
+void OutputAudio( MemorySlab* gameMemory ) {
+    
 }
 
 void Render( MemorySlab* gameMemory ) {
     GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
 
-    //glClear( GL_DEPTH_BUFFER_BIT );
-    //glBindFramebuffer( GL_FRAMEBUFFER, myFramebuffer.framebufferPtr );
-    //glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, myFramebuffer.framebufferTexture.textureID, 0 );
-
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-
     *gMem->params.modelMatrix = i;
     RenderBoundData( &gMem->meshBinding, &gMem->shader, gMem->params );
-
-    //RenderTexturedQuad( &gMem->texBinding, 0.5f, 0.5f, -0.5f, 0.5f );
-
-    //glBindFramebuffer( GL_FRAMEBUFFER, 0 );
-
-    //RenderFramebuffer( &myFramebuffer );
 }
