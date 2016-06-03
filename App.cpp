@@ -16,8 +16,8 @@ static Mat4 i;
 static Mat4 r;
 
 
-void GameInit( MemorySlab* gameMemory ) {
-    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
+void GameInit( void* gameMemory ) {
+    GameMemory* gMem = (GameMemory*)gameMemory;
 
     if( InitRenderer( SCREEN_WIDTH, SCREEN_HEIGHT ) == false ) {
         printf("Failed to init renderer\n");
@@ -53,8 +53,8 @@ void GameInit( MemorySlab* gameMemory ) {
     return;
 }
 
-bool Update( MemorySlab* gameMemory, float millisecondsElapsed, SoundRenderBuffer* sound, PlayingSound* activeSoundList ) {
-    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
+bool Update( void* gameMemory, float millisecondsElapsed, SoundRenderBuffer* sound, PlayingSound* activeSoundList ) {
+    GameMemory* gMem = (GameMemory*)gameMemory;
 
     if( IsKeyDown( 'r' ) )
         i = MultMatrix( i, r );
@@ -92,9 +92,6 @@ bool Update( MemorySlab* gameMemory, float millisecondsElapsed, SoundRenderBuffe
         }
     }
 
-    ArmatureKeyFrame testPose = gMem->pose;
-    ArmatureKeyFrame blendedPose = BlendKeyFrames( &gMem->pose, &gMem->pose2, 1.0f, gMem->arm.boneCount );
-
     static bool hKeyLastState = false;
     bool hKeyThisState = IsKeyDown( 'h' );
     if( !hKeyLastState && hKeyThisState ) {
@@ -112,12 +109,8 @@ bool Update( MemorySlab* gameMemory, float millisecondsElapsed, SoundRenderBuffe
     return true;
 }
 
-void OutputAudio( MemorySlab* gameMemory ) {
-    
-}
-
-void Render( MemorySlab* gameMemory ) {
-    GameMemory* gMem = (GameMemory*)gameMemory->slabStart;
+void Render( void* gameMemory ) {
+    GameMemory* gMem = (GameMemory*)gameMemory;
 
     *gMem->params.modelMatrix = i;
     RenderBoundData( &gMem->meshBinding, &gMem->shader, gMem->params );

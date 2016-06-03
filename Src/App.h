@@ -9,6 +9,8 @@ typedef uint32_t uint32;
 typedef int32_t int32;
 typedef uint64_t uint64;
 typedef int64_t int64;
+typedef uintptr_t uintptr;
+typedef intptr_t intptr;
 
 /* --------------------------------------------------------------------------
 	                      STUFF THE OS PROVIDES THE GAME
@@ -31,10 +33,9 @@ void* ReadWholeFile( char* filename, int64* bytesRead );
 /* --------------------------------------------------------------------------
 	                      STUFF THE GAME PROVIDES THE OS
  ----------------------------------------------------------------------------*/
-bool Update( MemorySlab* gameMemory, float millisecondsElapsed );
-void Render( MemorySlab* gameMemory );
-void OutputAudio( MemorySlab* gameMemory, SoundRenderBuffer* sound, PlayingSound* activeSoundList );
-void GameInit( MemorySlab* gameMemory );
+bool Update( void* gameMemory, float millisecondsElapsed, SoundRenderBuffer* sound, PlayingSound* activeSoundList );
+void Render( void* gameMemory );
+void GameInit( void* gameMemory );
 
 #define APP_H
 #endif

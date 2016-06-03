@@ -135,7 +135,18 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 		return -1;
 	}
 
+	printf("Size of double:%d\n", sizeof( double ) );
+
 	glewInit();
+
+	MemorySlab gameSlab;
+	gameSlab.slabSize = MEGABYTES( RESERVED_SPACE );
+	gameSlab.slabStart = VirtualAlloc( NULL, gameSlab.slabSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
+	assert( gameSlab.slabStart != NULL );
+	gameSlab.current = gameSlab.slabStart;
+
+	SlabSubsection_Stack gameMemoryStack = CarveNewSubsection( &gameSlab, sizeof( GameMemory ) * 2 );
+	void* gMemPtr = AllocOnSubStack_Aligned( &gameMemoryStack, sizeof( GameMemory ) );
 
 	Win32InitSound( appInfo.hwnd, 60 );
 
@@ -143,15 +154,10 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
 	UpdateWindow( appInfo.hwnd );
 
-	MemorySlab gameSlab;
-	gameSlab.slabSize = MEGABYTES( RESERVED_SPACE );
-	gameSlab.slabStart = VirtualAlloc( NULL, gameSlab.slabSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
-	assert( gameSlab.slabStart != NULL );
-
 	BOOL canSupportHiResTimer = QueryPerformanceFrequency( &appInfo.timerResolution );
 	assert( canSupportHiResTimer );
 
-	GameInit( &gameSlab );
+	GameInit( gMemPtr );
 
 	MSG Msg;
 	do {
@@ -196,8 +202,8 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			elapsedTime.QuadPart *= 1000;
 			elapsedTime.QuadPart /= appInfo.timerResolution.QuadPart;
 
-			appInfo.running = Update( &gameSlab, (float)elapsedTime.QuadPart, &SoundRendererStorage.srb, SoundRendererStorage.activeSounds );
-			Render( &gameSlab );
+			appInfo.running = Update( gMemPtr, (float)elapsedTime.QuadPart, &SoundRendererStorage.srb, SoundRendererStorage.activeSounds );
+			Render( gMemPtr );
 
 		    PushAudioToSoundCard();
 

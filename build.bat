@@ -1,7 +1,7 @@
 @echo off
 SETLOCAL
 SET VisualStudio=cl
-SET VSFlags=/w /Od /Zi /Fego.exe
+SET VSFlags=/W1 /Od /Zi /Fego.exe
 SET VSIncludes=-I..\WetClay_Library\Src\Dependencies\include
 SET VSLinkerFlags=/link /Profile
 

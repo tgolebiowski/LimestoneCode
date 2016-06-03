@@ -128,8 +128,8 @@ void SetRendererCameraProjection( float width, float height, float nearPlane, fl
     m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = -(farPlane + nearPlane) / depth; m->m[3][3] = 1.0f;
 }
 
-void SetRendererCameraTransform( Vec3 position, Vec3 lookatTarget ) {
-	Mat4 cameraTransform = LookAtMatrix( position, { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } );
+void SetRendererCameraTransform( Vec3 position, Vec3 lookAtTarget ) {
+	Mat4 cameraTransform = LookAtMatrix( position, lookAtTarget, { 0.0f, 1.0f, 0.0f } );
     SetTranslation( &cameraTransform, position.x, position.y, position.z );
     rendererStorage.cameraTransform = MultMatrix( cameraTransform, rendererStorage.baseProjectionMatrix );
 }
@@ -400,7 +400,7 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     glEnable( GL_CULL_FACE );
     glCullFace( GL_BACK );
 
-    glViewport( 0.0f, 0.0f, screen_w, screen_h );
+    glViewport( 0, 0, screen_w, screen_h );
 
     SetToIdentity( &rendererStorage.baseProjectionMatrix );
     SetToIdentity( &rendererStorage.cameraTransform );
@@ -462,7 +462,7 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     circleVertexData[2] = 0.0f;
     for( uint8 i = 0; i < 17; i++ ) {
         GLfloat x, y;
-        float angle = (2 * PI / 16.0f) * (float)i;
+        float angle = (2.0f * PI / 16.0f) * (float)i;
         x = cosf( angle );
         y = sinf( angle );
         circleVertexData[ (i + 1) * 3 ] = x;
