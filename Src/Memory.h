@@ -58,3 +58,11 @@ void* AllocOnSubStack_Aligned( SlabSubsection_Stack* subStack, uint64 size, uint
 void ClearSubStack( SlabSubsection_Stack* subStack ) {
 	subStack->current = subStack->start;
 }
+
+void FreeStub( void* ptr ) {
+
+}
+
+void ReallocStub( void* ptr ) {
+	
+}

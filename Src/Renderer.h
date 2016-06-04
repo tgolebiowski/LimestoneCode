@@ -53,8 +53,9 @@ struct ArmatureKeyFrame {
 struct MeshGPUBinding {
 	uint32 dataCount;
 	uint32 vertexDataPtr;
-	uint32 indexDataPtr;
+    uint32 nrmlDataPtr;
 	uint32 uvDataPtr;
+    uint32 indexDataPtr;
 
 	bool hasBoneData;
 	uint32 boneWeightDataPtr;
@@ -68,6 +69,7 @@ struct ShaderProgramBinding {
     int32 armatureUniformPtr;
 
     int32 positionAttribute;
+    int32 normalAttribute;
     int32 texCoordAttribute;
 
     int32 isArmatureAnimated;
@@ -324,6 +326,7 @@ void CreateShaderProgram( const char* vertProgramFilePath, const char* fragProgr
     bindDataStorage->armatureUniformPtr = glGetUniformLocation( bindDataStorage->programID, "skeleton" );
 
     bindDataStorage->positionAttribute = glGetAttribLocation( bindDataStorage->programID, "position" );
+    bindDataStorage->normalAttribute = glGetAttribLocation( bindDataStorage->programID, "normal" );
     bindDataStorage->texCoordAttribute = glGetAttribLocation( bindDataStorage->programID, "texCoord" );
     bindDataStorage->boneWeightsAttribute = glGetAttribLocation( bindDataStorage->programID, "boneWeights" );
     bindDataStorage->boneIndiciesAttribute = glGetAttribLocation( bindDataStorage->programID, "boneIndicies" );
@@ -342,20 +345,26 @@ void CreateRenderBinding( MeshGeometryData* meshDataStorage, MeshGPUBinding* bin
 	GLuint glVBOPtr;
 	glGenBuffers( 1, &glVBOPtr );
 	glBindBuffer( GL_ARRAY_BUFFER, glVBOPtr );
-	glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 3 * sizeof(float), meshDataStorage->vData, GL_STATIC_DRAW );
+	glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount  * 3 * sizeof(float), meshDataStorage->vData, GL_STATIC_DRAW );
 	bindDataStorage->vertexDataPtr = glVBOPtr;
+
+    GLuint glNormalPtr;
+    glGenBuffers( 1, &glNormalPtr );
+    glBindBuffer( GL_ARRAY_BUFFER, glNormalPtr );
+    glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 3 * sizeof(float), meshDataStorage->normalData, GL_STATIC_DRAW );
+    bindDataStorage->nrmlDataPtr = glNormalPtr;
+
+    GLuint glUVPtr;
+    glGenBuffers( 1, &glUVPtr );
+    glBindBuffer( GL_ARRAY_BUFFER, glUVPtr );
+    glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 2 * sizeof(float), meshDataStorage->uvData, GL_STATIC_DRAW );
+    bindDataStorage->uvDataPtr = glUVPtr;
 
 	GLuint glIBOPtr;
 	glGenBuffers( 1, &glIBOPtr );
 	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, glIBOPtr );
 	glBufferData( GL_ELEMENT_ARRAY_BUFFER, meshDataStorage->dataCount * sizeof(uint32), meshDataStorage->iData, GL_STATIC_DRAW );
 	bindDataStorage->indexDataPtr = glIBOPtr;
-
-	GLuint glUVPtr;
-	glGenBuffers( 1, &glUVPtr );
-	glBindBuffer( GL_ARRAY_BUFFER, glUVPtr );
-	glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 2 * sizeof(float), meshDataStorage->uvData, GL_STATIC_DRAW );
-	bindDataStorage->uvDataPtr = glUVPtr;
 
     if( meshDataStorage->boneWeightData != NULL && meshDataStorage->boneIndexData != NULL ) {
         bindDataStorage->hasBoneData = true;
@@ -485,7 +494,7 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
     glUniformMatrix4fv( programBinding->cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.cameraTransform.m[0] );
     //glUniform1i( program->isArmatureAnimatedUniform, (int)mesh->isArmatureAnimated );
 
-    //Set vertex data
+    //Set vertex position data
     glBindBuffer( GL_ARRAY_BUFFER, meshBinding->vertexDataPtr );
     glEnableVertexAttribArray( programBinding->positionAttribute );
     glVertexAttribPointer( programBinding->positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
@@ -494,6 +503,10 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
     glBindBuffer( GL_ARRAY_BUFFER, meshBinding->uvDataPtr );
     glEnableVertexAttribArray( programBinding->texCoordAttribute );
     glVertexAttribPointer( programBinding->texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
+
+    glBindBuffer( GL_ARRAY_BUFFER, meshBinding->nrmlDataPtr );
+    glEnableVertexAttribArray( programBinding->normalAttribute );
+    glVertexAttribPointer( programBinding->normalAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0 );
 
     if( meshBinding->hasBoneData && params.armature != NULL ) {
         glUniform1i( programBinding->isArmatureAnimated, 1 );
