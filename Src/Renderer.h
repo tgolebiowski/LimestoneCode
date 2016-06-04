@@ -3,15 +3,13 @@
 #include "Math3D.h"
 
 struct MeshGeometryData {
-	#define MAXVERTCOUNT 600
-	Vec3 vData[ MAXVERTCOUNT ];
-	float uvData[ MAXVERTCOUNT * 2 ];
-	Vec3 normalData[ MAXVERTCOUNT ];
+	Vec3* vData;
+	float* uvData;
+	Vec3* normalData;
 	#define MAXBONESPERVERT 4
-	bool hasBoneData;
-	float boneWeightData[ MAXVERTCOUNT * MAXBONESPERVERT ];
-	uint32 boneIndexData[ MAXVERTCOUNT * MAXBONESPERVERT ];
-	uint32 iData[ 600 ];
+	float* boneWeightData;
+	uint32* boneIndexData;
+	uint32* iData;
 	uint32 dataCount;
 };
 
@@ -203,7 +201,7 @@ void RenderArmatureAsLines(  Armature* armature, Mat4 transform, Vec3 color = { 
 
 ///Return 0 on success, required buffer length if buffer is too small, or -1 on other OS failure
 int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 bufferLen);
-void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Armature* armature = NULL );
+void LoadMeshDataFromDisk( const char* fileName, SlabSubsection_Stack* allocater, MeshGeometryData* storage, Armature* armature = NULL );
 void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* pose, Armature* armature );
 void LoadTextureDataFromDisk( const char* fileName, TextureData* texDataStorage );
 
@@ -344,34 +342,34 @@ void CreateRenderBinding( MeshGeometryData* meshDataStorage, MeshGPUBinding* bin
 	GLuint glVBOPtr;
 	glGenBuffers( 1, &glVBOPtr );
 	glBindBuffer( GL_ARRAY_BUFFER, glVBOPtr );
-	glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 3 * sizeof(float), &meshDataStorage->vData, GL_STATIC_DRAW );
+	glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 3 * sizeof(float), meshDataStorage->vData, GL_STATIC_DRAW );
 	bindDataStorage->vertexDataPtr = glVBOPtr;
 
 	GLuint glIBOPtr;
 	glGenBuffers( 1, &glIBOPtr );
 	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, glIBOPtr );
-	glBufferData( GL_ELEMENT_ARRAY_BUFFER, meshDataStorage->dataCount * sizeof(uint32), &meshDataStorage->iData, GL_STATIC_DRAW );
+	glBufferData( GL_ELEMENT_ARRAY_BUFFER, meshDataStorage->dataCount * sizeof(uint32), meshDataStorage->iData, GL_STATIC_DRAW );
 	bindDataStorage->indexDataPtr = glIBOPtr;
 
 	GLuint glUVPtr;
 	glGenBuffers( 1, &glUVPtr );
 	glBindBuffer( GL_ARRAY_BUFFER, glUVPtr );
-	glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 2 * sizeof(float), &meshDataStorage->uvData, GL_STATIC_DRAW );
+	glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * 2 * sizeof(float), meshDataStorage->uvData, GL_STATIC_DRAW );
 	bindDataStorage->uvDataPtr = glUVPtr;
 
-    if( meshDataStorage->hasBoneData ) {
+    if( meshDataStorage->boneWeightData != NULL && meshDataStorage->boneIndexData != NULL ) {
         bindDataStorage->hasBoneData = true;
 
         GLuint glBoneWeightBufferPtr;
         glGenBuffers( 1, &glBoneWeightBufferPtr );
         glBindBuffer( GL_ARRAY_BUFFER, glBoneWeightBufferPtr );
-        glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * MAXBONESPERVERT * sizeof(float), &meshDataStorage->boneWeightData, GL_STATIC_DRAW );
+        glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * MAXBONESPERVERT * sizeof(float), meshDataStorage->boneWeightData, GL_STATIC_DRAW );
         bindDataStorage->boneWeightDataPtr = glBoneWeightBufferPtr;
 
         GLuint glBoneIndexBufferPtr;
         glGenBuffers( 1, &glBoneIndexBufferPtr );
         glBindBuffer( GL_ARRAY_BUFFER, glBoneIndexBufferPtr );
-        glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * MAXBONESPERVERT * sizeof(uint32), &meshDataStorage->boneIndexData, GL_STATIC_DRAW );
+        glBufferData( GL_ARRAY_BUFFER, meshDataStorage->dataCount * MAXBONESPERVERT * sizeof(uint32), meshDataStorage->boneIndexData, GL_STATIC_DRAW );
         bindDataStorage->boneIndexDataPtr = glBoneIndexBufferPtr;
     } else {
         bindDataStorage->hasBoneData = false;

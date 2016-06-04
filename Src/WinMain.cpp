@@ -145,10 +145,11 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	assert( gameSlab.slabStart != NULL );
 	gameSlab.current = gameSlab.slabStart;
 
+	SlabSubsection_Stack systemsMemory = CarveNewSubsection( &gameSlab, KILOBYTES( 12 ) );
 	SlabSubsection_Stack gameMemoryStack = CarveNewSubsection( &gameSlab, sizeof( GameMemory ) * 2 );
 	void* gMemPtr = AllocOnSubStack_Aligned( &gameMemoryStack, sizeof( GameMemory ) );
 
-	Win32InitSound( appInfo.hwnd, 60 );
+	SoundSystemStorage* soundSystemStorage = Win32InitSound( appInfo.hwnd, 60, &systemsMemory );
 
 	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
 	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
@@ -157,7 +158,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	BOOL canSupportHiResTimer = QueryPerformanceFrequency( &appInfo.timerResolution );
 	assert( canSupportHiResTimer );
 
-	GameInit( gMemPtr );
+	GameInit( &gameSlab, gMemPtr );
 
 	MSG Msg;
 	do {
@@ -202,10 +203,10 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			elapsedTime.QuadPart *= 1000;
 			elapsedTime.QuadPart /= appInfo.timerResolution.QuadPart;
 
-			appInfo.running = Update( gMemPtr, (float)elapsedTime.QuadPart, &SoundRendererStorage.srb, SoundRendererStorage.activeSounds );
+			appInfo.running = Update( gMemPtr, (float)elapsedTime.QuadPart, &soundSystemStorage->srb, soundSystemStorage->activeSounds );
 			Render( gMemPtr );
 
-		    PushAudioToSoundCard();
+		    PushAudioToSoundCard( soundSystemStorage );
 
 			SwapBuffers( appInfo.deviceContext );
 			glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
@@ -351,7 +352,7 @@ int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 buffe
     return 0;
 }
 
-void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Armature* armature ) {
+void LoadMeshDataFromDisk( const char* fileName,  SlabSubsection_Stack* allocater, MeshGeometryData* storage, Armature* armature ) {
 	tinyxml2::XMLDocument colladaDoc;
 	colladaDoc.LoadFile( fileName );
 	//if( colladaDoc == NULL ) {
@@ -622,8 +623,21 @@ void LoadMeshDataFromDisk( const char* fileName, MeshGeometryData* storage, Arma
 
 	//output to my version of storage
 	storage->dataCount = 0;
-	storage->hasBoneData = rawBoneWeightData != NULL;
 	uint16 counter = 0;
+
+	const uint32 vertCount = indexCount / 3;
+	storage->vData = (Vec3*)AllocOnSubStack_Aligned( allocater, vertCount * sizeof( Vec3 ), 16 );
+	storage->uvData = (float*)AllocOnSubStack_Aligned( allocater, vertCount * 2 * sizeof( float ), 4 );
+	storage->normalData = (Vec3*)AllocOnSubStack_Aligned( allocater, vertCount * sizeof( Vec3 ), 4 );
+	storage->iData = (uint32*)AllocOnSubStack_Aligned( allocater, vertCount * sizeof( uint32 ), 4 );
+	if( rawBoneWeightData != NULL ) {
+		storage->boneWeightData = (float*)AllocOnSubStack_Aligned( allocater, sizeof(float) * vertCount * MAXBONESPERVERT, 4 );
+		storage->boneIndexData = (uint32*)AllocOnSubStack_Aligned( allocater, sizeof(uint32) * vertCount * MAXBONESPERVERT, 4 );
+	} else {
+		storage->boneWeightData = NULL;
+		storage->boneIndexData = NULL;
+	}
+
 	while( counter < indexCount ) {
 		Vec3 v, n;
 		float uv_x, uv_y;

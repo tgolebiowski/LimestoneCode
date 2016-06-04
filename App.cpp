@@ -11,13 +11,16 @@ struct GameMemory {
     ArmatureKeyFrame pose2;
     LoadedSound testSound;
     LoadedSound sound2;
+    SlabSubsection_Stack lasResidentStorage;
 };
 static Mat4 i;
 static Mat4 r;
 
 
-void GameInit( void* gameMemory ) {
+void GameInit( MemorySlab* mainSlab, void* gameMemory ) {
     GameMemory* gMem = (GameMemory*)gameMemory;
+
+    gMem->lasResidentStorage = CarveNewSubsection( mainSlab, KILOBYTES( 128 ) );
 
     if( InitRenderer( SCREEN_WIDTH, SCREEN_HEIGHT ) == false ) {
         printf("Failed to init renderer\n");
@@ -28,7 +31,7 @@ void GameInit( void* gameMemory ) {
     SetRendererCameraProjection( 10.0f, 10.0f * screenAspectRatio, -10.0f, 10.0f );
     SetRendererCameraTransform( { 0.0f, 1.0f, -2.0f }, { 0.0f, 0.0f, 0.0f } );
 
-    LoadMeshDataFromDisk( "Data/SkeletonDebug.dae", &gMem->meshData, &gMem->arm );
+    LoadMeshDataFromDisk( "Data/SkeletonDebug.dae", &gMem->lasResidentStorage, &gMem->meshData, &gMem->arm );
     LoadAnimationDataFromCollada( "Data/SkeletonDebug.dae", &gMem->pose, &gMem->arm );
     LoadAnimationDataFromCollada( "Data/SkeletonDebugPose_2.dae", &gMem->pose2, &gMem->arm );
     LoadTextureDataFromDisk( "Data/Textures/green_texture.png", &gMem->texData );

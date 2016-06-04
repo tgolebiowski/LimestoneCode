@@ -35,7 +35,7 @@ void* ReadWholeFile( char* filename, int64* bytesRead );
  ----------------------------------------------------------------------------*/
 bool Update( void* gameMemory, float millisecondsElapsed, SoundRenderBuffer* sound, PlayingSound* activeSoundList );
 void Render( void* gameMemory );
-void GameInit( void* gameMemory );
+void GameInit( MemorySlab* mainSlab, void* gameMemory );
 
 #define APP_H
 #endif

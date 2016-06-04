@@ -1,3 +1,5 @@
+struct SoundSystemStorage;
+
 struct LoadedSound {
 	int32 sampleCount;
 	int32 channelCount;
@@ -86,7 +88,7 @@ void MixSound( SoundRenderBuffer* srb, PlayingSound* activeSoundList ) {
 #define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name( LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter )
 typedef DIRECT_SOUND_CREATE( direct_sound_create );
 
-static struct {
+struct SoundSystemStorage {
 	int32 writeBufferSize;
 	int32 safetySampleBytes;
 	int32 expectedBytesPerFrame;
@@ -98,119 +100,14 @@ static struct {
 
 	PlayingSound* activeSounds;
 	SoundRenderBuffer srb;
+};
 
-} SoundRendererStorage;
-
-void PushAudioToSoundCard() {
-	memset( SoundRendererStorage.srb.samples, 0, SoundRendererStorage.writeBufferSize );
-
-	//Setup info needed for writing (where to, how much, etc.)
-	DWORD playCursorPosition, writeCursorPosition;
-	if( SUCCEEDED( SoundRendererStorage.writeBuffer->GetCurrentPosition( &playCursorPosition, &writeCursorPosition) ) ) {
-		static bool firstTime = true;
-		if( firstTime ) {
-			SoundRendererStorage.runningSampleIndex = writeCursorPosition / SoundRendererStorage.bytesPerSample;
-			firstTime = false;
-		}
-
-	    //Pick up where we left off
-		SoundRendererStorage.byteToLock = ( SoundRendererStorage.runningSampleIndex * SoundRendererStorage.bytesPerSample * 2 ) % SoundRendererStorage.writeBufferSize;
-
-	    //Calculate how much to write
-		SoundRendererStorage.safetySampleBytes;
-		DWORD ExpectedFrameBoundaryByte = playCursorPosition + SoundRendererStorage.expectedBytesPerFrame;
-
-		//DSound can be latent sometimes when reporting the current writeCursor, so this is 
-		//the farthest ahead that the cursor could possibly be
-		DWORD safeWriteCursor = writeCursorPosition;
-		if( safeWriteCursor < playCursorPosition ) {
-			safeWriteCursor += SoundRendererStorage.writeBufferSize;
-		}
-		safeWriteCursor += SoundRendererStorage.safetySampleBytes;
-
-		bool AudioCardIsLowLatency = safeWriteCursor < ExpectedFrameBoundaryByte;
-
-		//Determine up to which byte we should write
-		DWORD targetCursor = 0;
-		if( AudioCardIsLowLatency ) {
-			targetCursor = ( ExpectedFrameBoundaryByte + SoundRendererStorage.expectedBytesPerFrame );
-		} else {
-			targetCursor = ( writeCursorPosition + SoundRendererStorage.expectedBytesPerFrame + SoundRendererStorage.safetySampleBytes );
-		}
-		targetCursor = targetCursor % SoundRendererStorage.writeBufferSize;
-
-		//Wrap up on math, how many bytes do we actually write
-		if( SoundRendererStorage.byteToLock > targetCursor ) {
-			SoundRendererStorage.bytesToWrite = SoundRendererStorage.writeBufferSize - SoundRendererStorage.byteToLock;
-			SoundRendererStorage.bytesToWrite += targetCursor;
-		} else {
-			SoundRendererStorage.bytesToWrite = targetCursor - SoundRendererStorage.byteToLock;
-		}
-
-		if( SoundRendererStorage.bytesToWrite == 0 ) {
-			printf( "BTW is zero, BTL:%lu, TC:%lu, PC:%lu, WC:%lu \n", SoundRendererStorage.byteToLock, targetCursor, playCursorPosition, writeCursorPosition );
-		}
-
-	    //Save number of samples that can be written to platform independent struct
-		SoundRendererStorage.srb.samplesToWrite = SoundRendererStorage.bytesToWrite / SoundRendererStorage.bytesPerSample;
-	} else {
-		printf("couldn't get cursor\n");
-		return;
-	}
-
-	//Mix together currently playing sounds
-	MixSound( &SoundRendererStorage.srb, SoundRendererStorage.activeSounds );
-
-	//Push mixed sounds to the actual card
-	VOID* region0;
-	DWORD region0Size;
-	VOID* region1;
-	DWORD region1Size;
-
-	HRESULT result = SoundRendererStorage.writeBuffer->Lock( SoundRendererStorage.byteToLock, SoundRendererStorage.bytesToWrite,
-		&region0, &region0Size,
-		&region1, &region1Size,
-		0 );
-	if( !SUCCEEDED( result ) ) {
-		_com_error error( result );
-		LPCTSTR errMessage = error.ErrorMessage();
-		//printf( "Couldn't Lock Sound Buffer\n" );
-		printf( "Failed To Lock Buffer %s \n", errMessage );
-		//printf( "BTL:%lu BTW:%lu r0:%lu r0s:%lu r1:%lu r1s:%lu\n", SoundRendererStorage.byteToLock, 
-		//	SoundRendererStorage.bytesToWrite, region0, region0Size, region1, region1Size );
-		//printf( "SoundRenderBuffer Info: Samples--%d\n", SoundRendererStorage.srb.samplesToWrite );
-		return;
-	}
-
-	int16* sampleSrc = SoundRendererStorage.srb.samples;
-	int16* sampleDest = (int16*)region0;
-	DWORD region0SampleCount = region0Size / ( SoundRendererStorage.bytesPerSample * 2 );
-	for( DWORD sampleIndex = 0; sampleIndex < region0SampleCount; ++sampleIndex ) {
-		*sampleDest++ = *sampleSrc++;
-		*sampleDest++ = *sampleSrc++;
-		++SoundRendererStorage.runningSampleIndex;
-	}
-	sampleDest = (int16*)region1;
-	DWORD region1SampleCount = region1Size / ( SoundRendererStorage.bytesPerSample * 2 );
-	for( DWORD sampleIndex = 0; sampleIndex < region1SampleCount; ++sampleIndex ) {
-		*sampleDest++ = *sampleSrc++;
-		*sampleDest++ = *sampleSrc++;
-		++SoundRendererStorage.runningSampleIndex;
-	}
-
-	//memset( SoundRendererStorage.srb.samples, 0, sizeof( int16 ) * 2 * SoundRendererStorage.srb.samplesToWrite );
-	//SoundRendererStorage.srb.samplesToWrite = 0;
-
-	result = SoundRendererStorage.writeBuffer->Unlock( region0, region0Size, region1, region1Size );
-	if( !SUCCEEDED( result ) ) {
-		printf("Couldn't Unlock\n");
-	}
-}
-
-void Win32InitSound( HWND hwnd, int targetGameHZ ) {
+SoundSystemStorage* Win32InitSound( HWND hwnd, int targetGameHZ, SlabSubsection_Stack* systemStorage ) {
 	const int32 SamplesPerSecond = 48000;
 	const int32 BufferSize = SamplesPerSecond * sizeof( int16 ) * 2;
 	HMODULE DirectSoundDLL = LoadLibraryA( "dsound.dll" );
+
+	SoundSystemStorage* soundSystemStorage = (SoundSystemStorage*)AllocOnSubStack_Aligned( systemStorage, sizeof( SoundSystemStorage ), 8 );
 
 	//TODO: logging on all potential failure points
 	if( DirectSoundDLL ) {
@@ -252,29 +149,29 @@ void Win32InitSound( HWND hwnd, int targetGameHZ ) {
 			bufferDescription.dwFlags = 0; //DSBCAPS_PRIMARYBUFFER;
 			bufferDescription.dwBufferBytes = BufferSize;
 			bufferDescription.lpwfxFormat = &waveFormat;
-			HRESULT result = directSound->CreateSoundBuffer( &bufferDescription, &SoundRendererStorage.writeBuffer, 0 );
+			HRESULT result = directSound->CreateSoundBuffer( &bufferDescription, &soundSystemStorage->writeBuffer, 0 );
 			if( !SUCCEEDED( result ) ) {
 				printf("Couldn't secure a writable buffer\n");
 			}
 
-			SoundRendererStorage.byteToLock = 0;
-			SoundRendererStorage.bytesToWrite = 0;
-			SoundRendererStorage.writeBufferSize = BufferSize;
-			SoundRendererStorage.bytesPerSample = sizeof( int16 );
- 			SoundRendererStorage.safetySampleBytes = ( ( SamplesPerSecond / targetGameHZ ) / 2 ) * SoundRendererStorage.bytesPerSample;
- 			SoundRendererStorage.expectedBytesPerFrame = ( 48000 * SoundRendererStorage.bytesPerSample * 2 ) / targetGameHZ;
-			SoundRendererStorage.runningSampleIndex = 0;
+			soundSystemStorage->byteToLock = 0;
+			soundSystemStorage->bytesToWrite = 0;
+			soundSystemStorage->writeBufferSize = BufferSize;
+			soundSystemStorage->bytesPerSample = sizeof( int16 );
+ 			soundSystemStorage->safetySampleBytes = ( ( SamplesPerSecond / targetGameHZ ) / 2 ) * soundSystemStorage->bytesPerSample;
+ 			soundSystemStorage->expectedBytesPerFrame = ( 48000 * soundSystemStorage->bytesPerSample * 2 ) / targetGameHZ;
+			soundSystemStorage->runningSampleIndex = 0;
 
-			SoundRendererStorage.srb.samplesPerSecond = SamplesPerSecond;
-			SoundRendererStorage.srb.samplesToWrite = BufferSize / sizeof( int16 );
-			SoundRendererStorage.srb.samples = (int16*)malloc( BufferSize );
-			memset( SoundRendererStorage.srb.samples, 0, BufferSize );
+			soundSystemStorage->srb.samplesPerSecond = SamplesPerSecond;
+			soundSystemStorage->srb.samplesToWrite = BufferSize / sizeof( int16 );
+			soundSystemStorage->srb.samples = (int16*)malloc( BufferSize );
+			memset( soundSystemStorage->srb.samples, 0, BufferSize );
 
 			size_t playingInfoBufferSize = sizeof( PlayingSound ) * MAXSOUNDSATONCE;
-			SoundRendererStorage.activeSounds = (PlayingSound*)malloc( playingInfoBufferSize );
-			memset( SoundRendererStorage.activeSounds, 0, playingInfoBufferSize );
+			soundSystemStorage->activeSounds = (PlayingSound*)malloc( playingInfoBufferSize );
+			memset( soundSystemStorage->activeSounds, 0, playingInfoBufferSize );
 
-			HRESULT playResult = SoundRendererStorage.writeBuffer->Play( 0, 0, DSBPLAY_LOOPING );
+			HRESULT playResult = soundSystemStorage->writeBuffer->Play( 0, 0, DSBPLAY_LOOPING );
 			if( !SUCCEEDED( playResult ) ) {
 				printf("failed to play\n");
 			}
@@ -284,6 +181,113 @@ void Win32InitSound( HWND hwnd, int targetGameHZ ) {
 		}
 	} else {
 		printf("couldn't create direct sound object\n");
+	}
+
+	return soundSystemStorage;
+}
+
+void PushAudioToSoundCard( SoundSystemStorage* soundSystemStorage ) {
+	memset( soundSystemStorage->srb.samples, 0, soundSystemStorage->writeBufferSize );
+
+	//Setup info needed for writing (where to, how much, etc.)
+	DWORD playCursorPosition, writeCursorPosition;
+	if( SUCCEEDED( soundSystemStorage->writeBuffer->GetCurrentPosition( &playCursorPosition, &writeCursorPosition) ) ) {
+		static bool firstTime = true;
+		if( firstTime ) {
+			soundSystemStorage->runningSampleIndex = writeCursorPosition / soundSystemStorage->bytesPerSample;
+			firstTime = false;
+		}
+
+	    //Pick up where we left off
+		soundSystemStorage->byteToLock = ( soundSystemStorage->runningSampleIndex * soundSystemStorage->bytesPerSample * 2 ) % soundSystemStorage->writeBufferSize;
+
+	    //Calculate how much to write
+		DWORD ExpectedFrameBoundaryByte = playCursorPosition + soundSystemStorage->expectedBytesPerFrame;
+
+		//DSound can be latent sometimes when reporting the current writeCursor, so this is 
+		//the farthest ahead that the cursor could possibly be
+		DWORD safeWriteCursor = writeCursorPosition;
+		if( safeWriteCursor < playCursorPosition ) {
+			safeWriteCursor += soundSystemStorage->writeBufferSize;
+		}
+		safeWriteCursor += soundSystemStorage->safetySampleBytes;
+
+		bool AudioCardIsLowLatency = safeWriteCursor < ExpectedFrameBoundaryByte;
+
+		//Determine up to which byte we should write
+		DWORD targetCursor = 0;
+		if( AudioCardIsLowLatency ) {
+			targetCursor = ( ExpectedFrameBoundaryByte + soundSystemStorage->expectedBytesPerFrame );
+		} else {
+			targetCursor = ( writeCursorPosition + soundSystemStorage->expectedBytesPerFrame + soundSystemStorage->safetySampleBytes );
+		}
+		targetCursor = targetCursor % soundSystemStorage->writeBufferSize;
+
+		//Wrap up on math, how many bytes do we actually write
+		if( soundSystemStorage->byteToLock > targetCursor ) {
+			soundSystemStorage->bytesToWrite = soundSystemStorage->writeBufferSize - soundSystemStorage->byteToLock;
+			soundSystemStorage->bytesToWrite += targetCursor;
+		} else {
+			soundSystemStorage->bytesToWrite = targetCursor - soundSystemStorage->byteToLock;
+		}
+
+		if( soundSystemStorage->bytesToWrite == 0 ) {
+			printf( "BTW is zero, BTL:%lu, TC:%lu, PC:%lu, WC:%lu \n", soundSystemStorage->byteToLock, targetCursor, playCursorPosition, writeCursorPosition );
+		}
+
+	    //Save number of samples that can be written to platform independent struct
+		soundSystemStorage->srb.samplesToWrite = soundSystemStorage->bytesToWrite / soundSystemStorage->bytesPerSample;
+	} else {
+		printf("couldn't get cursor\n");
+		return;
+	}
+
+	//Mix together currently playing sounds
+	MixSound( &soundSystemStorage->srb, soundSystemStorage->activeSounds );
+
+	//Push mixed sounds to the actual card
+	VOID* region0;
+	DWORD region0Size;
+	VOID* region1;
+	DWORD region1Size;
+
+	HRESULT result = soundSystemStorage->writeBuffer->Lock( soundSystemStorage->byteToLock, soundSystemStorage->bytesToWrite,
+		&region0, &region0Size,
+		&region1, &region1Size,
+		0 );
+	if( !SUCCEEDED( result ) ) {
+		_com_error error( result );
+		LPCTSTR errMessage = error.ErrorMessage();
+		//printf( "Couldn't Lock Sound Buffer\n" );
+		printf( "Failed To Lock Buffer %s \n", errMessage );
+		//printf( "BTL:%lu BTW:%lu r0:%lu r0s:%lu r1:%lu r1s:%lu\n", soundSystemStorage->byteToLock, 
+		//	soundSystemStorage->bytesToWrite, region0, region0Size, region1, region1Size );
+		//printf( "SoundRenderBuffer Info: Samples--%d\n", soundSystemStorage->srb.samplesToWrite );
+		return;
+	}
+
+	int16* sampleSrc = soundSystemStorage->srb.samples;
+	int16* sampleDest = (int16*)region0;
+	DWORD region0SampleCount = region0Size / ( soundSystemStorage->bytesPerSample * 2 );
+	for( DWORD sampleIndex = 0; sampleIndex < region0SampleCount; ++sampleIndex ) {
+		*sampleDest++ = *sampleSrc++;
+		*sampleDest++ = *sampleSrc++;
+		++soundSystemStorage->runningSampleIndex;
+	}
+	sampleDest = (int16*)region1;
+	DWORD region1SampleCount = region1Size / ( soundSystemStorage->bytesPerSample * 2 );
+	for( DWORD sampleIndex = 0; sampleIndex < region1SampleCount; ++sampleIndex ) {
+		*sampleDest++ = *sampleSrc++;
+		*sampleDest++ = *sampleSrc++;
+		++soundSystemStorage->runningSampleIndex;
+	}
+
+	//memset( soundSystemStorage->srb.samples, 0, sizeof( int16 ) * 2 * soundSystemStorage->srb.samplesToWrite );
+	//soundSystemStorage->srb.samplesToWrite = 0;
+
+	result = soundSystemStorage->writeBuffer->Unlock( region0, region0Size, region1, region1Size );
+	if( !SUCCEEDED( result ) ) {
+		printf("Couldn't Unlock\n");
 	}
 }
 
