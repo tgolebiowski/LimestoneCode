@@ -17,19 +17,14 @@ static Mat4 i;
 static Mat4 r;
 
 
-void GameInit( MemorySlab* mainSlab, void* gameMemory ) {
+void GameInit( MemorySlab* mainSlab, void* gameMemory, RendererStorage* rendererStoragePtr ) {
     GameMemory* gMem = (GameMemory*)gameMemory;
 
     gMem->lasResidentStorage = CarveNewSubsection( mainSlab, KILOBYTES( 128 ) );
 
-    if( InitRenderer( SCREEN_WIDTH, SCREEN_HEIGHT ) == false ) {
-        printf("Failed to init renderer\n");
-        return;
-    }
-
     float screenAspectRatio = (float)SCREEN_HEIGHT / (float)SCREEN_WIDTH;
-    SetRendererCameraProjection( 10.0f, 10.0f * screenAspectRatio, -10.0f, 10.0f );
-    SetRendererCameraTransform( { 0.0f, 1.0f, -2.0f }, { 0.0f, 0.0f, 0.0f } );
+    SetRendererCameraProjection( 10.0f, 10.0f * screenAspectRatio, -10.0f, 10.0f, &rendererStoragePtr->baseProjectionMatrix );
+    SetRendererCameraTransform( rendererStoragePtr, { 0.0f, 1.0f, -2.0f }, { 0.0f, 0.0f, 0.0f } );
 
     LoadMeshDataFromDisk( "Data/SkeletonDebug.dae", &gMem->lasResidentStorage, &gMem->meshData, &gMem->arm );
     LoadAnimationDataFromCollada( "Data/SkeletonDebug.dae", &gMem->pose, &gMem->arm );
@@ -112,9 +107,9 @@ bool Update( void* gameMemory, float millisecondsElapsed, SoundRenderBuffer* sou
     return true;
 }
 
-void Render( void* gameMemory ) {
+void Render( void* gameMemory, RendererStorage* rendererStorage ) {
     GameMemory* gMem = (GameMemory*)gameMemory;
 
     *gMem->params.modelMatrix = i;
-    RenderBoundData( &gMem->meshBinding, &gMem->shader, gMem->params );
+    RenderBoundData( rendererStorage, &gMem->meshBinding, &gMem->shader, gMem->params );
 }

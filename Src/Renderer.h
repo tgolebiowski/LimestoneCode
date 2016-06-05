@@ -87,7 +87,7 @@ struct ShaderProgramParams {
 	Armature* armature;
 };
 
-static struct {
+struct RendererStorage{
 	Mat4 baseProjectionMatrix;
 	Mat4 cameraTransform;
 
@@ -103,7 +103,7 @@ static struct {
 	//Data for rendering circles/dots as a debugging tool
 	uint32 circleDataPtr;
 	uint32 circleIDataPtr;
-} rendererStorage;
+};
 
 /*----------------------------------------------------------------------------------------------------------------
                                       PLATFORM INDEPENDENT FUNCTIONS
@@ -116,8 +116,7 @@ void CreateEmptyTexture( TextureData* texData, uint16 width, uint16 height ) {
     texData->channelsPerPixel = 4;
 }
 
-void SetRendererCameraProjection( float width, float height, float nearPlane, float farPlane ) {
-    Mat4* m = &rendererStorage.baseProjectionMatrix;
+void SetRendererCameraProjection( float width, float height, float nearPlane, float farPlane, Mat4* m ) {
     float halfWidth = width * 0.5f;
     float halfHeight = height * 0.5f;
     float depth = nearPlane - farPlane;
@@ -128,10 +127,10 @@ void SetRendererCameraProjection( float width, float height, float nearPlane, fl
     m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = -(farPlane + nearPlane) / depth; m->m[3][3] = 1.0f;
 }
 
-void SetRendererCameraTransform( Vec3 position, Vec3 lookAtTarget ) {
+void SetRendererCameraTransform( RendererStorage* rStorage, Vec3 position, Vec3 lookAtTarget ) {
 	Mat4 cameraTransform = LookAtMatrix( position, lookAtTarget, { 0.0f, 1.0f, 0.0f } );
     SetTranslation( &cameraTransform, position.x, position.y, position.z );
-    rendererStorage.cameraTransform = MultMatrix( cameraTransform, rendererStorage.baseProjectionMatrix );
+    rStorage->cameraTransform = MultMatrix( cameraTransform, rStorage->baseProjectionMatrix );
 }
 
 void ApplyKeyFrameToArmature( ArmatureKeyFrame* pose, Armature* armature ) {
@@ -387,7 +386,9 @@ void CreateRenderBinding( MeshGeometryData* meshDataStorage, MeshGPUBinding* bin
 	bindDataStorage->dataCount = meshDataStorage->dataCount;
 }
 
-bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
+RendererStorage* InitRenderer( uint16 screen_w, uint16 screen_h, SlabSubsection_Stack* systemsMemory ) {
+    RendererStorage* rendererStorage = (RendererStorage*)AllocOnSubStack_Aligned( systemsMemory, sizeof( RendererStorage ), 4 );
+
 	printf( "Vendor: %s\n", glGetString( GL_VENDOR ) );
     printf( "Renderer: %s\n", glGetString( GL_RENDERER ) );
     printf( "GL Version: %s\n", glGetString( GL_VERSION ) );
@@ -409,25 +410,23 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
 
     glViewport( 0, 0, screen_w, screen_h );
 
-    SetToIdentity( &rendererStorage.baseProjectionMatrix );
-    SetToIdentity( &rendererStorage.cameraTransform );
+    SetToIdentity( &rendererStorage->baseProjectionMatrix );
+    SetToIdentity( &rendererStorage->cameraTransform );
 
-    CreateShaderProgram( "Data/Shaders/TexturedQuad.vert", "Data/Shaders/TexturedQuad.frag", &rendererStorage.texturedQuadShader );
-    //making these not static, break armature pose loading or applying, not sure which and I don't know why, so this is a hack to avoid that
-    static GLfloat quadVData[12] = { -1.0f, 1.0f, 0.0f, -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f };
-    static GLfloat quadUVData[8] = { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f };
-    //The staticy nonsense baystahds ^^^^
+    CreateShaderProgram( "Data/Shaders/TexturedQuad.vert", "Data/Shaders/TexturedQuad.frag", &rendererStorage->texturedQuadShader );
+    GLfloat quadVData[12] = { -1.0f, 1.0f, 0.0f, -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f };
+    GLfloat quadUVData[8] = { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f };
     const GLuint quadIndexData[6] = { 0, 1, 2, 0, 2, 3 };
     GLuint quadDataPtrs [3];
     glGenBuffers( 3, (GLuint*)quadDataPtrs );
 
-    rendererStorage.quadVDataPtr = quadDataPtrs[0];
+    rendererStorage->quadVDataPtr = quadDataPtrs[0];
     glBindBuffer( GL_ARRAY_BUFFER, quadDataPtrs[0] );
     glBufferData( GL_ARRAY_BUFFER, 12 * sizeof( GLfloat ), &quadVData[0], GL_STATIC_DRAW );
-    rendererStorage.quadUVDataPtr = quadDataPtrs[1];
+    rendererStorage->quadUVDataPtr = quadDataPtrs[1];
     glBindBuffer( GL_ARRAY_BUFFER, quadDataPtrs[1] );
     glBufferData( GL_ARRAY_BUFFER, 8 * sizeof( GLfloat ), &quadUVData[0], GL_STATIC_DRAW );
-    rendererStorage.quadIDataPtr = quadDataPtrs[2];
+    rendererStorage->quadIDataPtr = quadDataPtrs[2];
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, quadDataPtrs[2] );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, 6 * sizeof( GLuint ), &quadIndexData[0], GL_STATIC_DRAW );
 
@@ -440,14 +439,14 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
         printf( "Initialized OpenGL\n" );
     }
 
-    CreateShaderProgram( "Data/Shaders/Primitive.vert", "Data/Shaders/Primitive.frag", &rendererStorage.pShader );
+    CreateShaderProgram( "Data/Shaders/Primitive.vert", "Data/Shaders/Primitive.frag", &rendererStorage->pShader );
 
     //Initialization of data for line primitives
     GLuint glLineDataPtr, glLineIndexPtr;
     glGenBuffers( 1, &glLineDataPtr );
     glGenBuffers( 1, &glLineIndexPtr );
-    rendererStorage.lineDataPtr = glLineDataPtr;
-    rendererStorage.lineIDataPtr = glLineIndexPtr;
+    rendererStorage->lineDataPtr = glLineDataPtr;
+    rendererStorage->lineIDataPtr = glLineIndexPtr;
 
     GLuint sequentialIndexBuffer[64];
     for( uint8 i = 0; i < 64; i++ ) {
@@ -460,8 +459,8 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     GLuint glCircleDataPtr, glCircleIndexPtr;
     glGenBuffers( 1, &glCircleDataPtr );
     glGenBuffers( 1, &glCircleIndexPtr );
-    rendererStorage.circleDataPtr = glCircleDataPtr;
-    rendererStorage.circleIDataPtr = glCircleIndexPtr;
+    rendererStorage->circleDataPtr = glCircleDataPtr;
+    rendererStorage->circleIDataPtr = glCircleIndexPtr;
 
     GLfloat circleVertexData[ 18 * 3 ];
     circleVertexData[0] = 0.0f;
@@ -481,17 +480,17 @@ bool InitRenderer( uint16 screen_w, uint16 screen_h ) {
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, glCircleIndexPtr );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, 18 * sizeof(GLuint), &sequentialIndexBuffer[0], GL_STATIC_DRAW );
 
-    return true;
+    return rendererStorage;
 }
 
-void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* programBinding, ShaderProgramParams params ) {
+void RenderBoundData( RendererStorage* rendererStorage, MeshGPUBinding* meshBinding, ShaderProgramBinding* programBinding, ShaderProgramParams params ) {
 	//Flush errors
     //while( glGetError() != GL_NO_ERROR ){};
 
     //Bind Shader
     glUseProgram( programBinding->programID );
     glUniformMatrix4fv( programBinding->modelMatrixUniformPtr, 1, false, (float*)&params.modelMatrix->m[0] );
-    glUniformMatrix4fv( programBinding->cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.cameraTransform.m[0] );
+    glUniformMatrix4fv( programBinding->cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage->cameraTransform.m[0] );
     //glUniform1i( program->isArmatureAnimatedUniform, (int)mesh->isArmatureAnimated );
 
     //Set vertex position data
@@ -539,65 +538,65 @@ void RenderBoundData( MeshGPUBinding* meshBinding, ShaderProgramBinding* program
     //glUseProgram( (GLuint)NULL );
 }
 
-void RenderTexturedQuad( TextureBindingID* texture, float width, float height, float x, float y ) {
+void RenderTexturedQuad( RendererStorage* rendererStorage, TextureBindingID* texture, float width, float height, float x, float y ) {
     Mat4 transform, translation, scale; SetToIdentity( &translation ); SetToIdentity( &scale );
     SetScale( &scale, width, height, 1.0f  ); SetTranslation( &translation, x, y, 0.0f );
     transform = MultMatrix( scale, translation );
 
-    glUseProgram( rendererStorage.texturedQuadShader.programID );
-    glUniformMatrix4fv( rendererStorage.texturedQuadShader.modelMatrixUniformPtr, 1, false, (float*)&transform );
+    glUseProgram( rendererStorage->texturedQuadShader.programID );
+    glUniformMatrix4fv( rendererStorage->texturedQuadShader.modelMatrixUniformPtr, 1, false, (float*)&transform );
 
     //Set vertex data
-    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage.quadVDataPtr );
-    glEnableVertexAttribArray( rendererStorage.texturedQuadShader.positionAttribute );
-    glVertexAttribPointer( rendererStorage.texturedQuadShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->quadVDataPtr );
+    glEnableVertexAttribArray( rendererStorage->texturedQuadShader.positionAttribute );
+    glVertexAttribPointer( rendererStorage->texturedQuadShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     //Set UV data
-    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage.quadUVDataPtr );
-    glEnableVertexAttribArray( rendererStorage.texturedQuadShader.texCoordAttribute );
-    glVertexAttribPointer( rendererStorage.texturedQuadShader.texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
+    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->quadUVDataPtr );
+    glEnableVertexAttribArray( rendererStorage->texturedQuadShader.texCoordAttribute );
+    glVertexAttribPointer( rendererStorage->texturedQuadShader.texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
 
     glActiveTexture( GL_TEXTURE0 );
     glBindTexture( GL_TEXTURE_2D, (GLuint)*texture );
 
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage.quadIDataPtr );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage->quadIDataPtr );
     glDrawElements( GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL );
 }
 
-void RenderDebugCircle( Vec3 position, float radius, Vec3 color ) {
-    glUseProgram( rendererStorage.pShader.programID );
+void RenderDebugCircle( RendererStorage* rendererStorage, Vec3 position, float radius, Vec3 color ) {
+    glUseProgram( rendererStorage->pShader.programID );
 
     Mat4 p; SetToIdentity( &p );
     SetTranslation( &p, position.x, position.y, position.z ); SetScale( &p, radius, radius, radius );
-    glUniformMatrix4fv( rendererStorage.pShader.modelMatrixUniformPtr, 1, false, (float*)&p.m[0] );
-    glUniformMatrix4fv( rendererStorage.pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.cameraTransform.m[0] );
-    glUniform4f( glGetUniformLocation( rendererStorage.pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
+    glUniformMatrix4fv( rendererStorage->pShader.modelMatrixUniformPtr, 1, false, (float*)&p.m[0] );
+    glUniformMatrix4fv( rendererStorage->pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage->cameraTransform.m[0] );
+    glUniform4f( glGetUniformLocation( rendererStorage->pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
 
-    glEnableVertexAttribArray( rendererStorage.pShader.positionAttribute );
-    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage.circleDataPtr );
-    glVertexAttribPointer( rendererStorage.pShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray( rendererStorage->pShader.positionAttribute );
+    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->circleDataPtr );
+    glVertexAttribPointer( rendererStorage->pShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage.circleIDataPtr );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage->circleIDataPtr );
     glDrawElements( GL_TRIANGLE_FAN, 18, GL_UNSIGNED_INT, NULL );
 }
 
-void RenderDebugLines( float* vertexData, uint8 dataCount, Mat4 transform, Vec3 color ) {
-    glUseProgram( rendererStorage.pShader.programID );
+void RenderDebugLines( RendererStorage* rendererStorage, float* vertexData, uint8 dataCount, Mat4 transform, Vec3 color ) {
+    glUseProgram( rendererStorage->pShader.programID );
 
-    glUniformMatrix4fv( rendererStorage.pShader.modelMatrixUniformPtr, 1, false, (float*)&transform.m[0] );
-    glUniformMatrix4fv( rendererStorage.pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage.cameraTransform.m[0] );
-    glUniform4f( glGetUniformLocation( rendererStorage.pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
+    glUniformMatrix4fv( rendererStorage->pShader.modelMatrixUniformPtr, 1, false, (float*)&transform.m[0] );
+    glUniformMatrix4fv( rendererStorage->pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage->cameraTransform.m[0] );
+    glUniform4f( glGetUniformLocation( rendererStorage->pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
 
-    glEnableVertexAttribArray( rendererStorage.pShader.positionAttribute );
-    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage.lineDataPtr );
+    glEnableVertexAttribArray( rendererStorage->pShader.positionAttribute );
+    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->lineDataPtr );
     glBufferData( GL_ARRAY_BUFFER, dataCount * 3 * sizeof(float), (GLfloat*)vertexData, GL_DYNAMIC_DRAW );
-    glVertexAttribPointer( rendererStorage.pShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glVertexAttribPointer( rendererStorage->pShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage.lineIDataPtr );
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage->lineIDataPtr );
     glDrawElements( GL_LINES, dataCount, GL_UNSIGNED_INT, NULL );
 }
 
-void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color ) {
+void RenderArmatureAsLines( RendererStorage* rStorage, Armature* armature, Mat4 transform, Vec3 color ) {
     bool isDepthTesting;
     glGetBooleanv( GL_DEPTH_TEST, ( GLboolean* )&isDepthTesting );
     if( isDepthTesting ) {
@@ -617,7 +616,7 @@ void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color ) {
         Vec3 p1 = { 0.0f, 0.0f, 0.0f };
         p1 = MultVec( InverseMatrix( bone->invBindPose ), p1 );
         p1 = MultVec( *bone->currentTransform, p1 );
-        RenderDebugCircle( MultVec( transform, p1 ), 0.05 );
+        RenderDebugCircle( rStorage, MultVec( transform, p1 ), 0.05f, { 1.0f, 1.0f, 1.0f } );
 
         if( bone->childCount > 0 ) {
             for( uint8 childIndex = 0; childIndex < bone->childCount; ++childIndex ) {
@@ -651,10 +650,10 @@ void RenderArmatureAsLines( Armature* armature, Mat4 transform, Vec3 color ) {
         jointData++;
     }
 
-    RenderDebugLines( (float*)&boneLines[0], dataCount, transform, color );
-    RenderDebugLines( (float*)&jointXAxes[0], jointData, transform, { 0.09, 0.85, 0.15 } );
-    RenderDebugLines( (float*)&jointYAxes[0], jointData, transform, { 0.85, 0.85, 0.14 } );
-    RenderDebugLines( (float*)&jointZAxes[0], jointData, transform, { 0.09, 0.11, 0.85 } );
+    RenderDebugLines( rStorage, (float*)&boneLines[0], dataCount, transform, color );
+    RenderDebugLines( rStorage, (float*)&jointXAxes[0], jointData, transform, { 0.09, 0.85, 0.15 } );
+    RenderDebugLines( rStorage, (float*)&jointYAxes[0], jointData, transform, { 0.85, 0.85, 0.14 } );
+    RenderDebugLines( rStorage, (float*)&jointZAxes[0], jointData, transform, { 0.09, 0.11, 0.85 } );
 
     if( isDepthTesting ) {
         glEnable( GL_DEPTH_TEST );

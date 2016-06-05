@@ -150,6 +150,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	void* gMemPtr = AllocOnSubStack_Aligned( &gameMemoryStack, sizeof( GameMemory ) );
 
 	SoundSystemStorage* soundSystemStorage = Win32InitSound( appInfo.hwnd, 60, &systemsMemory );
+	RendererStorage* renderSystemStorage = InitRenderer( SCREEN_WIDTH, SCREEN_HEIGHT, &systemsMemory );
 
 	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
 	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
@@ -158,7 +159,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	BOOL canSupportHiResTimer = QueryPerformanceFrequency( &appInfo.timerResolution );
 	assert( canSupportHiResTimer );
 
-	GameInit( &gameSlab, gMemPtr );
+	GameInit( &gameSlab, gMemPtr, renderSystemStorage );
 
 	MSG Msg;
 	do {
@@ -204,7 +205,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 			elapsedTime.QuadPart /= appInfo.timerResolution.QuadPart;
 
 			appInfo.running = Update( gMemPtr, (float)elapsedTime.QuadPart, &soundSystemStorage->srb, soundSystemStorage->activeSounds );
-			Render( gMemPtr );
+			Render( gMemPtr, renderSystemStorage );
 
 		    PushAudioToSoundCard( soundSystemStorage );
 
