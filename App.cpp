@@ -37,11 +37,11 @@ void GameInit( MemorySlab* mainSlab, void* gameMemory, RendererStorage* renderer
     CreateRenderBinding( &gMem->meshData, &gMem->meshBinding );
     CreateShaderProgram( "Data/Shaders/Basic.vert", "Data/Shaders/Basic.frag", &gMem->shader );
     CreateTextureBinding( &gMem->texData, &gMem->texBinding );
+    gMem->params = CreateShaderParamSet( &gMem->shader );
     SetToIdentity( &gMem->m );
-    gMem->params.modelMatrix = &gMem->m;
-    gMem->params.sampler1 = gMem->texBinding;
-    gMem->params.sampler2 = 0;
-    gMem->params.armature = &gMem->arm;
+    SetUniform( &gMem->params, "modelMatrix", (void*)&gMem->m );
+    SetUniform( &gMem->params, "tex1", (void*)&gMem->texBinding );
+    SetUniform( &gMem->params, "skeleton", (void*)&gMem->arm.boneTransforms[0] );
 
     SetToIdentity( &i ); SetToIdentity( &r );
     SetTranslation( &i, 0.0f, -2.5f, 0.0f );
