@@ -62,41 +62,123 @@ struct MeshGPUBinding {
 	uint32 boneIndexDataPtr;
 };
 
-struct ShaderProgramBinding {
+#define MAX_SUPPORTED_VERT_INPUTS 16
+#define MAX_SUPPORTED_UNIFORMS 16
+#define MAX_SUPPORTED_TEX_SAMPLERS 4
+struct ShaderProgram {
 	uint32 programID;
-    int32 modelMatrixUniformPtr;
-    int32 cameraMatrixUniformPtr;
-    int32 armatureUniformPtr;
+    char nameBuffer [512];
+    char* vertexInputNames[ MAX_SUPPORTED_VERT_INPUTS ];
+    char* uniformNames[ MAX_SUPPORTED_UNIFORMS ];
+    char* samplerNames[ MAX_SUPPORTED_TEX_SAMPLERS ];
 
-    int32 positionAttribute;
-    int32 normalAttribute;
-    int32 texCoordAttribute;
+    int32 vertexInputPtrs[ MAX_SUPPORTED_VERT_INPUTS ];
+    int32 uniformPtrs[ MAX_SUPPORTED_UNIFORMS ];
+    int32 samplerPtrs[ MAX_SUPPORTED_TEX_SAMPLERS ];
 
-    int32 isArmatureAnimated;
-    int32 boneWeightsAttribute;
-    int32 boneIndiciesAttribute;
-
-    int32 samplerPtr1;
-    int32 samplerPtr2;
+    int32 vertexInputTypes[ MAX_SUPPORTED_VERT_INPUTS ];
+    int32 uniformTypes[ MAX_SUPPORTED_UNIFORMS ];
+    uint8 vertInputCount, uniformCount, samplerCount;
 };
 
+int32 GetShaderProgramInputPtr( ShaderProgram* shader, char* inputName ) {
+    for( int i = 0; i < shader->vertInputCount; ++i ) {
+        if( strcmp( shader->vertexInputNames[i] , inputName ) == 0 ) {
+            return shader->vertexInputPtrs[i];
+        }
+    }
+
+    for( int i = 0; i < shader->uniformCount; ++i ) {
+        if( strcmp( shader->uniformNames[i] , inputName ) == 0 ) {
+            return shader->uniformPtrs[i];
+        }
+    }
+
+    for( int i = 0; i < shader->samplerCount; ++i ) {
+        if( strcmp( shader->samplerNames[i] , inputName ) == 0 ) {
+            return shader->samplerPtrs[i];
+        }
+    }
+}
+
 struct ShaderProgramParams {
-	Mat4* modelMatrix;
-	TextureBindingID sampler1;
-	TextureBindingID sampler2;
-	Armature* armature;
+    ShaderProgram* baseProgram;
+
+    uint32 indexDataPtr;
+    uint32 indiciesToDraw;
+
+    uint32 vertexInputData [ MAX_SUPPORTED_VERT_INPUTS ];
+    void* uniformData[ MAX_SUPPORTED_UNIFORMS ];
+    TextureBindingID samplerData[ MAX_SUPPORTED_TEX_SAMPLERS ];
+};
+
+ShaderProgramParams CreateShaderParamSet( ShaderProgram* baseProgram ) {
+    ShaderProgramParams returnParams;
+    returnParams.baseProgram = baseProgram;
+    returnParams.indexDataPtr = 0;
+    returnParams.indiciesToDraw = 0;
+    memset( &returnParams.vertexInputData[0], 0, sizeof( uint32 ) * MAX_SUPPORTED_VERT_INPUTS );
+    memset( &returnParams.uniformData[0], 0, sizeof( void* ) * MAX_SUPPORTED_UNIFORMS );
+    memset( &returnParams.samplerData[0], 0, sizeof( TextureBindingID ) * MAX_SUPPORTED_TEX_SAMPLERS );
+    return returnParams;
+}
+
+void SetUniform( ShaderProgramParams* params, const char* uniformName, void* newData ) {
+    for( int uniformNamesIndex = 0; uniformNamesIndex < params->baseProgram->uniformCount; ++uniformNamesIndex ) {
+        if( strcmp( params->baseProgram->uniformNames[ uniformNamesIndex ], uniformName ) == 0 ) {
+            params->uniformData[ uniformNamesIndex ] = newData;
+            return;
+        }
+    }
+
+    printf( "Cannot set uniform named: %s because it couldn't be found\n", uniformName );
+}
+
+void SetSampler( ShaderProgramParams* params, const char* targetSamplerName, TextureBindingID texBinding ) {
+    for( int samplerIndex = 0; samplerIndex < params->baseProgram->samplerCount; ++samplerIndex ) {
+        if( strcmp( params->baseProgram->samplerNames[ samplerIndex ], targetSamplerName ) == 0 ) {
+            params->samplerData[ samplerIndex ] = texBinding;
+            return;
+        }
+    }
+
+    printf( "Cannot set sampler named: %s because it couldn't be found\n", targetSamplerName );
+}
+
+void SetVertexInput( ShaderProgramParams* params, const char* targetInputName, uint32 gpuDataPtr ) {
+    for( int vertexInputIndex = 0; vertexInputIndex < params->baseProgram->vertInputCount; ++vertexInputIndex ) {
+        if( strcmp( params->baseProgram->vertexInputNames[ vertexInputIndex ], targetInputName ) == 0 ) {
+            params->vertexInputData[ vertexInputIndex ] = gpuDataPtr;
+            return;
+        }
+    }
+
+    printf( "Cannot set vertex input named: %s because it couldn't be found\n", targetInputName );
+}
+
+struct Framebuffer {
+    enum FramebufferType {
+        DEPTH, COLOR
+    };
+    FramebufferType type;
+    uint32 framebufferPtr;
+    TextureData framebufferTexture;
+    TextureBindingID textureBindingID;
 };
 
 struct RendererStorage{
 	Mat4 baseProjectionMatrix;
 	Mat4 cameraTransform;
 
-	ShaderProgramBinding texturedQuadShader;
+	ShaderProgram texturedQuadShader;
 	uint32 quadVDataPtr;
 	uint32 quadUVDataPtr;
 	uint32 quadIDataPtr;
+    int32 quadPosAttribPtr;
+    int32 quadUVAttribPtr;
+    int32 quadMat4UniformPtr;
 
-	ShaderProgramBinding pShader;
+	ShaderProgram pShader;
 	//Data for rendering lines as a debugging tool
 	uint32 lineDataPtr;
 	uint32 lineIDataPtr;
@@ -180,12 +262,13 @@ ArmatureKeyFrame BlendKeyFrames( ArmatureKeyFrame* keyframeA, ArmatureKeyFrame* 
 ------------------------------------------------------------------------------------------------------------------*/
 
 void CreateTextureBinding( TextureData* textureData, TextureBindingID* texBindID );
-void CreateShaderProgram( const char* vertProgramFilePath, const char* fragProgramFilePath, ShaderProgramBinding* bindData );
+void CreateShaderProgram( const char* vertProgramFilePath, const char* fragProgramFilePath, SlabSubsection_Stack* allocater, ShaderProgram* bindData );
 void CreateRenderBinding( MeshGeometryData* geometryStorage, MeshGPUBinding* bindData );
 
-bool InitRenderer( uint16 screen_w, uint16 screen_h );
-void RenderBoundData( MeshGPUBinding* renderBinding, ShaderProgramBinding* program, ShaderProgramParams params );
-void RenderTexturedQuad( TextureBindingID* texture, float width, float height, float x, float y );
+RendererStorage* InitRenderer( uint16 screen_w, uint16 screen_h, SlabSubsection_Stack* systemsMemory );
+
+void RenderBoundData( ShaderProgram* program, ShaderProgramParams params );
+void RenderTexturedQuad( RendererStorage* rendererStorage, TextureBindingID texture, float width, float height, float x, float y );
 
 void RenderDebugCircle( Vec3 position, float radius = 1.0f , Vec3 color = { 1.0f, 1.0f, 1.0f} );
 void RenderDebugLines( float* vertexData, uint8 vertexCount, Mat4 transform, Vec3 color = { 1.0f, 1.0f, 1.0f } );
@@ -201,7 +284,7 @@ void RenderArmatureAsLines(  Armature* armature, Mat4 transform, Vec3 color = { 
 --------------------------------------------------------------------------------------------------------------------*/
 
 ///Return 0 on success, required buffer length if buffer is too small, or -1 on other OS failure
-int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 bufferLen);
+char* ReadShaderSrcFileFromDisk( const char* fileName );
 void LoadMeshDataFromDisk( const char* fileName, SlabSubsection_Stack* allocater, MeshGeometryData* storage, Armature* armature = NULL );
 void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* pose, Armature* armature );
 void LoadTextureDataFromDisk( const char* fileName, TextureData* texDataStorage );
@@ -212,6 +295,30 @@ void LoadTextureDataFromDisk( const char* fileName, TextureData* texDataStorage 
                                        PLATFORM SPECIFIC IMPLEMENTATION
 -------------------------------------------------------------------------------------------------------------------*/
 #ifdef OPENGL_RENDERER_IMPLEMENTATION
+
+Framebuffer CreateFramebuffer( uint32 pixelWidth, uint32 pixelHeight, Framebuffer::FramebufferType type ) {
+    Framebuffer newFramebuffer = { };
+    newFramebuffer.type = type;
+    CreateEmptyTexture( &newFramebuffer.framebufferTexture, pixelWidth, pixelHeight );
+    CreateTextureBinding( &newFramebuffer.framebufferTexture, &newFramebuffer.textureBindingID );
+
+    glGenFramebuffers( 1, &newFramebuffer.framebufferPtr );
+
+    return newFramebuffer;
+}
+
+void SetCurrentFramebuffer( Framebuffer* framebuffer ) { 
+    if( framebuffer != NULL ) {
+        if( framebuffer->type == Framebuffer::FramebufferType::COLOR ) {
+            glBindFramebuffer( GL_FRAMEBUFFER, framebuffer->framebufferPtr );
+            glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, framebuffer->textureBindingID, 0 );
+        } else {
+            //lFramebufferRenderBuffer( GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, framebuffer->textureBindingID, 0 );
+        }
+    } else {
+        glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+    }
+}
 
 void CreateTextureBinding( TextureData* texData, TextureBindingID* texBindID ) {
 	GLenum pixelFormat;
@@ -227,8 +334,8 @@ void CreateTextureBinding( TextureData* texData, TextureBindingID* texBindID ) {
 
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 
     glTexImage2D( GL_TEXTURE_2D, 0, texData->channelsPerPixel, texData->width, texData->height, 0, pixelFormat, GL_UNSIGNED_BYTE, texData->data );
 
@@ -261,51 +368,45 @@ void PrintGLShaderLog( GLuint shader ) {
     }
 }
 
-void CreateShaderProgram( const char* vertProgramFilePath, const char* fragProgramFilePath, ShaderProgramBinding* bindDataStorage ) {
-    const size_t shaderSrcBufferLength = 1700;
-    char shaderSrcBuffer[shaderSrcBufferLength];
-    char* bufferPtr = (char*)&shaderSrcBuffer[0];
-    memset( bufferPtr, 0, sizeof(char) * shaderSrcBufferLength );
-
+void CreateShaderProgram( char* vertProgramFilePath, char* fragProgramFilePath, ShaderProgram* bindDataStorage ) {
     bindDataStorage->programID = glCreateProgram();
 
     GLuint vertexShader = glCreateShader( GL_VERTEX_SHADER );
-    //TODO: Error handling on this
-    uint16_t readReturnCode = ReadShaderSrcFileFromDisk( vertProgramFilePath, bufferPtr, shaderSrcBufferLength );
-    assert(readReturnCode == 0);
-    glShaderSource( vertexShader, 1, &bufferPtr, NULL );
+
+    int64 bytesRead = 0;
+    char* srcDataPtr = ReadShaderSrcFileFromDisk( vertProgramFilePath );
+    glShaderSource( vertexShader, 1, &srcDataPtr, NULL );
 
     glCompileShader( vertexShader );
     GLint compiled = GL_FALSE;
     glGetShaderiv( vertexShader, GL_COMPILE_STATUS, &compiled );
     if( compiled != GL_TRUE ) {
-        printf( "Could not compile Vertex Shader\n" );
+        printf( "Could not compile Vertex Shader from file %s\n", vertProgramFilePath );
         PrintGLShaderLog( vertexShader );
     } else {
         printf( "Vertex Shader %s compiled\n", vertProgramFilePath );
         glAttachShader( bindDataStorage->programID, vertexShader );
     }
-
-    memset( bufferPtr, 0, sizeof(char) * shaderSrcBufferLength );
+    free( srcDataPtr );
 
     GLuint fragShader = glCreateShader( GL_FRAGMENT_SHADER );
-    //TODO: Error handling on this
-    readReturnCode = ReadShaderSrcFileFromDisk( fragProgramFilePath, bufferPtr, shaderSrcBufferLength );
-    assert(readReturnCode == 0);
-    glShaderSource( fragShader, 1, &bufferPtr, NULL );
+    bytesRead = 0;
+    srcDataPtr = ReadShaderSrcFileFromDisk( fragProgramFilePath );
+    glShaderSource( fragShader, 1, &srcDataPtr, NULL );
 
     glCompileShader( fragShader );
     //Check for errors
     compiled = GL_FALSE;
     glGetShaderiv( fragShader, GL_COMPILE_STATUS, &compiled );
     if( compiled != GL_TRUE ) {
-        printf( "Unable to compile fragment shader\n" );
+        printf( "Unable to compile fragment shader from file %s\n", fragProgramFilePath );
         PrintGLShaderLog( fragShader );
     } else {
         printf( "Frag Shader %s compiled\n", fragProgramFilePath );
         //Actually attach it if it compiled
         glAttachShader( bindDataStorage->programID, fragShader );
     }
+    free( srcDataPtr );
 
     glLinkProgram( bindDataStorage->programID );
     //Check for errors
@@ -319,21 +420,45 @@ void CreateShaderProgram( const char* vertProgramFilePath, const char* fragProgr
 
     glUseProgram( bindDataStorage->programID );
 
-    bindDataStorage->modelMatrixUniformPtr = glGetUniformLocation( bindDataStorage->programID, "modelMatrix" );
-    bindDataStorage->cameraMatrixUniformPtr = glGetUniformLocation( bindDataStorage->programID, "cameraMatrix" );
-    bindDataStorage->isArmatureAnimated = glGetUniformLocation( bindDataStorage->programID, "isSkeletalAnimated" );
-    bindDataStorage->armatureUniformPtr = glGetUniformLocation( bindDataStorage->programID, "skeleton" );
+    uint32 nameWriteTargetOffset = 0;
+    GLsizei nameLen;
+    GLint attribSize;
+    GLenum attribType;
 
-    bindDataStorage->positionAttribute = glGetAttribLocation( bindDataStorage->programID, "position" );
-    bindDataStorage->normalAttribute = glGetAttribLocation( bindDataStorage->programID, "normal" );
-    bindDataStorage->texCoordAttribute = glGetAttribLocation( bindDataStorage->programID, "texCoord" );
-    bindDataStorage->boneWeightsAttribute = glGetAttribLocation( bindDataStorage->programID, "boneWeights" );
-    bindDataStorage->boneIndiciesAttribute = glGetAttribLocation( bindDataStorage->programID, "boneIndicies" );
+    //Record All vertex inputs
+    bindDataStorage->vertInputCount = 0;
+    GLint activeGLAttributeCount;
+    glGetProgramiv( bindDataStorage->programID, GL_ACTIVE_ATTRIBUTES, &activeGLAttributeCount );
+    for( GLuint attributeIndex = 0; attributeIndex < activeGLAttributeCount; ++attributeIndex ) {
+        char* nameWriteTarget = &bindDataStorage->nameBuffer[ nameWriteTargetOffset ];
+        glGetActiveAttrib( bindDataStorage->programID, attributeIndex, 512 - nameWriteTargetOffset, &nameLen, &attribSize, &attribType, nameWriteTarget );
+        bindDataStorage->vertexInputPtrs[ attributeIndex ] = glGetAttribLocation( bindDataStorage->programID, nameWriteTarget );
+        bindDataStorage->vertexInputNames[ attributeIndex ] = nameWriteTarget;
+        bindDataStorage->vertexInputTypes[ attributeIndex ] = attribType;
+        nameWriteTargetOffset += nameLen + 1;
+        bindDataStorage->vertInputCount++;
+    }
 
-    bindDataStorage->samplerPtr1 = glGetUniformLocation( bindDataStorage->programID, "tex1" );
-    bindDataStorage->samplerPtr2 = glGetUniformLocation( bindDataStorage->programID, "tex2" );
-    glUniform1i( bindDataStorage->samplerPtr1, 0 );
-    glUniform1i( bindDataStorage->samplerPtr2, 1 );
+    //Record all uniform info
+    bindDataStorage->uniformCount = 0;
+    bindDataStorage->samplerCount = 0;
+    GLint activeGLUniformCount;
+    glGetProgramiv( bindDataStorage->programID, GL_ACTIVE_UNIFORMS, &activeGLUniformCount );
+    for( GLuint uniformIndex = 0; uniformIndex < activeGLUniformCount; ++uniformIndex ) {
+        char* nameWriteTarget = &bindDataStorage->nameBuffer[ nameWriteTargetOffset ];
+        glGetActiveUniform( bindDataStorage->programID, uniformIndex, 512 - nameWriteTargetOffset, &nameLen, &attribSize, &attribType, nameWriteTarget );
+        if( attribType == GL_SAMPLER_2D ) {
+            bindDataStorage->samplerPtrs[ bindDataStorage->samplerCount ] = glGetUniformLocation( bindDataStorage->programID, nameWriteTarget );
+            glUniform1i( bindDataStorage->samplerPtrs[ bindDataStorage->samplerCount ], bindDataStorage->samplerCount );
+            bindDataStorage->samplerNames[ bindDataStorage->samplerCount++ ] = nameWriteTarget;
+        } else {
+            bindDataStorage->uniformPtrs[ uniformIndex - bindDataStorage->samplerCount ] = glGetUniformLocation( bindDataStorage->programID, nameWriteTarget );
+            bindDataStorage->uniformNames[ uniformIndex - bindDataStorage->samplerCount ] = nameWriteTarget;
+            bindDataStorage->uniformTypes[ uniformIndex - bindDataStorage->samplerCount ] = attribType;
+            ++bindDataStorage->uniformCount;
+        }
+        nameWriteTargetOffset += nameLen + 1;       
+     }
 
     glUseProgram(0);
     glDeleteShader( vertexShader ); 
@@ -402,7 +527,7 @@ RendererStorage* InitRenderer( uint16 screen_w, uint16 screen_h, SlabSubsection_
     printf( "Max Vertex Attributes: %d\n", k );
 
     //Initialize clear color
-    glClearColor( 0.1f, 0.1f, 0.18f, 1.0f );
+    glClearColor( 50.0f / 255.0f, 15.0f / 255.0f, 32.0f / 255.0f, 1.0f );
 
     glEnable( GL_DEPTH_TEST );
     glEnable( GL_CULL_FACE );
@@ -429,6 +554,9 @@ RendererStorage* InitRenderer( uint16 screen_w, uint16 screen_h, SlabSubsection_
     rendererStorage->quadIDataPtr = quadDataPtrs[2];
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, quadDataPtrs[2] );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, 6 * sizeof( GLuint ), &quadIndexData[0], GL_STATIC_DRAW );
+    rendererStorage->quadPosAttribPtr = GetShaderProgramInputPtr( &rendererStorage->texturedQuadShader, "position" );
+    rendererStorage->quadUVAttribPtr = GetShaderProgramInputPtr( &rendererStorage->texturedQuadShader, "texCoord" );
+    rendererStorage->quadMat4UniformPtr = GetShaderProgramInputPtr( &rendererStorage->texturedQuadShader, "modelMatrix" );
 
     //Check for error
     GLenum error = glGetError();
@@ -483,81 +611,92 @@ RendererStorage* InitRenderer( uint16 screen_w, uint16 screen_h, SlabSubsection_
     return rendererStorage;
 }
 
-void RenderBoundData( RendererStorage* rendererStorage, MeshGPUBinding* meshBinding, ShaderProgramBinding* programBinding, ShaderProgramParams params ) {
+void RenderBoundData( ShaderProgram* programBinding, ShaderProgramParams* params ) {
 	//Flush errors
     //while( glGetError() != GL_NO_ERROR ){};
 
     //Bind Shader
     glUseProgram( programBinding->programID );
-    glUniformMatrix4fv( programBinding->modelMatrixUniformPtr, 1, false, (float*)&params.modelMatrix->m[0] );
-    glUniformMatrix4fv( programBinding->cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage->cameraTransform.m[0] );
-    //glUniform1i( program->isArmatureAnimatedUniform, (int)mesh->isArmatureAnimated );
 
-    //Set vertex position data
-    glBindBuffer( GL_ARRAY_BUFFER, meshBinding->vertexDataPtr );
-    glEnableVertexAttribArray( programBinding->positionAttribute );
-    glVertexAttribPointer( programBinding->positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    for( int attributeIndex = 0; attributeIndex < programBinding->vertInputCount; ++attributeIndex ) {
+        GLuint attribPtr = programBinding->vertexInputPtrs[ attributeIndex ];
+        GLenum type = programBinding->vertexInputTypes[ attributeIndex ];
+        uint32 attribBufferPtr = params->vertexInputData[ attributeIndex ];
 
-    //Set UV data
-    glBindBuffer( GL_ARRAY_BUFFER, meshBinding->uvDataPtr );
-    glEnableVertexAttribArray( programBinding->texCoordAttribute );
-    glVertexAttribPointer( programBinding->texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
+        if( attribBufferPtr == 0 ) {
+            continue;
+        }
 
-    glBindBuffer( GL_ARRAY_BUFFER, meshBinding->nrmlDataPtr );
-    glEnableVertexAttribArray( programBinding->normalAttribute );
-    glVertexAttribPointer( programBinding->normalAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0 );
-
-    if( meshBinding->hasBoneData && params.armature != NULL ) {
-        glUniform1i( programBinding->isArmatureAnimated, 1 );
-        glUniformMatrix4fv( programBinding->armatureUniformPtr, MAXBONES, GL_FALSE, (float*)&params.armature->boneTransforms );
-
-        glBindBuffer( GL_ARRAY_BUFFER, meshBinding->boneWeightDataPtr );
-        glEnableVertexAttribArray( programBinding->boneWeightsAttribute );
-        glVertexAttribPointer( programBinding->boneWeightsAttribute, MAXBONESPERVERT, GL_FLOAT, false, 0, 0 );
-
-        glBindBuffer( GL_ARRAY_BUFFER, meshBinding->boneIndexDataPtr );
-        glEnableVertexAttribArray( programBinding->boneIndiciesAttribute );
-        glVertexAttribIPointer( programBinding->boneIndiciesAttribute, MAXBONESPERVERT, GL_UNSIGNED_INT, 0, 0 );
-    } else {
-        glUniform1i( programBinding->isArmatureAnimated, 0 );
+        int count;
+        uint32 attributeDataPtr = params->vertexInputData[ attributeIndex ];
+        if( type == GL_FLOAT_VEC3 ) {
+            count = 3;
+        } else if( type == GL_FLOAT_VEC2 ) {
+            count = 2;
+        }
+        glBindBuffer( GL_ARRAY_BUFFER, attributeDataPtr );
+        glEnableVertexAttribArray( attribPtr );
+        glVertexAttribPointer( attribPtr, count, GL_FLOAT, GL_FALSE, 0, 0 );
     }
 
-    glActiveTexture( GL_TEXTURE0 );
-    glBindTexture( GL_TEXTURE_2D, params.sampler1 );
-    glActiveTexture( GL_TEXTURE1 );
-    glBindTexture( GL_TEXTURE_2D, params.sampler2 );
+    for( int uniformIndex = 0; uniformIndex < programBinding->uniformCount; ++uniformIndex ) {
+        GLuint uniformPtr = programBinding->uniformPtrs[ uniformIndex ];
+        GLenum type = programBinding->uniformTypes[ uniformIndex ];
+        void* uniformData = params->uniformData[ uniformIndex ];
 
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, meshBinding->indexDataPtr );
-    glDrawElements( GL_TRIANGLES, meshBinding->dataCount, GL_UNSIGNED_INT, NULL );
+        if( uniformData == 0 ) {
+            continue;
+        }
 
-    //Unbind textures
-    //glBindTexture( GL_TEXTURE_2D, 0 );
-    //glActiveTexture( GL_TEXTURE0 );
-    //glBindTexture( GL_TEXTURE_2D, 0 );
-    //clear shader
-    //glUseProgram( (GLuint)NULL );
+        if( type == GL_FLOAT_VEC4 ) {
+            glUniform4fv( uniformPtr, 1, (float*)uniformData );
+        } else if( type == GL_FLOAT_MAT4 ) {
+            glUniformMatrix4fv( uniformPtr, 1, GL_FALSE, (float*)uniformData );
+        } else if( type == GL_FLOAT_VEC2 ) {
+            glUniform2fv( uniformPtr, 1, (float*)uniformData );
+        } else if( type == GL_FLOAT_VEC3 ) {
+            glUniform3fv( uniformPtr, 1, (float*)uniformData );
+        }
+    }
+
+    for( int samplerIndex = 0; samplerIndex < programBinding->samplerCount; ++samplerIndex ){
+        if( params->samplerData == 0 ) {
+            continue;
+        }
+        glActiveTexture( GL_TEXTURE0 + samplerIndex );
+        glBindTexture( GL_TEXTURE_2D, params->samplerData[ samplerIndex ] );
+    }
+
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, params->indexDataPtr );
+    glDrawElements( GL_TRIANGLES, params->indiciesToDraw, GL_UNSIGNED_INT, NULL );
+
+    for( int samplerIndex = 0; samplerIndex < programBinding->samplerCount; ++samplerIndex ) {
+        glActiveTexture( GL_TEXTURE0 + samplerIndex );
+        glBindTexture( GL_TEXTURE_2D, 0 );
+    }
+    glUseProgram( 0 );
 }
 
-void RenderTexturedQuad( RendererStorage* rendererStorage, TextureBindingID* texture, float width, float height, float x, float y ) {
+void RenderTexturedQuad( RendererStorage* rendererStorage, TextureBindingID texture, float width, float height, float x, float y ) {
     Mat4 transform, translation, scale; SetToIdentity( &translation ); SetToIdentity( &scale );
     SetScale( &scale, width, height, 1.0f  ); SetTranslation( &translation, x, y, 0.0f );
     transform = MultMatrix( scale, translation );
 
     glUseProgram( rendererStorage->texturedQuadShader.programID );
-    glUniformMatrix4fv( rendererStorage->texturedQuadShader.modelMatrixUniformPtr, 1, false, (float*)&transform );
+    glUniformMatrix4fv( rendererStorage->quadMat4UniformPtr, 1, false, (float*)&transform );
 
     //Set vertex data
     glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->quadVDataPtr );
-    glEnableVertexAttribArray( rendererStorage->texturedQuadShader.positionAttribute );
-    glVertexAttribPointer( rendererStorage->texturedQuadShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray( rendererStorage->quadPosAttribPtr );
+    glVertexAttribPointer( rendererStorage->quadPosAttribPtr, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
     //Set UV data
     glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->quadUVDataPtr );
-    glEnableVertexAttribArray( rendererStorage->texturedQuadShader.texCoordAttribute );
-    glVertexAttribPointer( rendererStorage->texturedQuadShader.texCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0 );
+    glEnableVertexAttribArray( rendererStorage->quadUVAttribPtr );
+    glVertexAttribPointer( rendererStorage->quadUVAttribPtr, 2, GL_FLOAT, GL_FALSE, 0, 0 );
 
     glActiveTexture( GL_TEXTURE0 );
-    glBindTexture( GL_TEXTURE_2D, (GLuint)*texture );
+    glBindTexture( GL_TEXTURE_2D, (GLuint)texture );
 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage->quadIDataPtr );
     glDrawElements( GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL );
@@ -568,32 +707,34 @@ void RenderDebugCircle( RendererStorage* rendererStorage, Vec3 position, float r
 
     Mat4 p; SetToIdentity( &p );
     SetTranslation( &p, position.x, position.y, position.z ); SetScale( &p, radius, radius, radius );
-    glUniformMatrix4fv( rendererStorage->pShader.modelMatrixUniformPtr, 1, false, (float*)&p.m[0] );
-    glUniformMatrix4fv( rendererStorage->pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage->cameraTransform.m[0] );
-    glUniform4f( glGetUniformLocation( rendererStorage->pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
+    assert( false );
+    // glUniformMatrix4fv( rendererStorage->pShader.modelMatrixUniformPtr, 1, false, (float*)&p.m[0] );
+    // glUniformMatrix4fv( rendererStorage->pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage->cameraTransform.m[0] );
+    // glUniform4f( glGetUniformLocation( rendererStorage->pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
 
-    glEnableVertexAttribArray( rendererStorage->pShader.positionAttribute );
-    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->circleDataPtr );
-    glVertexAttribPointer( rendererStorage->pShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    // glEnableVertexAttribArray( rendererStorage->pShader.positionAttribute );
+    // glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->circleDataPtr );
+    // glVertexAttribPointer( rendererStorage->pShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage->circleIDataPtr );
-    glDrawElements( GL_TRIANGLE_FAN, 18, GL_UNSIGNED_INT, NULL );
+    // glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage->circleIDataPtr );
+    // glDrawElements( GL_TRIANGLE_FAN, 18, GL_UNSIGNED_INT, NULL );
 }
 
 void RenderDebugLines( RendererStorage* rendererStorage, float* vertexData, uint8 dataCount, Mat4 transform, Vec3 color ) {
     glUseProgram( rendererStorage->pShader.programID );
 
-    glUniformMatrix4fv( rendererStorage->pShader.modelMatrixUniformPtr, 1, false, (float*)&transform.m[0] );
-    glUniformMatrix4fv( rendererStorage->pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage->cameraTransform.m[0] );
-    glUniform4f( glGetUniformLocation( rendererStorage->pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
+    assert(false);
+    // glUniformMatrix4fv( rendererStorage->pShader.modelMatrixUniformPtr, 1, false, (float*)&transform.m[0] );
+    // glUniformMatrix4fv( rendererStorage->pShader.cameraMatrixUniformPtr, 1, false, (float*)&rendererStorage->cameraTransform.m[0] );
+    // glUniform4f( glGetUniformLocation( rendererStorage->pShader.programID, "primitiveColor" ), color.x, color.y, color.z, 1.0f );
 
-    glEnableVertexAttribArray( rendererStorage->pShader.positionAttribute );
-    glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->lineDataPtr );
-    glBufferData( GL_ARRAY_BUFFER, dataCount * 3 * sizeof(float), (GLfloat*)vertexData, GL_DYNAMIC_DRAW );
-    glVertexAttribPointer( rendererStorage->pShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
+    // glEnableVertexAttribArray( rendererStorage->pShader.positionAttribute );
+    // glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->lineDataPtr );
+    // glBufferData( GL_ARRAY_BUFFER, dataCount * 3 * sizeof(float), (GLfloat*)vertexData, GL_DYNAMIC_DRAW );
+    // glVertexAttribPointer( rendererStorage->pShader.positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage->lineIDataPtr );
-    glDrawElements( GL_LINES, dataCount, GL_UNSIGNED_INT, NULL );
+    // glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage->lineIDataPtr );
+    // glDrawElements( GL_LINES, dataCount, GL_UNSIGNED_INT, NULL );
 }
 
 void RenderArmatureAsLines( RendererStorage* rStorage, Armature* armature, Mat4 transform, Vec3 color ) {

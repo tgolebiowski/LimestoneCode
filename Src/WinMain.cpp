@@ -116,11 +116,10 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 		PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
 		32,                       //Colordepth of the framebuffer.
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		24,                       //Number of bits for the depthbuffer
-	    8,                        //Number of bits for the stencilbuffer
+		32,                       //Number of bits for the depthbuffer
+	    0,                        //Number of bits for the stencilbuffer
 		0,                        //Number of Aux buffers in the framebuffer.
-		PFD_MAIN_PLANE,
-		0, 0, 0, 0
+		0, 0, 0, 0, 0
 	};
 
 	appInfo.deviceContext = GetDC( appInfo.hwnd );
@@ -312,6 +311,7 @@ void* ReadWholeFile( char* filename, int64* bytesRead ) {
 	//Reserve Space
 	void* data = 0;
 	data = malloc( fileSize.QuadPart );
+	memset( data, 0, fileSize.QuadPart );
 	assert( data != 0 );
 
 	//Read data
@@ -334,23 +334,22 @@ void* ReadWholeFile( char* filename, int64* bytesRead ) {
                        Renderer.h function prototype implementations
 -----------------------------------------------------------------------------------------*/
 
-int16 ReadShaderSrcFileFromDisk(const char* fileName, char* buffer, uint16 bufferLen) {
+char* ReadShaderSrcFileFromDisk( const char* fileName ) {
 	FILE* file;
     errno_t e = fopen_s(&file, fileName, "r" );
     if( file == NULL || e != 0) {
-        printf( "Could not load text file %s\n", fileName );
-        return -1;
+        printf( "Could not open file %s\n", fileName );
+        return 0;
     }
     fseek( file, 0, SEEK_END );
     size_t fileSize = ftell( file );
-    if(fileSize >= bufferLen) {
-    	return fileSize;
-    }
+    char* buffer = (char*)malloc( fileSize + 1 );
+    memset( buffer, 0, fileSize + 1 );
 
     fseek( file, 0, SEEK_SET );
     fread( buffer , 1, fileSize, file );
     fclose( file );
-    return 0;
+    return buffer;
 }
 
 void LoadMeshDataFromDisk( const char* fileName,  SlabSubsection_Stack* allocater, MeshGeometryData* storage, Armature* armature ) {
