@@ -1,4 +1,11 @@
-#ifndef APP_H
+#define SCREEN_WIDTH 1024
+#define SCREEN_HEIGHT 680
+
+#include <string>
+#include <assert.h>
+#include <cstring>
+#include <stdio.h>
+#define NULL 0
 
 #include <stdint.h>
 typedef uint8_t uint8;
@@ -15,27 +22,15 @@ typedef intptr_t intptr;
 /* --------------------------------------------------------------------------
 	                      STUFF THE OS PROVIDES THE GAME
 -----------------------------------------------------------------------------*/
-///Set inputted values to Normalized Window Coordinates (0,0 is center, ranges go from -1 to +1)
-void GetMousePosition( float* x, float* y );
-///Currently limiting it to Ascii Table
-bool IsKeyDown( uint8 keyChar );
-bool IsControllerButtonDown( uint8 buttonIndex );
-void GetControllerStickState( uint8 stickIndex, float* x, float* y );
-float GetTriggerState( uint8 triggerIndex );
-
-void* ReadWholeFile( char* filename, int64* bytesRead );
-
 #include "Memory.h"
+#include "FileSys.h"
 #include "Math3D.h"
 #include "Renderer.h"
 #include "Sound.h"
+#include "Input.h"
 
-/* --------------------------------------------------------------------------
-	                      STUFF THE GAME PROVIDES THE OS
- ----------------------------------------------------------------------------*/
-bool Update( void* gameMemory, float millisecondsElapsed, SoundRenderBuffer* sound, PlayingSound* activeSoundList );
-void Render( void* gameMemory );
-void GameInit( MemorySlab* mainSlab, void* gameMemory );
+#define GAME_INIT(name) void* name( GlobalMem* mainSlab, RenderDriver* renderDriver, SoundDriver* soundDriver, FileSys* fileSys )
+typedef GAME_INIT( gameInit );
 
-#define APP_H
-#endif
+#define GAME_UPDATEANDRENDER(name) bool name( void* gameMemory, float millisecondsElapsed, InputState* i, SoundDriver* soundDriver, RenderDriver* renderDriver, FileSys* fileSys )
+typedef GAME_UPDATEANDRENDER( updateAndRender );

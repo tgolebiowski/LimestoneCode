@@ -2,20 +2,20 @@
 #define MEGABYTES(value) KILOBYTES(value) * 1024
 #define GIGABYTES(value) MEGABYTES(value) * 1024
 
-struct MemorySlab {
+struct GlobalMem {
 	void* slabStart;
 	void* current;
 	uint64 slabSize;
 };
 
-struct SlabSubsection_Stack {
+struct Stack {
 	void* start;
 	void* end;
 	void* current;
 };
 
-SlabSubsection_Stack CarveNewSubsection( MemorySlab* slab, uint64 bytes ) {
-	SlabSubsection_Stack slabSub = { 0, 0, 0 };
+Stack AllocateStackInGlobalMem( GlobalMem* slab, uint64 bytes ) {
+	Stack slabSub = { 0, 0, 0 };
 	ptrdiff_t bytesLeft = slab->slabSize - ((uintptr)slab->current - (uintptr)slab->slabStart);
 	if( bytesLeft > bytes ) {
 		slabSub.start = slab->current;
@@ -26,26 +26,27 @@ SlabSubsection_Stack CarveNewSubsection( MemorySlab* slab, uint64 bytes ) {
 	return slabSub;
 }
 
-void* AllocOnSubStack( SlabSubsection_Stack* subStack, uint64 sizeInBytes ) {
+void* StackAlloc( Stack* stack, uint64 sizeInBytes ) {
 	//Check how much space is left in the sub stack
-	ptrdiff_t bytesLeft = (intptr)subStack->end - (intptr)subStack->current;
+	ptrdiff_t bytesLeft = (intptr)stack->end - (intptr)stack->current;
 	//Allocate if there's enough space left
 	if( bytesLeft > sizeInBytes ) {
-		void* returnValue = subStack->current;
-		subStack->current = (void*)( (intptr)subStack->current + sizeInBytes );
+		void* returnValue = stack->current;
+		stack->current = (void*)( (intptr)stack->current + sizeInBytes );
 		return returnValue;
 	} else {
+		assert(false);
 		return NULL;
 	}
 }
 
 //Naive implementation based on examples in "Game Engine Architechture"
-void* AllocOnSubStack_Aligned( SlabSubsection_Stack* subStack, uint64 size, uint8 alignment = 8 ) {
+void* StackAllocA( Stack* stack, uint64 size, uint8 alignment = 8 ) {
 	//Add some padding so we have enough room to align
 	uint64 expandedSize = size + alignment;
 
 	//Determine how "off" the basic allocated pointer is
-	uintptr rawAddress = (uintptr)AllocOnSubStack( subStack, expandedSize );
+	uintptr rawAddress = (uintptr)StackAlloc( stack, expandedSize );
 	uintptr alignmentMask = ( alignment - 1 );
 	uintptr misalignment = ( rawAddress & alignmentMask );
 
@@ -55,14 +56,14 @@ void* AllocOnSubStack_Aligned( SlabSubsection_Stack* subStack, uint64 size, uint
 	return (void*)alignedAddress;
 }
 
-void ClearSubStack( SlabSubsection_Stack* subStack ) {
-	subStack->current = subStack->start;
+void ClearSubStack( Stack* stack ) {
+	stack->current = stack->start;
 }
 
-void FreeStub( void* ptr ) {
-
-}
-
-void ReallocStub( void* ptr ) {
-	
+//TODO: This "leaks" memory due to padding, track amount of padding in byte ptr - 1
+//And free the other stuff too
+void FreeFromStack( Stack* stack, void* ptr ) {
+	if( (intptr)ptr > (intptr)stack->current ) {
+		stack->current = ptr;
+	}
 }

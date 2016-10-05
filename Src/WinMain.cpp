@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <stdbool.h>
+//#include <stdbool.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -7,23 +7,26 @@
 #include <assert.h>
 #include <functional>
 
-#include "tinyxml2/tinyxml2.h"
-#include "tinyxml2/tinyxml2.cpp"
-
-#define GLEW_STATIC
-#include "OpenGL/glew.h"
-
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_ONLY_PNG
-#include "stb/stb_image.h"
+#include <GL/gl.h>
+#include "OpenGL/wglext.h"
+#include "OpenGL/glext.h"
 
 #include "App.h"
-#include "..\App.cpp"
 
-//Win32 function prototypes, allows the entry point to be the first function
-static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam );
-//A helper function only to be used in this file ( so far )
-static void TextToNumberConversion( char* textIn, float* numbersOut );
+struct App {
+	HMODULE gameCodeHandle;
+	void* (*GameInit)( GlobalMem*, RenderDriver*,SoundDriver*, FileSys* );
+	bool (*UpdateAndRender)( void*, float, InputState*, SoundDriver*,RenderDriver*, FileSys*);
+	void (*MixSound)( SoundDriver* );
+};
+
+struct DynamicFileTracking {
+	char* writeHead;
+	int numTrackedFiles;
+	char stringBuffer [ KILOBYTES(4) ];
+	char* fileNames[4];
+	FILETIME fileTimes[4];
+};
 
 static struct {
 	HINSTANCE appInstance;
@@ -35,282 +38,111 @@ static struct {
 	LPRECT windowRect;
 	LARGE_INTEGER timerResolution;
 
+	uint16 fullScreenWidth;
+	uint16 fullScreenHeight;
 	uint16 windowPosX;
 	uint16 windowPosY;
 	bool running;
 	bool isFullScreen;
-	//I don't have a reason for this to be a generally available struct
-	struct {
-		float leftStick_x, leftStick_y;
-		float rightStick_x, rightStick_y;
-		float leftTrigger, rightTrigger;
-		bool leftBumper, rightBumper;
-		bool button1, button2, button3, button4;
-		bool specialButtonLeft, specialButtonRight;
-	} controllerState;
+
+	#define KEYPRESSBUFER_LEN 24
+	char keyboardInputBuffer[ KEYPRESSBUFER_LEN ];
+	int keyPressBufferIndex;
 
 	int64 mSecsPerFrame;
+
+	App gameapp;
+
+	int dllTrackingIndex;
+	DynamicFileTracking fileTracking;
 } appInfo;
 
-static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow ) {
-	AllocConsole(); //create a console
-	freopen( "conin$","r",stdin );
-	freopen( "conout$","w",stdout );
-	freopen( "conout$","w",stderr );
-	printf( "Program Started, console initialized\n" );
+/*-----------------------------------------------------------------------------------------
+	                            Ancillary Helpers
+------------------------------------------------------------------------------------------*/
 
-	appInfo.appInstance = hInstance;
-
-	const char WindowName[] = "Wet Clay";
-
-	appInfo.running = true;
-	appInfo.isFullScreen = false;
-	appInfo.mSecsPerFrame = 16; //60FPS
-
-	appInfo.wc.cbSize = sizeof(WNDCLASSEX);
-	appInfo.wc.style = CS_OWNDC;
-	appInfo.wc.lpfnWndProc = WndProc;
-	appInfo.wc.cbClsExtra = 0;
-	appInfo.wc.cbWndExtra = 0;
-	appInfo.wc.hInstance = appInfo.appInstance;
-	appInfo.wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-	appInfo.wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-	appInfo.wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-	appInfo.wc.lpszMenuName = NULL;
-	appInfo.wc.lpszClassName = WindowName;
-	appInfo.wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
-
-	if( !RegisterClassEx( &appInfo.wc ) ) {
-		printf( "Failed to register class\n" );
-		appInfo.running = false;
-		return -1;
-	}
-
-	// center position of the window
-	appInfo.windowPosX = (GetSystemMetrics(SM_CXSCREEN) / 2) - (SCREEN_WIDTH / 2);
-	appInfo.windowPosY = (GetSystemMetrics(SM_CYSCREEN) / 2) - (SCREEN_HEIGHT / 2);
- 
-	// set up the window for a windowed application by default
-	//long wndStyle = WS_OVERLAPPEDWINDOW;
- 
-	if( appInfo.isFullScreen ) {
-		appInfo.windowPosX = 0;
-		appInfo.windowPosY = 0;
-
-		//change resolution before the window is created
-		//SysSetDisplayMode(width, height, SCRDEPTH);
-		//TODO: implement
-	}
- 
-	// at this point WM_CREATE message is sent/received
-	// the WM_CREATE branch inside WinProc function will execute here
-	appInfo.hwnd = CreateWindowEx(0, WindowName, "Wet Clay App", WS_BORDER, appInfo.windowPosX, appInfo.windowPosY, 
-		SCREEN_WIDTH, SCREEN_HEIGHT, NULL, NULL, appInfo.appInstance, NULL);
-
-	GetClientRect( appInfo.hwnd, appInfo.windowRect );
-
-	PIXELFORMATDESCRIPTOR pfd = {
-		sizeof( PIXELFORMATDESCRIPTOR ),
-		1,
-	    PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
-		PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
-		32,                       //Colordepth of the framebuffer.
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		32,                       //Number of bits for the depthbuffer
-	    0,                        //Number of bits for the stencilbuffer
-		0,                        //Number of Aux buffers in the framebuffer.
-		0, 0, 0, 0, 0
-	};
-
-	appInfo.deviceContext = GetDC( appInfo.hwnd );
-
-	int letWindowsChooseThisPixelFormat;
-	letWindowsChooseThisPixelFormat = ChoosePixelFormat( appInfo.deviceContext, &pfd ); 
-	SetPixelFormat( appInfo.deviceContext, letWindowsChooseThisPixelFormat, &pfd );
-
-	appInfo.openglRenderContext = wglCreateContext( appInfo.deviceContext );
-	if( wglMakeCurrent ( appInfo.deviceContext, appInfo.openglRenderContext ) == false ) {
-		printf( "Couldn't make GL context current.\n" );
-		return -1;
-	}
-
-	printf("Size of double:%d\n", sizeof( double ) );
-
-	glewInit();
-
-	MemorySlab gameSlab;
-	gameSlab.slabSize = MEGABYTES( RESERVED_SPACE );
-	gameSlab.slabStart = VirtualAlloc( NULL, gameSlab.slabSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
-	assert( gameSlab.slabStart != NULL );
-	gameSlab.current = gameSlab.slabStart;
-
-	SlabSubsection_Stack systemsMemory = CarveNewSubsection( &gameSlab, KILOBYTES( 12 ) );
-	SlabSubsection_Stack gameMemoryStack = CarveNewSubsection( &gameSlab, sizeof( GameMemory ) * 2 );
-	void* gMemPtr = AllocOnSubStack_Aligned( &gameMemoryStack, sizeof( GameMemory ) );
-
-	SoundSystemStorage* soundSystemStorage = Win32InitSound( appInfo.hwnd, 60, &systemsMemory );
-	RendererStorage* renderSystemStorage = InitRenderer( SCREEN_WIDTH, SCREEN_HEIGHT, &systemsMemory );
-
-	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
-	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
-	UpdateWindow( appInfo.hwnd );
-
-	BOOL canSupportHiResTimer = QueryPerformanceFrequency( &appInfo.timerResolution );
-	assert( canSupportHiResTimer );
-
-	GameInit( &gameSlab, gMemPtr, renderSystemStorage );
-
-	MSG Msg;
+void TextToNumberConversion( char* textIn, float* numbersOut ) {
+	char* start;
+	char* end; 
+	start = textIn; 
+	end = start;
+	uint16 index = 0;
 	do {
-		while( PeekMessage( &Msg, NULL, 0, 0, PM_REMOVE ) ) {
-			TranslateMessage( &Msg );
-			DispatchMessage( &Msg );
-		}
+		do {
+			end++;
+		} while( *end != ' ' && *end != 0 );
+		assert( ( end - start) < 16 );
+		char buffer [16];
+		memcpy( &buffer[0], start, end - start);
+		buffer[end - start] = 0;
+		start = end;
 
-		static LARGE_INTEGER startTime;
-		LARGE_INTEGER lastTime = startTime;
-		QueryPerformanceCounter( &startTime );
-
-		//GAME LOOP
-		if(appInfo.running) {
-			XINPUT_STATE state;
-			DWORD queryResult;
-			memset( &state, 0, sizeof( XINPUT_STATE ) ) ;
-			queryResult = XInputGetState( 0, &state );
-			if( queryResult == ERROR_SUCCESS ) {
-				//Note: polling of the sticks results in the range not quite reaching 1.0 in the positive direction
-				//it is like this to avoid branching on greater or less than 0.0
-				appInfo.controllerState.leftStick_x = ((float)state.Gamepad.sThumbLX / 32768.0f );
-				appInfo.controllerState.leftStick_y = ((float)state.Gamepad.sThumbLY / 32768.0f );
-				appInfo.controllerState.rightStick_x = ((float)state.Gamepad.sThumbRX / 32768.0f );
-				appInfo.controllerState.rightStick_y = ((float)state.Gamepad.sThumbRY / 32768.0f );
-				appInfo.controllerState.leftTrigger = ((float)state.Gamepad.bLeftTrigger / 255.0f );
-				appInfo.controllerState.rightTrigger = ((float)state.Gamepad.bRightTrigger / 255.0f );
-				appInfo.controllerState.leftBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
-				appInfo.controllerState.rightBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
-				appInfo.controllerState.button1 = state.Gamepad.wButtons & XINPUT_GAMEPAD_A;
-				appInfo.controllerState.button2 = state.Gamepad.wButtons & XINPUT_GAMEPAD_B;
-				appInfo.controllerState.button3 = state.Gamepad.wButtons & XINPUT_GAMEPAD_X;
-				appInfo.controllerState.button4 = state.Gamepad.wButtons & XINPUT_GAMEPAD_Y;
-				appInfo.controllerState.specialButtonLeft = state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK;
-				appInfo.controllerState.specialButtonRight = state.Gamepad.wButtons & XINPUT_GAMEPAD_START;
-			} else {
-				appInfo.controllerState = { };
-			}
-
-			LARGE_INTEGER elapsedTime;
-			elapsedTime.QuadPart = startTime.QuadPart - lastTime.QuadPart;
-			elapsedTime.QuadPart *= 1000;
-			elapsedTime.QuadPart /= appInfo.timerResolution.QuadPart;
-
-			appInfo.running = Update( gMemPtr, (float)elapsedTime.QuadPart, &soundSystemStorage->srb, soundSystemStorage->activeSounds );
-			Render( gMemPtr, renderSystemStorage );
-
-		    PushAudioToSoundCard( soundSystemStorage );
-
-			SwapBuffers( appInfo.deviceContext );
-			glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-		}
-
-		LARGE_INTEGER endTime, computeTime;
-		QueryPerformanceCounter( &endTime );
-		computeTime.QuadPart = endTime.QuadPart - startTime.QuadPart;
-		computeTime.QuadPart *= 1000;
-		computeTime.QuadPart /= appInfo.timerResolution.QuadPart;
-		if( computeTime.QuadPart <= appInfo.mSecsPerFrame ) {
-			Sleep(appInfo.mSecsPerFrame - computeTime.QuadPart );
-		} else {
-			printf("Didn't sleep, compute was %ld\n", computeTime.QuadPart );
-		}
-
-	} while( appInfo.running );
-
-	FreeConsole();
-
-	return Msg.wParam;
+		numbersOut[index] = atof( buffer );
+		index++;
+	} while( *end != 0 );
 }
 
-/*----------------------------------------------------------------------------------------
-                         App.h function prototype implementations
+//Copy-Pasted from altdevblog
+void EnableCrashingOnCrashes()
+{
+	typedef BOOL (WINAPI *tGetPolicy)(LPDWORD lpFlags);
+	typedef BOOL (WINAPI *tSetPolicy)(DWORD dwFlags);
+	const DWORD EXCEPTION_SWALLOWING = 0x1;
+
+	HMODULE kernel32 = LoadLibraryA( "kernel32.dll" );
+	tGetPolicy pGetPolicy = (tGetPolicy)GetProcAddress(
+		kernel32,
+		"GetProcessUserModeExceptionPolicy"
+	);
+	tSetPolicy pSetPolicy = (tSetPolicy)GetProcAddress(
+		kernel32,
+		"SetProcessUserModeExceptionPolicy"
+	);
+	if( pGetPolicy && pSetPolicy )
+	{
+		DWORD dwFlags;
+		if( pGetPolicy( &dwFlags ) )
+		{
+            // Turn off the filter
+			pSetPolicy(dwFlags & ~EXCEPTION_SWALLOWING);
+		}
+	}
+}
+
+
+/*-----------------------------------------------------------------------------------------
+                                File system query
 -----------------------------------------------------------------------------------------*/
 
-void GetMousePosition( float* x, float* y ) {
-	POINT mousePosition;
-	GetCursorPos( &mousePosition );
-	*x = ((float)(mousePosition.x - appInfo.windowPosX)) / ( (float)SCREEN_WIDTH / 2.0f ) - 1.0f;
-	*y = (((float)(mousePosition.y - appInfo.windowPosY)) / ( (float)SCREEN_HEIGHT / 2.0f ) - 1.0f) * -1.0f;
-}
-
-bool IsKeyDown( uint8 keyChar ) {
-	if( keyChar >= 'a' && keyChar <= 'z' ) {
-		keyChar -= ( 'a' - 'A');
-	}
-	short keystate = GetAsyncKeyState( keyChar );
-
-	return ( 1 << 16 ) & keystate;
-}
-
-bool IsControllerButtonDown( uint8 buttonIndex ) {
-	if( buttonIndex == 0 )
-	    return appInfo.controllerState.button1;
-	else if( buttonIndex == 1 )
-	    return appInfo.controllerState.button2;
-	else if( buttonIndex == 2 )
-	    return appInfo.controllerState.button3;
-	else if( buttonIndex == 3 )
-	    return appInfo.controllerState.button4;
-	else if( buttonIndex == 4 )
-		return appInfo.controllerState.leftBumper;
-	else if( buttonIndex == 5 )
-		return appInfo.controllerState.rightBumper;
-	else if( buttonIndex == 6)
-	    return appInfo.controllerState.specialButtonLeft;
-	else if( buttonIndex == 7 )
-	    return appInfo.controllerState.specialButtonRight;
-}
-
-void GetControllerStickState( uint8 stickIndex, float* x, float* y ) {
-	if( stickIndex == 0 ) {
-		*x = appInfo.controllerState.leftStick_x;
-		*y = appInfo.controllerState.leftStick_y;
-	} else if( stickIndex == 1 ) {
-		*x = appInfo.controllerState.rightStick_x;
-		*y = appInfo.controllerState.rightStick_y;
-	}
-}
-
-float GetTriggerState( uint8 triggerIndex ) {
-
-	if( triggerIndex == 0 ) {
-		return appInfo.controllerState.leftTrigger;
-	} else if( triggerIndex == 1) {
-		return appInfo.controllerState.rightTrigger;
-	}
-
-	return 0.0f;
-}
-
 #include <strsafe.h>
-void* ReadWholeFile( char* filename, int64* bytesRead ) {
-	//Open
+void* ReadWholeFile( char* filename, Stack* allocater ) {
 	HANDLE fileHandle;
 	//TODO: look into other options, such as: Overlapped, No_Bufffering, and Random_Access
-	fileHandle = CreateFile( filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0 );
+	fileHandle = CreateFile( 
+		filename, 
+		GENERIC_READ, 
+		FILE_SHARE_READ, 
+		0, 
+		OPEN_EXISTING, 
+		FILE_ATTRIBUTE_NORMAL, 
+		0 
+	);
 	if( fileHandle == INVALID_HANDLE_VALUE ) {
-		assert( false );
+		return NULL;
 	}
 
 	//Determine amount of data
 	LARGE_INTEGER fileSize;
 	GetFileSizeEx( fileHandle, &fileSize );
 	if( fileSize.QuadPart == 0 ) {
-		assert( false );
+		return NULL;
 	}
+	//Unsupported, file is too big
 	assert( fileSize.QuadPart <= 0xFFFFFFFF );
 
 	//Reserve Space
 	void* data = 0;
-	data = malloc( fileSize.QuadPart );
+	data = StackAllocA( allocater, fileSize.QuadPart );
 	memset( data, 0, fileSize.QuadPart );
 	assert( data != 0 );
 
@@ -319,361 +151,521 @@ void* ReadWholeFile( char* filename, int64* bytesRead ) {
 	//TODO: adjust for overlapped or async stuff?
 	BOOL readSuccess = ReadFile( fileHandle, data, fileSize.QuadPart, &dataRead, 0 );
 	if( !readSuccess || dataRead != fileSize.QuadPart ) {
-
+		FreeFromStack( allocater, data );
+		return NULL;
 	}
 
 	//Close
 	BOOL closeReturnValue = CloseHandle( fileHandle );
 	assert( closeReturnValue );
 
-	*bytesRead = fileSize.QuadPart;
 	return data;
+}
+
+//TODO: support Unicode, currently this breaks if used w/ UNICODE
+//Searches for file with most recent writeTime whose name contains "search" value
+//return 0 and Writes fileName to bestResult if a file was found
+//returns -1 if no file found & leave bestResult alone
+int GetMostRecentMatchingFile( char* search, char* bestResult ) {
+	char appendedSearchFile [128] = { };
+	int searchLen = strlen( search );
+	memcpy( &appendedSearchFile[0], search, searchLen );
+	appendedSearchFile[ searchLen ] = '*';
+
+	char bestFile [128] = { };
+	FILETIME latestTime = { };
+	WIN32_FIND_DATA fileData = { };
+	HANDLE searchHandle = FindFirstFile( appendedSearchFile, &fileData );
+
+	if( searchHandle == INVALID_HANDLE_VALUE ) 
+		return -1;
+	else {
+		latestTime = fileData.ftLastWriteTime;
+		#ifdef UNICODE
+		    assert(false);
+		#else
+		    int fileNameLen = strlen( (char*)fileData.cFileName );
+		    memcpy( bestFile, fileData.cFileName, fileNameLen );
+		#endif
+	}
+
+	FindNextFile( searchHandle, &fileData );
+	while( FindNextFile( searchHandle, &fileData ) ) {
+		FILETIME time = fileData.ftLastWriteTime;
+		if( CompareFileTime( &latestTime, &time ) == -1 ) {
+			latestTime = fileData.ftLastWriteTime;
+		    #ifdef UNICODE
+			    assert(false);
+		    #else
+			    int fileNameLen = strlen( (char*)fileData.cFileName );
+			    memset( bestFile, 0, 128 );
+			    memcpy( bestFile, fileData.cFileName, fileNameLen );
+		    #endif
+		}
+	}
+
+	int bestFileNameLen = strlen( bestFile );
+	memcpy( (void*)bestResult, bestFile, bestFileNameLen );
+	return 0;
+}
+
+int TrackFileUpdates( char* filePath ) {
+	WIN32_FIND_DATA fileFindData = { };
+	HANDLE handle = FindFirstFile( filePath, &fileFindData );
+
+	if( handle != INVALID_HANDLE_VALUE ) {
+		int filePathLen = strlen( filePath );
+		FILETIME fileTime = fileFindData.ftLastWriteTime;
+		char* recordedNameStart = appInfo.fileTracking.writeHead;
+
+		int newTrackIndex = appInfo.fileTracking.numTrackedFiles;
+		strcpy( recordedNameStart, filePath );
+		appInfo.fileTracking.fileNames[ newTrackIndex ] = recordedNameStart;
+		appInfo.fileTracking.fileTimes[ newTrackIndex ] = fileTime;
+		appInfo.fileTracking.writeHead += filePathLen + 1;
+		++appInfo.fileTracking.numTrackedFiles;
+
+		FindClose( handle );
+
+		return newTrackIndex;
+	} else {
+		return -1;
+	}
+}
+
+bool DidFileUpdate( int trackingIndex ) {
+	WIN32_FIND_DATA findFileData = { };
+	char* fileName = appInfo.fileTracking.fileNames[ trackingIndex ];
+	HANDLE h = FindFirstFile( fileName, &findFileData );
+
+	if( h != INVALID_HANDLE_VALUE ) {
+		FILETIME currentFileTime = findFileData.ftLastWriteTime;
+		int compareResult = CompareFileTime( 
+			&currentFileTime, 
+			&appInfo.fileTracking.fileTimes[ trackingIndex ] 
+		);
+		FindClose( h );
+
+		bool result = compareResult == 1;
+		if( result ) {
+			appInfo.fileTracking.fileTimes[ trackingIndex ] = currentFileTime;
+		}
+
+		return result;
+	} else {
+		return false;
+	}
+}
+
+#define GAME_CODE_FILEPATH "App.dll"
+
+void LoadGameCode() {
+	if( appInfo.gameapp.gameCodeHandle != NULL ) {
+		FreeLibrary( appInfo.gameapp.gameCodeHandle );
+		appInfo.gameapp.GameInit = NULL;
+		appInfo.gameapp.UpdateAndRender = NULL;
+		appInfo.gameapp.MixSound = NULL;
+	}
+
+	CopyFile( GAME_CODE_FILEPATH, "App_Running.dll", false );
+
+	HMODULE dllHandle = LoadLibrary( "App_Running.dll" );
+	appInfo.gameapp.gameCodeHandle = dllHandle;
+	appInfo.gameapp.GameInit = (gameInit*)GetProcAddress( dllHandle, "GameInit" );
+	appInfo.gameapp.UpdateAndRender = (updateAndRender*)GetProcAddress( dllHandle, "UpdateAndRender" );
+	appInfo.gameapp.MixSound = (mixSound*)GetProcAddress( dllHandle, "MixSound" );
+}
+
+/*-----------------------------------------------------------------------------------------
+	                            Sound Related Stuff
+-----------------------------------------------------------------------------------------*/
+
+#include <mmsystem.h>
+#include <dsound.h>
+#include <comdef.h>
+
+#define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name( LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter )
+typedef DIRECT_SOUND_CREATE( direct_sound_create );
+
+struct Win32Sound {
+	SoundDriver driver;
+
+	int32 writeBufferSize;
+	int32 safetySampleBytes;
+	int32 expectedBytesPerFrame;
+	uint8 bytesPerSample;
+	LPDIRECTSOUNDBUFFER writeBuffer;
+
+	uint64 runningSampleIndex;
+	DWORD bytesToWrite, byteToLock;
+};
+
+static LoadedSound LoadWaveFile( char* filePath, Stack* allocater ) {
+    #define RIFF_CODE( a, b, c, d ) ( ( (uint32)(a) << 0 ) | ( (uint32)(b) << 8 ) | ( (uint32)(c) << 16 ) | ( (uint32)(d) << 24 ) )
+	enum {
+		WAVE_ChunkID_fmt = RIFF_CODE( 'f', 'm', 't', ' ' ),
+		WAVE_ChunkID_data = RIFF_CODE( 'd', 'a', 't', 'a' ),
+		WAVE_ChunkID_RIFF = RIFF_CODE( 'R', 'I', 'F', 'F' ),
+		WAVE_ChunkID_WAVE = RIFF_CODE( 'W', 'A', 'V', 'E' )
+	};
+
+	#pragma pack( push, 1 )
+	struct WaveHeader{
+		uint32 RIFFID;
+		uint32 size;
+		uint32 WAVEID;
+	};
+
+	struct WaveChunk {
+		uint32 ID;
+		uint32 size;
+	};
+
+	struct Wave_fmt {
+		uint16 wFormatTag;
+		uint16 nChannels;
+		uint32 nSamplesPerSec;
+		uint32 nAvgBytesPerSec;
+		uint16 nBlockAlign;
+		uint16 wBitsPerSample;
+		uint16 cbSize;
+		uint16 wValidBitsPerSample;
+		uint32 dwChannelMask;
+		uint8 SubFormat [8];
+	};
+    #pragma pack( pop )
+
+	LoadedSound result = { };
+
+	void* fileData = ReadWholeFile( filePath, allocater );
+
+	if( fileData != NULL ) {
+		struct RiffIterator {
+			uint8* currentByte;
+			uint8* stop;
+		};
+
+		auto ParseChunkAt = []( WaveHeader* header, void* stop ) -> RiffIterator {
+			return { (uint8*)header, (uint8*)stop };
+		};
+		auto IsValid = []( RiffIterator iter ) -> bool  {
+			return iter.currentByte < iter.stop;
+		};
+		auto NextChunk = []( RiffIterator iter ) -> RiffIterator {
+			WaveChunk* chunk = (WaveChunk*)iter.currentByte;
+			//This is for alignment: ( ptr + ( targetalignment - 1 ) & ~( targetalignment - 1)) aligns ptr with the correct bit padding
+			uint32 size = ( chunk->size + 1 ) & ~1;
+			iter.currentByte += sizeof( WaveChunk ) + size;
+			return iter;
+		};
+		auto GetChunkData = []( RiffIterator iter ) -> void* {
+			void* result = ( iter.currentByte  + sizeof( WaveChunk ) );
+			return result;
+		};
+		auto GetType = []( RiffIterator iter ) -> uint32 {
+			WaveChunk* chunk = (WaveChunk*)iter.currentByte;
+			uint32 result = chunk->ID;
+			return result;
+		};
+		auto GetChunkSize = []( RiffIterator iter) -> uint32 {
+			WaveChunk* chunk = (WaveChunk*)iter.currentByte;
+			uint32 result = chunk->size;
+			return result;
+		};
+
+		WaveHeader* header = (WaveHeader*)fileData;
+		assert( header->RIFFID == WAVE_ChunkID_RIFF );
+		assert( header->WAVEID == WAVE_ChunkID_WAVE );
+
+		uint32 channelCount = 0;
+		uint32 sampleDataSize = 0;
+		void* sampleData = 0;
+		for( RiffIterator iter = ParseChunkAt( header + 1, (uint8*)( header + 1 ) + header->size - 4 ); 
+			IsValid( iter ); iter = NextChunk( iter ) ) {
+			switch( GetType( iter ) ) {
+				case WAVE_ChunkID_fmt: {
+					Wave_fmt* fmt = (Wave_fmt*)GetChunkData( iter );
+					assert( fmt->wFormatTag == 1 ); //NOTE: only supporting PCM
+					assert( fmt->nSamplesPerSec == 48000 );
+					assert( fmt->wBitsPerSample == 16 );
+					channelCount = fmt->nChannels;
+				}break;
+				case WAVE_ChunkID_data: {
+					sampleData = GetChunkData( iter );
+					sampleDataSize = GetChunkSize( iter );
+				}break;
+			}
+		}
+
+		assert( sampleData != 0 );
+
+		result.sampleCount = sampleDataSize / ( channelCount * sizeof( uint16 ) );
+		result.channelCount = channelCount;
+
+		if( channelCount == 1 ) {
+			result.samples[0] = (int16*)sampleData;
+			result.samples[1] = 0;
+		} else if( channelCount == 2 ) {
+
+		} else {
+			assert(false);
+		}
+	}
+	
+	return result;
+}
+
+static Win32Sound Win32InitSound( HWND hwnd, int targetGameHZ, Stack* systemStorage ) {
+	const int32 SamplesPerSecond = 48000;
+	const int32 BufferSize = SamplesPerSecond * sizeof( int16 ) * 2;
+	HMODULE DirectSoundDLL = LoadLibraryA( "dsound.dll" );
+
+	Win32Sound win32Sound = { };
+
+	//TODO: logging on all potential failure points
+	if( DirectSoundDLL ) {
+		direct_sound_create* DirectSoundCreate = (direct_sound_create*)GetProcAddress( DirectSoundDLL, "DirectSoundCreate" );
+
+		LPDIRECTSOUND directSound;
+		if( DirectSoundCreate && SUCCEEDED( DirectSoundCreate( 0, &directSound, 0 ) ) ) {
+
+			WAVEFORMATEX waveFormat = {};
+			waveFormat.wFormatTag = WAVE_FORMAT_PCM;
+			waveFormat.nChannels = 2;
+			waveFormat.nSamplesPerSec = SamplesPerSecond;
+			waveFormat.wBitsPerSample = 16;
+			waveFormat.nBlockAlign = (waveFormat.nChannels * waveFormat.wBitsPerSample) / 8;
+			waveFormat.nAvgBytesPerSec = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
+			waveFormat.cbSize = 0;
+
+			if( SUCCEEDED( directSound->SetCooperativeLevel( hwnd, DSSCL_PRIORITY ) ) ) {
+
+				DSBUFFERDESC bufferDescription = {};
+				bufferDescription.dwSize = sizeof( bufferDescription );
+				bufferDescription.dwFlags = DSBCAPS_PRIMARYBUFFER;
+
+				LPDIRECTSOUNDBUFFER primaryBuffer;
+				if( SUCCEEDED( directSound->CreateSoundBuffer( &bufferDescription, &primaryBuffer, 0 ) ) ) {
+					if( !SUCCEEDED( primaryBuffer->SetFormat( &waveFormat ) ) ) {
+						printf("Couldn't set format primary buffer\n");
+					}
+				} else {
+					printf("Couldn't secure primary buffer\n");
+				}
+			} else {
+				printf("couldn't set CooperativeLevel\n");
+			}
+
+			//For the secondary buffer (why do we need that again?)
+			DSBUFFERDESC bufferDescription = {};
+			bufferDescription.dwSize = sizeof( bufferDescription );
+			bufferDescription.dwFlags = 0; //DSBCAPS_PRIMARYBUFFER;
+			bufferDescription.dwBufferBytes = BufferSize;
+			bufferDescription.lpwfxFormat = &waveFormat;
+			HRESULT result = directSound->CreateSoundBuffer( 
+				&bufferDescription, 
+				&win32Sound.writeBuffer, 
+				0 
+			);
+			if( !SUCCEEDED( result ) ) {
+				printf("Couldn't secure a writable buffer\n");
+			}
+
+			win32Sound.byteToLock = 0;
+			win32Sound.bytesToWrite = 0;
+			win32Sound.writeBufferSize = BufferSize;
+			win32Sound.bytesPerSample = sizeof( int16 );
+ 			win32Sound.safetySampleBytes = ( ( SamplesPerSecond / targetGameHZ ) / 2 ) * win32Sound.bytesPerSample;
+ 			win32Sound.expectedBytesPerFrame = ( 48000 * win32Sound.bytesPerSample * 2 ) / targetGameHZ;
+			win32Sound.runningSampleIndex = 0;
+
+			{
+				SoundDriver* driver = &win32Sound.driver;
+				driver->srb.samplesPerSecond = SamplesPerSecond;
+				driver->srb.samplesToWrite = BufferSize / sizeof( int16 );
+				driver->srb.samples = (int16*)StackAllocA(
+					systemStorage,
+					BufferSize 
+				);
+
+				size_t playingInfoBufferSize = sizeof( PlayingSound ) * MAXSOUNDSATONCE;
+				driver->activeSoundList = (PlayingSound*)StackAllocA(
+					systemStorage,
+					playingInfoBufferSize 
+				);
+			}
+
+			HRESULT playResult = win32Sound.writeBuffer->Play( 0, 0, DSBPLAY_LOOPING );
+			if( !SUCCEEDED( playResult ) ) {
+				printf("failed to play\n");
+			}
+
+		} else {
+			printf("couldn't create direct sound object\n");
+		}
+	} else {
+		printf("couldn't create direct sound object\n");
+	}
+
+	win32Sound.driver.LoadWaveFile = &LoadWaveFile;
+
+	return win32Sound;
+}
+
+static void PushAudioToSoundCard( Win32Sound* win32Sound ) {
+	memset( 
+		win32Sound->driver.srb.samples,
+		0, 
+		win32Sound->writeBufferSize
+	);
+
+	//Setup info needed for writing (where to, how much, etc.)
+	DWORD playCursorPosition, writeCursorPosition;
+	if( SUCCEEDED( win32Sound->writeBuffer->GetCurrentPosition( &playCursorPosition, &writeCursorPosition) ) ) {
+		static bool firstTime = true;
+		if( firstTime ) {
+			win32Sound->runningSampleIndex = writeCursorPosition / win32Sound->bytesPerSample;
+			firstTime = false;
+		}
+
+	    //Pick up where we left off
+		win32Sound->byteToLock = ( win32Sound->runningSampleIndex * win32Sound->bytesPerSample * 2 ) % win32Sound->writeBufferSize;
+
+	    //Calculate how much to write
+		DWORD ExpectedFrameBoundaryByte = playCursorPosition + win32Sound->expectedBytesPerFrame;
+
+		//DSound can be latent sometimes when reporting the current writeCursor, so this is 
+		//the farthest ahead that the cursor could possibly be
+		DWORD safeWriteCursor = writeCursorPosition;
+		if( safeWriteCursor < playCursorPosition ) {
+			safeWriteCursor += win32Sound->writeBufferSize;
+		}
+		safeWriteCursor += win32Sound->safetySampleBytes;
+
+		bool AudioCardIsLowLatency = safeWriteCursor < ExpectedFrameBoundaryByte;
+
+		//Determine up to which byte we should write
+		DWORD targetCursor = 0;
+		if( AudioCardIsLowLatency ) {
+			targetCursor = ( ExpectedFrameBoundaryByte + win32Sound->expectedBytesPerFrame );
+		} else {
+			targetCursor = ( writeCursorPosition + win32Sound->expectedBytesPerFrame + win32Sound->safetySampleBytes );
+		}
+		targetCursor = targetCursor % win32Sound->writeBufferSize;
+
+		//Wrap up on math, how many bytes do we actually write
+		if( win32Sound->byteToLock > targetCursor ) {
+			win32Sound->bytesToWrite = win32Sound->writeBufferSize - win32Sound->byteToLock;
+			win32Sound->bytesToWrite += targetCursor;
+		} else {
+			win32Sound->bytesToWrite = targetCursor - win32Sound->byteToLock;
+		}
+
+		if( win32Sound->bytesToWrite == 0 ) {
+			printf( "BTW is zero, BTL:%lu, TC:%lu, PC:%lu, WC:%lu \n", win32Sound->byteToLock, targetCursor, playCursorPosition, writeCursorPosition );
+		}
+
+	    //Save number of samples that can be written to platform independent struct
+		win32Sound->driver.srb.samplesToWrite = win32Sound->bytesToWrite / win32Sound->bytesPerSample;
+	} else {
+		printf("couldn't get cursor\n");
+		return;
+	}
+
+	//Mix together currently playing sounds
+	appInfo.gameapp.MixSound( &win32Sound->driver );
+
+	//Push mixed sounds to the actual card
+	VOID* region0;
+	DWORD region0Size;
+	VOID* region1;
+	DWORD region1Size;
+
+	HRESULT result = win32Sound->writeBuffer->Lock( 
+		win32Sound->byteToLock, win32Sound->bytesToWrite,
+		&region0, &region0Size,
+		&region1, &region1Size,
+		0 );
+	if( !SUCCEEDED( result ) ) {
+		_com_error error( result );
+		LPCTSTR errMessage = error.ErrorMessage();
+		//printf( "Couldn't Lock Sound Buffer\n" );
+		printf( "Failed To Lock Buffer %s \n", errMessage );
+		//printf( "BTL:%lu BTW:%lu r0:%lu r0s:%lu r1:%lu r1s:%lu\n", win32Sound->byteToLock, 
+		//	win32Sound->bytesToWrite, region0, region0Size, region1, region1Size );
+		//printf( "SoundRenderBuffer Info: Samples--%d\n", win32Sound->srb.samplesToWrite );
+		return;
+	}
+
+	int16* sampleSrc = win32Sound->driver.srb.samples;
+	int16* sampleDest = (int16*)region0;
+	DWORD region0SampleCount = region0Size / ( win32Sound->bytesPerSample * 2 );
+	for( DWORD sampleIndex = 0; sampleIndex < region0SampleCount; ++sampleIndex ) {
+		*sampleDest++ = *sampleSrc++;
+		*sampleDest++ = *sampleSrc++;
+		++win32Sound->runningSampleIndex;
+	}
+	sampleDest = (int16*)region1;
+	DWORD region1SampleCount = region1Size / ( win32Sound->bytesPerSample * 2 );
+	for( DWORD sampleIndex = 0; sampleIndex < region1SampleCount; ++sampleIndex ) {
+		*sampleDest++ = *sampleSrc++;
+		*sampleDest++ = *sampleSrc++;
+		++win32Sound->runningSampleIndex;
+	}
+
+	//memset( win32Sound->srb.samples, 0, sizeof( int16 ) * 2 * win32Sound->srb.samplesToWrite );
+	//win32Sound->srb.samplesToWrite = 0;
+
+	result = win32Sound->writeBuffer->Unlock( region0, region0Size, region1, region1Size );
+	if( !SUCCEEDED( result ) ) {
+		printf("Couldn't Unlock\n");
+	}
 }
 
 /*----------------------------------------------------------------------------------------
                        Renderer.h function prototype implementations
 -----------------------------------------------------------------------------------------*/
 
-char* ReadShaderSrcFileFromDisk( const char* fileName ) {
-	FILE* file;
-    errno_t e = fopen_s(&file, fileName, "r" );
-    if( file == NULL || e != 0) {
-        printf( "Could not open file %s\n", fileName );
-        return 0;
-    }
-    fseek( file, 0, SEEK_END );
-    size_t fileSize = ftell( file );
-    char* buffer = (char*)malloc( fileSize + 1 );
-    memset( buffer, 0, fileSize + 1 );
+#include "GLRenderer.h"
 
-    fseek( file, 0, SEEK_SET );
-    fread( buffer , 1, fileSize, file );
-    fclose( file );
-    return buffer;
-}
+GL_API InitGLAPI_Win32() {
+	GL_API gl_api = { };
 
-void LoadMeshDataFromDisk( const char* fileName,  SlabSubsection_Stack* allocater, MeshGeometryData* storage, Armature* armature ) {
-	tinyxml2::XMLDocument colladaDoc;
-	colladaDoc.LoadFile( fileName );
-	//if( colladaDoc == NULL ) {
-		//printf( "Could not load mesh: %s\n", fileName );
-		//return;
-	//}
+	gl_api.glBindBuffer = (PFNGLBINDBUFFERPROC)wglGetProcAddress( "glBindBuffer" );
+	gl_api.glCreateProgram = (PFNGLCREATEPROGRAMPROC)wglGetProcAddress( "glCreateProgram" );
+	gl_api.glBufferData = (PFNGLBUFFERDATAPROC)wglGetProcAddress( "glBufferData" );
+	gl_api.glGenBuffers = (PFNGLGENBUFFERSPROC)wglGetProcAddress( "glGenBuffers" );
+	gl_api.glUseProgram = (PFNGLUSEPROGRAMPROC)wglGetProcAddress( "glUseProgram" );
+	gl_api.glActiveTexture = (PFNGLACTIVETEXTUREPROC)wglGetProcAddress( "glActiveTexture" );
+	//gl_api.glGenTextures = (PFNGLGENTEXTURESPROC)wglGetProcAddress( "glGenTextures" );
+	//gl_api.glBindTexture = (PFNGLBINDTEXTUREPROC)wglGetProcAddress( "glBindTexture" );
+	//gl_api.glTexParameteri = (PFNGLTEXPARAMETERIPROC)wglGetProcAddress( "glTexParameteri" );
+	//gl_api.glTexImage2D = (PFNGLTEXIMAGE2DPROC)wglGetProcAddress( "glTexImage2D" );
+	gl_api.glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress( "glEnableVertexAttribArray" );
+	gl_api.glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress( "glVertexAttribPointer" );
+	gl_api.glGenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)wglGetProcAddress( "glGenFramebuffers" );
+	gl_api.glBindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)wglGetProcAddress( "glBindFramebuffer" );
+	gl_api.glIsShader = (PFNGLISSHADERPROC)wglGetProcAddress( "glIsShader" );
+	gl_api.glGetShaderiv = (PFNGLGETSHADERIVPROC)wglGetProcAddress( "glGetShaderiv" );
+	gl_api.glCreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress( "glCreateShader" );
+	gl_api.glCompileShader = (PFNGLCOMPILESHADERPROC)wglGetProcAddress( "glCompileShader" );
+	gl_api.glShaderSource = (PFNGLSHADERSOURCEPROC)wglGetProcAddress( "glShaderSource" );
+	gl_api.glAttachShader = (PFNGLATTACHSHADERPROC)wglGetProcAddress( "glAttachShader" );
+	gl_api.glDeleteShader = (PFNGLDELETESHADERPROC)wglGetProcAddress( "glDeleteShader" );
+	gl_api.glDeleteProgram = (PFNGLDELETEPROGRAMPROC)wglGetProcAddress( "glDeleteProgram" );
+	gl_api.glLinkProgram = (PFNGLLINKPROGRAMPROC)wglGetProcAddress( "glLinkProgram" );
+	gl_api.glGetProgramiv = (PFNGLGETPROGRAMIVPROC)wglGetProcAddress("glGetProgramiv" );
+	gl_api.glGetActiveAttrib = (PFNGLGETACTIVEATTRIBPROC)wglGetProcAddress( "glGetActiveAttrib" );
+	gl_api.glGetActiveUniform = (PFNGLGETACTIVEUNIFORMPROC)wglGetProcAddress( "glGetActiveUniform" );
+	gl_api.glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)wglGetProcAddress( "glGetUniformLocation" );
+	gl_api.glUniform1i = (PFNGLUNIFORM1IPROC)wglGetProcAddress( "glUniform1i" );
+	gl_api.glUniform4fv = (PFNGLUNIFORM4FVPROC)wglGetProcAddress( "glUniform4fv" );
+	gl_api.glUniform3fv = (PFNGLUNIFORM3FVPROC)wglGetProcAddress( "glUniform3fv" );
+	gl_api.glUniform2fv =  (PFNGLUNIFORM2FVPROC)wglGetProcAddress( "glUniform2fv" );
+	gl_api.glUniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)wglGetProcAddress( "glUniformMatrix4fv" );
+	gl_api.glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)wglGetProcAddress( "glGetAttribLocation" );
 
-	tinyxml2::XMLElement* meshNode = colladaDoc.FirstChildElement( "COLLADA" )->FirstChildElement( "library_geometries" )
-	->FirstChildElement( "geometry" )->FirstChildElement( "mesh" );
-
-	char* colladaTextBuffer = NULL;
-	size_t textBufferLen = 0;
-
-	uint16 vCount = 0;
-	uint16 nCount = 0;
-	uint16 uvCount = 0;
-	uint16 indexCount = 0;
-	float* rawColladaVertexData;
-	float* rawColladaNormalData;
-	float* rawColladaUVData;
-	float* rawIndexData;
-	///Basic Mesh Geometry Data
-	{
-		tinyxml2::XMLNode* colladaVertexArray = meshNode->FirstChildElement( "source" );
-		tinyxml2::XMLElement* vertexFloatArray = colladaVertexArray->FirstChildElement( "float_array" );
-		tinyxml2::XMLNode* colladaNormalArray = colladaVertexArray->NextSibling();
-		tinyxml2::XMLElement* normalFloatArray = colladaNormalArray->FirstChildElement( "float_array" );
-		tinyxml2::XMLNode* colladaUVMapArray = colladaNormalArray->NextSibling();
-		tinyxml2::XMLElement* uvMapFloatArray = colladaUVMapArray->FirstChildElement( "float_array" );
-		tinyxml2::XMLElement* meshSrc = meshNode->FirstChildElement( "polylist" );
-		tinyxml2::XMLElement* colladaIndexArray = meshSrc->FirstChildElement( "p" );
-
-		int count;
-		const char* colladaVertArrayVal = vertexFloatArray->FirstChild()->Value();
-		vertexFloatArray->QueryAttribute( "count", &count );
-		vCount = count;
-		const char* colladaNormArrayVal = normalFloatArray->FirstChild()->Value();
-		normalFloatArray->QueryAttribute( "count", &count );
-		nCount = count;
-		const char* colladaUVMapArrayVal = uvMapFloatArray->FirstChild()->Value();
-		uvMapFloatArray->QueryAttribute( "count", &count );
-		uvCount = count;
-		const char* colladaIndexArrayVal = colladaIndexArray->FirstChild()->Value();
-		meshSrc->QueryAttribute( "count", &count );
-		//Assume this is already triangulated
-		indexCount = count * 3 * 3;
-
-		///TODO: replace this with fmaxf?
-		std::function< size_t (size_t, size_t) > sizeComparison = []( size_t size1, size_t size2 ) -> size_t {
-			if( size1 >= size2 ) return size1;
-			return size2;
-		};
-
-		textBufferLen = strlen( colladaVertArrayVal );
-		textBufferLen = sizeComparison( strlen( colladaNormArrayVal ), textBufferLen );
-		textBufferLen = sizeComparison( strlen( colladaUVMapArrayVal ), textBufferLen );
-		textBufferLen = sizeComparison( strlen( colladaIndexArrayVal ), textBufferLen );
-		colladaTextBuffer = (char*)alloca( textBufferLen );
-		memset( colladaTextBuffer, 0, textBufferLen );
-		rawColladaVertexData = (float*)alloca( sizeof(float) * vCount );
-		rawColladaNormalData = (float*)alloca( sizeof(float) * nCount );
-		rawColladaUVData = (float*)alloca( sizeof(float) * uvCount );
-		rawIndexData = (float*)alloca( sizeof(float) * indexCount );
-
-		memset( rawColladaVertexData, 0, sizeof(float) * vCount );
-		memset( rawColladaNormalData, 0, sizeof(float) * nCount );
-		memset( rawColladaUVData, 0, sizeof(float) * uvCount );
-		memset( rawIndexData, 0, sizeof(float) * indexCount );
-
-		//Reading Vertex position data
-		strcpy( colladaTextBuffer, colladaVertArrayVal );
-		TextToNumberConversion( colladaTextBuffer, rawColladaVertexData );
-
-	    //Reading Normals data
-		memset( colladaTextBuffer, 0, textBufferLen );
-		strcpy( colladaTextBuffer, colladaNormArrayVal );
-		TextToNumberConversion( colladaTextBuffer, rawColladaNormalData );
-
-	    //Reading UV map data
-		memset( colladaTextBuffer, 0, textBufferLen );
-		strcpy( colladaTextBuffer, colladaUVMapArrayVal );
-		TextToNumberConversion( colladaTextBuffer, rawColladaUVData );
-
-	    //Reading index data
-		memset( colladaTextBuffer, 0, textBufferLen );
-		strcpy( colladaTextBuffer, colladaIndexArrayVal );
-		TextToNumberConversion( colladaTextBuffer, rawIndexData );
-	}
-
-	float* rawBoneWeightData = NULL;
-	float* rawBoneIndexData = NULL;
-	//Skinning Data
-	{
-		tinyxml2::XMLElement* libControllers = colladaDoc.FirstChildElement( "COLLADA" )->FirstChildElement( "library_controllers" );
-		if( libControllers == NULL ) goto skinningExit;
-		tinyxml2::XMLElement* controllerElement = libControllers->FirstChildElement( "controller" );
-		if( controllerElement == NULL ) goto skinningExit;
-
-		tinyxml2::XMLNode* vertexWeightDataArray = controllerElement->FirstChild()->FirstChild()->NextSibling()->NextSibling()->NextSibling();
-		tinyxml2::XMLNode* vertexBoneIndexDataArray = vertexWeightDataArray->NextSibling()->NextSibling();
-		tinyxml2::XMLNode* vCountArray = vertexBoneIndexDataArray->FirstChildElement( "vcount" );
-		tinyxml2::XMLNode* vArray = vertexBoneIndexDataArray->FirstChildElement( "v" );
-		const char* boneWeightsData = vertexWeightDataArray->FirstChild()->FirstChild()->Value();
-		const char* vCountArrayData = vCountArray->FirstChild()->Value();
-		const char* vArrayData = vArray->FirstChild()->Value();
-
-		float* colladaBoneWeightData = NULL;
-		float* colladaBoneIndexData = NULL;
-		float* colladaBoneInfluenceCounts = NULL;
-		///This is overkill, Collada stores ways less data usually, plus this still doesn't account for very complex models 
-		///(e.g, lots of verts with more than MAXBONESPERVERT influencing position )
-		colladaBoneWeightData = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
-		colladaBoneIndexData = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
-		colladaBoneInfluenceCounts = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
-
-		//Read bone weights data
-		memset( colladaTextBuffer, 0, textBufferLen );
-		strcpy( colladaTextBuffer, boneWeightsData );
-		TextToNumberConversion( colladaTextBuffer, colladaBoneWeightData );
-
-		//Read bone index data
-		memset( colladaTextBuffer, 0, textBufferLen );
-		strcpy( colladaTextBuffer, vArrayData );
-		TextToNumberConversion( colladaTextBuffer, colladaBoneIndexData );
-
-		//Read bone influence counts
-		memset( colladaTextBuffer, 0, textBufferLen );
-		strcpy( colladaTextBuffer, vCountArrayData );
-		TextToNumberConversion( colladaTextBuffer, colladaBoneInfluenceCounts );
-
-		rawBoneWeightData = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
-		rawBoneIndexData = (float*)alloca( sizeof(float) * MAXBONESPERVERT * vCount );
-		memset( rawBoneWeightData, 0, sizeof(float) * MAXBONESPERVERT * vCount );
-		memset( rawBoneIndexData, 0, sizeof(float) * MAXBONESPERVERT * vCount );
-
-		int colladaIndexIndirection = 0;
-		int verticiesInfluenced = 0;
-		vCountArray->Parent()->ToElement()->QueryAttribute( "count", &verticiesInfluenced );
-		for( uint16 i = 0; i < verticiesInfluenced; i++ ) {
-			uint8 influenceCount = colladaBoneInfluenceCounts[i];
-			for( uint16 j = 0; j < influenceCount; j++ ) {
-				uint16 boneIndex = colladaBoneIndexData[ colladaIndexIndirection++ ];
-				uint16 weightIndex = colladaBoneIndexData[ colladaIndexIndirection++ ];
-				rawBoneWeightData[ i * MAXBONESPERVERT + j ] = colladaBoneWeightData[ weightIndex ];
-				rawBoneIndexData[ i * MAXBONESPERVERT + j ] = boneIndex;
-			}
-		}
-	}
-	skinningExit:
-
-	//Armature
-	if( armature != NULL ) {
-		tinyxml2::XMLElement* visualScenesNode = colladaDoc.FirstChildElement( "COLLADA" )->FirstChildElement( "library_visual_scenes" )
-		->FirstChildElement( "visual_scene" )->FirstChildElement( "node" );
-		tinyxml2::XMLElement* armatureNode = NULL;
-
-		//Step through scene heirarchy until start of armature is found
-		while( visualScenesNode != NULL ) {
-			if( visualScenesNode->FirstChildElement( "node" ) != NULL && 
-				visualScenesNode->FirstChildElement( "node" )->Attribute( "type", "JOINT" ) != NULL ) {
-				armatureNode = visualScenesNode;
-			    break;
-			} else {
-				visualScenesNode = visualScenesNode->NextSibling()->ToElement();
-			}
-		}
-		if( armatureNode == NULL ) return;
-
-		//Parsing basic bone data from XML
-		std::function< Bone* ( tinyxml2::XMLElement*, Armature*, Bone*  ) > ParseColladaBoneData = 
-		[&]( tinyxml2::XMLElement* boneElement, Armature* armature, Bone* parentBone ) -> Bone* {
-			Bone* bone = &armature->bones[ armature->boneCount ];
-			bone->parent = parentBone;
-			bone->currentTransform = &armature->boneTransforms[ armature->boneCount ];
-			SetToIdentity( bone->currentTransform );
-			bone->boneIndex = armature->boneCount;
-			armature->boneCount++;
-
-			strcpy( &bone->name[0], boneElement->Attribute( "sid" ) );
-
-			float matrixData[16];
-			char matrixTextData [512];
-			tinyxml2::XMLNode* matrixElement = boneElement->FirstChildElement("matrix");
-			strcpy( &matrixTextData[0], matrixElement->FirstChild()->ToText()->Value() );
-			TextToNumberConversion( matrixTextData, matrixData );
-			//Note: this is only local transform data, but its being saved in bind matrix for now
-			Mat4 m;
-			memcpy( &m.m[0][0], &matrixData[0], sizeof(float) * 16 );
-			bone->bindPose = TransposeMatrix( m );
-
-			if( parentBone == NULL ) {
-				armature->rootBone = bone;
-			} else {
-				bone->bindPose = MultMatrix( parentBone->bindPose, bone->bindPose );
-			}
-
-			bone->childCount = 0;
-			tinyxml2::XMLElement* childBoneElement = boneElement->FirstChildElement( "node" );
-			while( childBoneElement != NULL ) {
-				Bone* childBone = ParseColladaBoneData( childBoneElement, armature, bone );
-				bone->children[ bone->childCount++ ] = childBone;
-				tinyxml2::XMLNode* siblingNode = childBoneElement->NextSibling();
-				if( siblingNode != NULL ) {
-					childBoneElement = siblingNode->ToElement();
-				} else {
-					childBoneElement = NULL;
-				}
-			};
-
-			return bone;
-		};
-		armature->boneCount = 0;
-		tinyxml2::XMLElement* boneElement = armatureNode->FirstChildElement( "node" );
-		ParseColladaBoneData( boneElement, armature, NULL );
-
-		//Parse inverse bind pose data from skinning section of XML
-		{
-			tinyxml2::XMLElement* boneNamesSource = colladaDoc.FirstChildElement( "COLLADA" )->FirstChildElement( "library_controllers" )
-			->FirstChildElement( "controller" )->FirstChildElement( "skin" )->FirstChildElement( "source" );
-			tinyxml2::XMLElement* boneBindPoseSource = boneNamesSource->NextSibling()->ToElement();
-
-			char* boneNamesLocalCopy = NULL;
-			float* boneMatriciesData = (float*)alloca( sizeof(float) * 16 * armature->boneCount );
-			const char* boneNameArrayData = boneNamesSource->FirstChild()->FirstChild()->Value();
-			const char* boneMatrixTextData = boneBindPoseSource->FirstChild()->FirstChild()->Value();
-			size_t nameDataLen = strlen( boneNameArrayData );
-			size_t matrixDataLen = strlen( boneMatrixTextData );
-			boneNamesLocalCopy = (char*)alloca( nameDataLen + 1 );
-			memset( boneNamesLocalCopy, 0, nameDataLen + 1 );
-			assert( textBufferLen > matrixDataLen );
-			memcpy( boneNamesLocalCopy, boneNameArrayData, nameDataLen );
-			memcpy( colladaTextBuffer, boneMatrixTextData, matrixDataLen );
-			TextToNumberConversion( colladaTextBuffer, boneMatriciesData );
-			char* nextBoneName = &boneNamesLocalCopy[0];
-			for( uint8 matrixIndex = 0; matrixIndex < armature->boneCount; matrixIndex++ ) {
-				Mat4 matrix;
-				memcpy( &matrix.m[0], &boneMatriciesData[matrixIndex * 16], sizeof(float) * 16 );
-
-				char boneName [32];
-				char* boneNameEnd = nextBoneName;
-				do {
-					boneNameEnd++;
-				} while( *boneNameEnd != ' ' && *boneNameEnd != 0 );
-				size_t charCount = boneNameEnd - nextBoneName;
-				memset( boneName, 0, sizeof( char ) * 32 );
-				memcpy( boneName, nextBoneName, charCount );
-				nextBoneName = boneNameEnd + 1;
-
-				Bone* targetBone = NULL;
-				for( uint8 boneIndex = 0; boneIndex < armature->boneCount; boneIndex++ ) {
-					Bone* bone = &armature->bones[ boneIndex ];
-					if( strcmp( bone->name, boneName ) == 0 ) {
-						targetBone = bone;
-						break;
-					}
-				}
-
-				Mat4 correction;
-				correction.m[0][0] = 1.0f; correction.m[0][1] = 0.0f; correction.m[0][2] = 0.0f; correction.m[0][3] = 0.0f;
-				correction.m[1][0] = 0.0f; correction.m[1][1] = 0.0f; correction.m[1][2] = 1.0f; correction.m[1][3] = 0.0f;
-				correction.m[2][0] = 0.0f; correction.m[2][1] = -1.0f; correction.m[2][2] = 0.0f; correction.m[2][3] = 0.0f;
-				correction.m[3][0] = 0.0f; correction.m[3][1] = 0.0f; correction.m[3][2] = 0.0f; correction.m[3][3] = 1.0f;
-				targetBone->invBindPose = TransposeMatrix( matrix );
-				targetBone->invBindPose = MultMatrix( correction, targetBone->invBindPose );
-			}
-		}
-	}
-
-	//output to my version of storage
-	storage->dataCount = 0;
-	uint16 counter = 0;
-
-	const uint32 vertCount = indexCount / 3;
-	storage->vData = (Vec3*)AllocOnSubStack_Aligned( allocater, vertCount * sizeof( Vec3 ), 16 );
-	storage->uvData = (float*)AllocOnSubStack_Aligned( allocater, vertCount * 2 * sizeof( float ), 4 );
-	storage->normalData = (Vec3*)AllocOnSubStack_Aligned( allocater, vertCount * sizeof( Vec3 ), 4 );
-	storage->iData = (uint32*)AllocOnSubStack_Aligned( allocater, vertCount * sizeof( uint32 ), 4 );
-	if( rawBoneWeightData != NULL ) {
-		storage->boneWeightData = (float*)AllocOnSubStack_Aligned( allocater, sizeof(float) * vertCount * MAXBONESPERVERT, 4 );
-		storage->boneIndexData = (uint32*)AllocOnSubStack_Aligned( allocater, sizeof(uint32) * vertCount * MAXBONESPERVERT, 4 );
-	} else {
-		storage->boneWeightData = NULL;
-		storage->boneIndexData = NULL;
-	}
-
-	while( counter < indexCount ) {
-		Vec3 v, n;
-		float uv_x, uv_y;
-
-		uint16 vertIndex = rawIndexData[ counter++ ];
-		uint16 normalIndex = rawIndexData[ counter++ ];
-		uint16 uvIndex = rawIndexData[ counter++ ];
-
-		v.x = rawColladaVertexData[ vertIndex * 3 + 0 ];
-		v.z = -rawColladaVertexData[ vertIndex * 3 + 1 ];
-		v.y = rawColladaVertexData[ vertIndex * 3 + 2 ];
-
-		n.x = rawColladaNormalData[ normalIndex * 3 + 0 ];
-		n.z = -rawColladaNormalData[ normalIndex * 3 + 1 ];
-		n.y = rawColladaNormalData[ normalIndex * 3 + 2 ];
-
-		uv_x = rawColladaUVData[ uvIndex * 2 ];
-		uv_y = rawColladaUVData[ uvIndex * 2 + 1 ];
-
-		///TODO: check for exact copies of data, use to index to first instance instead
-		uint32 storageIndex = storage->dataCount;
-		storage->vData[ storageIndex ] = v;
-		storage->normalData[ storageIndex ] = n;
-		storage->uvData[ storageIndex * 2 ] = uv_x;
-		storage->uvData[ storageIndex * 2 + 1 ] = uv_y;
-		if( rawBoneWeightData != NULL ) {
-			uint16 boneDataIndex = storage->dataCount * MAXBONESPERVERT;
-			uint16 boneVertexIndex = vertIndex * MAXBONESPERVERT;
-			for( uint8 i = 0; i < MAXBONESPERVERT; i++ ) {
-				storage->boneWeightData[ boneDataIndex + i ] = rawBoneWeightData[ boneVertexIndex + i ];
-				storage->boneIndexData[ boneDataIndex + i ] = rawBoneIndexData[ boneVertexIndex + i ];
-			}
-		}
-		storage->iData[ storageIndex ] = storageIndex;
-		storage->dataCount++;
-	};
+	return gl_api;
 }
 
 void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyframe, Armature* armature ) {
@@ -731,8 +723,6 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyfr
 		}
 		BoneKeyFrame* key = &keyframe->targetBoneTransforms[ targetBone->boneIndex ];
 		key->combinedMatrix = boneLocalTransform;
-		DecomposeMat4( boneLocalTransform, &key->scale, &key->rotation, &key->translation );
-		Mat4 m = Mat4FromComponents( key->scale, key->rotation, key->translation );
 
 		animationNode = animationNode->NextSibling();
 	}
@@ -756,39 +746,9 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyfr
 	LocalRecursiveScope.PremultiplyKeyFrame( armature->rootBone, i );
 }
 
-void LoadTextureDataFromDisk( const char* fileName, TextureData* storage ) {
-    storage->data = (uint8*)stbi_load( fileName, (int*)&storage->width, (int*)&storage->height, (int*)&storage->channelsPerPixel, 0 );
-    if( storage->data == NULL ) {
-        printf( "Could not load file: %s\n", fileName );
-    }
-    printf( "Loaded file: %s\n", fileName );
-    printf( "Width: %d, Height: %d, Channel count: %d\n", storage->width, storage->height, storage->channelsPerPixel );
-}
-
 /*----------------------------------------------------------------------------------------
-                       Local Functions only to be used in this file
+                                 Win32 App required stuff
 ------------------------------------------------------------------------------------------*/
-
-static void TextToNumberConversion( char* textIn, float* numbersOut ) {
-	char* start;
-	char* end; 
-	start = textIn; 
-	end = start;
-	uint16 index = 0;
-	do {
-		do {
-			end++;
-		} while( *end != ' ' && *end != 0 );
-		assert( ( end - start) < 16 );
-		char buffer [16];
-		memcpy( &buffer[0], start, end - start);
-		buffer[end - start] = 0;
-		start = end;
-
-		numbersOut[index] = atof( buffer );
-		index++;
-	} while( *end != 0 );
-}
 
 static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 	switch (uMsg) {
@@ -809,8 +769,331 @@ static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			PostQuitMessage( 0 );
 			break;
 		}
+
+		case WM_ERASEBKGND: {
+			return 666;
+		}
+
+		case WM_KEYDOWN: {
+			char keyCharValue = 0;
+			if( wParam >= 0x30 && wParam <= 0x39 ) {
+				keyCharValue = ( wParam - 0x30 ) + '0';
+			} else if( wParam >= 0x41 && wParam <= 0x5A ) {
+				bool isShiftHeld = ( GetAsyncKeyState( VK_SHIFT ) & ( 1 << 16 ) );
+				keyCharValue = ( wParam - 0x41 ) + 'a';
+				keyCharValue += ( ( (int)isShiftHeld ) * ( 'A' - 'a' ) );
+			} else if ( wParam == VK_SPACE ) {
+				keyCharValue = ' ';
+			} else if ( wParam == VK_OEM_2 ) { //TODO: this is U.S. only, make more general
+				keyCharValue = '/';
+			} else if ( wParam == VK_OEM_PERIOD ) {
+				keyCharValue = '.';
+			} else if ( wParam == VK_OEM_MINUS ) {
+				keyCharValue = '-';
+			}
+
+			appInfo.keyboardInputBuffer[ appInfo.keyPressBufferIndex++ ] = keyCharValue;
+
+			break;
+		}
 	}
 
 	// Pass All Unhandled Messages To DefWindowProc
 	return DefWindowProc(hWnd,uMsg,wParam,lParam);
+}
+
+static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow ) {
+	AllocConsole(); //create a console
+	freopen( "conin$","r",stdin );
+	freopen( "conout$","w",stdout );
+	freopen( "conout$","w",stderr );
+	printf( "Program Started, console initialized\n" );
+
+	appInfo.appInstance = hInstance;
+
+	const char WindowName[] = "Wet Clay";
+
+	appInfo.running = true;
+	appInfo.isFullScreen = false;
+	appInfo.mSecsPerFrame = 16; //60FPS
+
+	appInfo.wc.cbSize = sizeof(WNDCLASSEX);
+	appInfo.wc.style = CS_OWNDC;
+	appInfo.wc.lpfnWndProc = WndProc;
+	appInfo.wc.cbClsExtra = 0;
+	appInfo.wc.cbWndExtra = 0;
+	appInfo.wc.hInstance = appInfo.appInstance;
+	appInfo.wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+	appInfo.wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+	appInfo.wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	appInfo.wc.lpszMenuName = NULL;
+	appInfo.wc.lpszClassName = WindowName;
+	appInfo.wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+
+	EnableCrashingOnCrashes();
+
+	if( !RegisterClassEx( &appInfo.wc ) ) {
+		printf( "Failed to register class\n" );
+		appInfo.running = false;
+		return -1;
+	}
+
+	// center position of the window
+	appInfo.fullScreenWidth = GetSystemMetrics(SM_CXSCREEN);
+	appInfo.fullScreenHeight = GetSystemMetrics(SM_CYSCREEN);
+	appInfo.windowPosX = ( appInfo.fullScreenWidth / 2) - (SCREEN_WIDTH / 2);
+	appInfo.windowPosY = ( appInfo.fullScreenHeight / 2) - (SCREEN_HEIGHT / 2);
+ 
+	// set up the window for a windowed application by default
+	//long wndStyle = WS_OVERLAPPEDWINDOW;
+ 
+	if( appInfo.isFullScreen ) {
+		appInfo.windowPosX = 0;
+		appInfo.windowPosY = 0;
+
+		//change resolution before the window is created
+		//SysSetDisplayMode(width, height, SCRDEPTH);
+		//TODO: implement
+	}
+ 
+	// at this point WM_CREATE message is sent/received
+	// the WM_CREATE branch inside WinProc function will execute here
+	appInfo.hwnd = CreateWindowEx(
+		0, 
+		WindowName, 
+		"Wet Clay App", 
+		WS_BORDER, 
+		appInfo.windowPosX, 
+		appInfo.windowPosY, 
+		SCREEN_WIDTH, 
+		SCREEN_HEIGHT, 
+		NULL, 
+		NULL, 
+		appInfo.appInstance, 
+		NULL
+	);
+
+	GetClientRect( appInfo.hwnd, appInfo.windowRect );
+
+	{
+		PIXELFORMATDESCRIPTOR pfd = {
+			sizeof( PIXELFORMATDESCRIPTOR ),
+			1,
+	        PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
+		    PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
+		    32,                       //Colordepth of the framebuffer.
+		    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //Don't care....
+		    32,                       //Number of bits for the depthbuffer
+	        0,                        //Number of bits for the stencilbuffer
+		    0,                        //Number of Aux buffers in the framebuffer.
+		    0, 0, 0, 0, 0             //Don't care...
+		};
+
+		appInfo.deviceContext = GetDC( appInfo.hwnd );
+
+		int letWindowsChooseThisPixelFormat;
+		letWindowsChooseThisPixelFormat = ChoosePixelFormat( 
+			appInfo.deviceContext, 
+			&pfd 
+		); 
+		SetPixelFormat( 
+			appInfo.deviceContext, 
+			letWindowsChooseThisPixelFormat, 
+			&pfd 
+		);
+
+		appInfo.openglRenderContext = wglCreateContext( appInfo.deviceContext );
+		if( wglMakeCurrent ( appInfo.deviceContext, appInfo.openglRenderContext ) == false ) {
+			printf( "Couldn't make GL context current.\n" );
+			return -1;
+		}
+	}
+
+	BOOL canSupportHiResTimer = QueryPerformanceFrequency( &appInfo.timerResolution );
+	assert( canSupportHiResTimer );
+
+	appInfo.gameapp = { };
+
+	GlobalMem gameSlab;
+	gameSlab.slabSize = MEGABYTES( 32 );
+	gameSlab.slabStart = VirtualAlloc( NULL, gameSlab.slabSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
+	assert( gameSlab.slabStart != NULL );
+	gameSlab.current = gameSlab.slabStart;
+
+	Stack systemsMemory = AllocateStackInGlobalMem( &gameSlab, KILOBYTES( 200 ) );
+
+	GL_API glApi = InitGLAPI_Win32();
+	RendererStorage renderStorage = { };
+	GLRenderDriver glDriver = InitGLRenderer( 
+		&glApi, 
+		SCREEN_WIDTH, 
+		SCREEN_HEIGHT, 
+		&renderStorage 
+	);
+	Win32Sound win32Sound = Win32InitSound( appInfo.hwnd, 60, &systemsMemory );
+
+	FileSys fileSys = { };
+	fileSys.ReadWholeFile = &ReadWholeFile;
+	fileSys.GetMostRecentMatchingFile = &GetMostRecentMatchingFile;
+	fileSys.TrackFileUpdates = &TrackFileUpdates;
+	fileSys.DidFileUpdate = &DidFileUpdate;
+
+	printf(
+		"Remaining System Memory: %Id\n", 
+		((intptr)systemsMemory.end - (intptr)systemsMemory.current) 
+	);
+
+	LoadGameCode();
+	assert( appInfo.gameapp.GameInit != NULL );
+
+	appInfo.fileTracking = { };
+	appInfo.fileTracking.writeHead = &appInfo.fileTracking.stringBuffer[0];
+
+	appInfo.dllTrackingIndex = TrackFileUpdates( GAME_CODE_FILEPATH );
+	assert( appInfo.dllTrackingIndex != -1 );
+
+	void* gameMemoryPtr = appInfo.gameapp.GameInit( 
+		&gameSlab, 
+		(RenderDriver*)&glDriver,
+		&win32Sound.driver,
+		&fileSys
+	);
+
+	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
+	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
+	UpdateWindow( appInfo.hwnd );
+
+	MSG Msg;
+	do {
+		while( PeekMessage( &Msg, NULL, 0, 0, PM_REMOVE ) ) {
+			TranslateMessage( &Msg );
+			DispatchMessage( &Msg );
+		}
+
+		if( DidFileUpdate( appInfo.dllTrackingIndex ) ) {
+			LoadGameCode();
+		}
+
+		static LARGE_INTEGER startTime;
+		LARGE_INTEGER lastTime = startTime;
+		QueryPerformanceCounter( &startTime );
+
+		LARGE_INTEGER elapsedTime;
+		elapsedTime.QuadPart = startTime.QuadPart - lastTime.QuadPart;
+		elapsedTime.QuadPart *= 1000;
+		elapsedTime.QuadPart /= appInfo.timerResolution.QuadPart;
+
+		//GAME LOOP
+		if(
+			appInfo.running && 
+			appInfo.gameapp.UpdateAndRender != NULL &&
+			appInfo.gameapp.MixSound != NULL 
+		) {
+			appInfo.keyPressBufferIndex = 0;
+
+			InputState inputSnapshot = { };
+			{
+				memset( &inputSnapshot.romanCharKeys, 0, sizeof(bool) * 32 );
+				for( int keyIndex = 0; keyIndex < 26; ++keyIndex ) {
+					const int asciiStart = (int)'a';
+					int keyChar = asciiStart + keyIndex;
+
+					if( keyChar >= 'a' && keyChar <= 'z' ) {
+						keyChar -= ( 'a' - 'A');
+					}
+
+					short keystate = GetAsyncKeyState( keyChar );
+					inputSnapshot.romanCharKeys[keyIndex] = ( 1 << 16 ) & keystate;
+				}
+
+				inputSnapshot.spcKeys[ InputState::CTRL ] = 
+				    ( 1 << 16 ) & GetAsyncKeyState( VK_CONTROL );
+				inputSnapshot.spcKeys[ InputState::BACKSPACE ] = 
+				    ( 1 << 16 ) & GetAsyncKeyState( VK_BACK );
+				inputSnapshot.spcKeys[ InputState::TAB ] = 
+				    ( 1 << 16 ) & GetAsyncKeyState( VK_TAB );
+				inputSnapshot.spcKeys[ InputState::DEL ] =
+				    ( 1 << 16 ) & GetAsyncKeyState( VK_DELETE );
+
+				memcpy( 
+					&inputSnapshot.keysPressedSinceLastUpdate, 
+					appInfo.keyboardInputBuffer,
+					24
+				);
+				memset( &appInfo.keyboardInputBuffer, 0, KEYPRESSBUFER_LEN );
+				appInfo.keyPressBufferIndex = 0;
+
+				POINT mousePosition;
+				GetCursorPos( &mousePosition );
+				inputSnapshot.mouseX = ( (float)(mousePosition.x - appInfo.windowPosX)) / 
+				    ( (float)SCREEN_WIDTH / 2.0f ) - 1.0f;
+				inputSnapshot.mouseY = ( ( (float)(mousePosition.y - appInfo.windowPosY)) / 
+					( (float)SCREEN_HEIGHT / 2.0f ) - 1.0f) * -1.0f;
+
+				inputSnapshot.mouseButtons[0] = 
+				( 1 << 16 ) & GetAsyncKeyState( VK_LBUTTON );
+				inputSnapshot.mouseButtons[1] = 
+				( 1 << 16 ) & GetAsyncKeyState( VK_MBUTTON );
+				inputSnapshot.mouseButtons[2] = 
+				( 1 << 16 ) & GetAsyncKeyState( VK_RBUTTON );
+
+				XINPUT_STATE state;
+				DWORD queryResult;
+				memset( &state, 0, sizeof( XINPUT_STATE ) ) ;
+				queryResult = XInputGetState( 0, &state );
+				if( queryResult == ERROR_SUCCESS ) {
+				//Note: polling of the sticks results in the range not quite reaching 1.0 in the positive direction
+				//it is like this to avoid branching on greater or less than 0.0
+					inputSnapshot.controllerState.leftStick_x = ((float)state.Gamepad.sThumbLX / 32768.0f );
+					inputSnapshot.controllerState.leftStick_y = ((float)state.Gamepad.sThumbLY / 32768.0f );
+					inputSnapshot.controllerState.rightStick_x = ((float)state.Gamepad.sThumbRX / 32768.0f );
+					inputSnapshot.controllerState.rightStick_y = ((float)state.Gamepad.sThumbRY / 32768.0f );
+					inputSnapshot.controllerState.leftTrigger = ((float)state.Gamepad.bLeftTrigger / 255.0f );
+					inputSnapshot.controllerState.rightTrigger = ((float)state.Gamepad.bRightTrigger / 255.0f );
+					inputSnapshot.controllerState.leftBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+					inputSnapshot.controllerState.rightBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
+					inputSnapshot.controllerState.button1 = state.Gamepad.wButtons & XINPUT_GAMEPAD_A;
+					inputSnapshot.controllerState.button2 = state.Gamepad.wButtons & XINPUT_GAMEPAD_B;
+					inputSnapshot.controllerState.button3 = state.Gamepad.wButtons & XINPUT_GAMEPAD_X;
+					inputSnapshot.controllerState.button4 = state.Gamepad.wButtons & XINPUT_GAMEPAD_Y;
+					inputSnapshot.controllerState.specialButtonLeft = state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK;
+					inputSnapshot.controllerState.specialButtonRight = state.Gamepad.wButtons & XINPUT_GAMEPAD_START;
+				} else {
+					inputSnapshot.controllerState = { };
+				}
+			}
+
+			appInfo.running = appInfo.gameapp.UpdateAndRender( 
+				gameMemoryPtr, 
+				(float)elapsedTime.QuadPart, 
+				&inputSnapshot,
+				&win32Sound.driver,
+				(RenderDriver*)&glDriver,
+				&fileSys
+			);
+
+		    PushAudioToSoundCard( &win32Sound );
+
+			SwapBuffers( appInfo.deviceContext );
+			glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+		} else {
+			printf( "Game code was not loaded...\n" );
+		}
+
+		LARGE_INTEGER endTime, computeTime;
+		QueryPerformanceCounter( &endTime );
+		computeTime.QuadPart = endTime.QuadPart - startTime.QuadPart;
+		computeTime.QuadPart *= 1000;
+		computeTime.QuadPart /= appInfo.timerResolution.QuadPart;
+		if( computeTime.QuadPart <= appInfo.mSecsPerFrame ) {
+			Sleep(appInfo.mSecsPerFrame - computeTime.QuadPart );
+		} else {
+			printf("Didn't sleep, compute was %ld\n", computeTime.QuadPart );
+		}
+
+	} while( appInfo.running );
+
+	FreeConsole();
+
+	return Msg.wParam;
 }

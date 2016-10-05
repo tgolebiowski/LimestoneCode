@@ -6,6 +6,10 @@
 
 #define PI 3.14159265359
 
+struct Vec2 {
+	float x, y;
+};
+
 struct Vec3 {
 	float x, y, z;
 };
@@ -29,6 +33,30 @@ float InvSqrt(float x) {
 	x = *(float*)&i; // convert new bits into a float
 	x = x*(1.5f - xhalf*x*x); // One round of Newton's method
 	return x;
+}
+/*-----------------------------------------------------------------------
+	                                Vec2
+------------------------------------------------------------------------*/
+
+float Vec2Len( Vec2 v ) {
+	return sqrtf( v.x * v.x + v.y * v.y );
+}
+
+Vec2 operator - ( Vec2 v1, Vec2 v2 ) {
+	return { v1.x - v2.x, v1.y - v2.y };
+}
+
+float Dot( Vec2 a, Vec2 b ) {
+	return { a.x * b.x + a.y * b.y };
+}
+
+void Normalize( Vec2* v ) {
+	float l = Vec2Len( *v );
+	if( l > 1e-08 ) {
+		float invL = 1.0f / l;
+		v->x *= invL;
+		v->y *= invL;
+	}
 }
 
 /*-----------------------------------------------------------------------
@@ -55,6 +83,10 @@ Vec3 operator + ( Vec3 v1, Vec3 v2 ) {
 
 Vec3 operator * (Vec3 v, float s ) {
 	return { v.x * s, v.y * s, v.z * s };
+}
+
+Vec3 operator - ( Vec3 v1, Vec3 v2 ) {
+	return { v1.x - v2.x, v1.y - v2.y, v1.z - v2.z };
 }
 
 Vec3 operator * (float s, Vec3 v ) {
@@ -230,8 +262,7 @@ Mat4 LookAtMatrix( Vec3 position, Vec3 target, Vec3 up ) {
 	lookatMat.m[0][0] = s.x; lookatMat.m[0][1] = u.x; lookatMat.m[0][2] = -f.x; lookatMat.m[0][3] = 0.0f;
 	lookatMat.m[1][0] = s.y; lookatMat.m[1][1] = u.y; lookatMat.m[1][2] = -f.y; lookatMat.m[1][3] = 0.0f;
 	lookatMat.m[2][0] = s.z; lookatMat.m[2][1] = u.z; lookatMat.m[2][2] = -f.z; lookatMat.m[2][3] = 0.0f;
-	lookatMat.m[3][0] = 0.0; lookatMat.m[3][1] = 0.0; lookatMat.m[3][2] = 0.0f; lookatMat.m[3][3] = 1.0f;
-	//Note: lack of "f" after [3][0] & [3][1] is so things line up, nothing more :P
+	lookatMat.m[3][0] = 0.0f; lookatMat.m[3][1] = 0.0f; lookatMat.m[3][2] = 0.0f; lookatMat.m[3][3] = 1.0f;
 	return lookatMat;
 }
 
@@ -239,10 +270,10 @@ Mat4 operator * ( const Mat4 m1, const Mat4 m2 ) {
 	return MultMatrix(m1, m2);
 }
 
-Vec3 MultVec( Mat4 m, Vec3 v ) {
-	return { v.x * m.m[0][0] + v.y * m.m[1][0] + v.z * m.m[2][0] + m.m[3][0],
-		     v.x * m.m[0][1] + v.y * m.m[1][1] + v.z * m.m[2][1] + m.m[3][1],
-		     v.x * m.m[0][2] + v.y * m.m[1][2] + v.z * m.m[2][2] + m.m[3][2] };
+Vec3 MultVec( Mat4 m, Vec3 v, float w = 1.0f ) {
+	return { v.x * m.m[0][0] + v.y * m.m[1][0] + v.z * m.m[2][0] + m.m[3][0] * w,
+		     v.x * m.m[0][1] + v.y * m.m[1][1] + v.z * m.m[2][1] + m.m[3][1] * w,
+		     v.x * m.m[0][2] + v.y * m.m[1][2] + v.z * m.m[2][2] + m.m[3][2] * w};
 }
 
 Vec3 GetEulersFromMat4( Mat4 m ) {
@@ -280,7 +311,6 @@ Quat RotationBtwnVec3( Vec3 a, Vec3 b ) {
 	Vec3 rotationAxis;
 	if( cosTheta < -0.999f ) {
 		rotationAxis = Cross( { 0.0f, 0.0f, 1.0f }, a );
-
 	}
 
 	rotationAxis = Cross( a, b );
@@ -295,7 +325,7 @@ Quat RotationBtwnVec3( Vec3 a, Vec3 b ) {
 	};
 }
 
-Quat FromAngleAxis(const float axisX, const float axisY, const float axisZ, const float angle) {
+static inline Quat FromAngleAxis(const float axisX, const float axisY, const float axisZ, const float angle) {
 	Quat quat;
 	float halfAngle = ( 0.5 * angle );
 	float fSin = sin(halfAngle);
@@ -304,6 +334,10 @@ Quat FromAngleAxis(const float axisX, const float axisY, const float axisZ, cons
 	quat.y = fSin * axisY;
 	quat.z = fSin * axisZ;
 	return quat;
+}
+
+static inline Quat FromAngleAxis( const Vec3 v, float angle ) {
+	return FromAngleAxis( v.x, v.y, v.z, angle );
 }
 
 void ToAngleAxis( const Quat q, float* angle, Vec3* axis) {
@@ -338,39 +372,41 @@ Quat InverseQuat( Quat quat ) {
 	return rq;
 }
 
+static inline Quat Lerp( Quat q1, Quat q2, float weight ) {
+	float oneMinusWeight = 1.0f - weight;
+	return {
+		q1.w * weight + q2.w * oneMinusWeight,
+		q1.x * weight + q2.x * oneMinusWeight,
+		q1.y * weight + q2.y * oneMinusWeight,
+		q1.z * weight + q2.z * oneMinusWeight
+	};
+}
+
 Quat Slerp( const Quat q1, const Quat q2, float weight ) {
-	float dotproduct = q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
-	float theta, st, sut, sout, coeff1, coeff2;
+	double dotproduct = q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
 
-	weight = weight * 0.5f;
+	if( abs( dotproduct ) >= 1.0f ) return q1;
 
-	theta = (float)acos( dotproduct );
-	if (theta < 0.0) {
-		theta = -theta;
-	} 
-	if( abs( theta ) < 1e-08 ) { //No rotation
-		return q1;
+	double halfTheta = acos( dotproduct );
+	double sinHalfTheta = sqrt( 1.0 - ( dotproduct * dotproduct ) );
+
+	if( fabs( sinHalfTheta ) < 0.0001 ) {
+		Quat qm;
+		qm.w = (q1.w * 0.5 + q2.w * 0.5);
+		qm.x = (q1.x * 0.5 + q2.x * 0.5);
+		qm.y = (q1.y * 0.5 + q2.y * 0.5);
+		qm.z = (q1.z * 0.5 + q2.z * 0.5);
+		return qm;	
 	}
-	
-	st = sinf( theta );
-	sut = sinf( weight * theta );
-	sout = sinf( ( 1 - weight ) * theta );
-	coeff1 = sout / st;
-	coeff2 = sut / st;
+	double ratioA = sin( ( 1 - weight ) * halfTheta ) / sinHalfTheta;
+	double ratioB = sin( weight * halfTheta ) / sinHalfTheta;
 
-	Quat qr;
-	qr.w = coeff1 * q1.w + coeff2 * q2.w;
-	qr.x = coeff1 * q1.x + coeff2 * q2.x;
-	qr.y = coeff1 * q1.y + coeff2 * q2.y;
-	qr.z = coeff1 * q1.z + coeff2 * q2.z;
-
-	float leninv = 1.0f / sqrtf( qr.x * qr.x + qr.y * qr.y + qr.z * qr.z + qr.w * qr.w );
-	if( leninv == 1.0f ) return qr; //already length 1, no need to normalize
-	qr.w *= leninv;
-	qr.x *= leninv;
-	qr.y *= leninv;
-	qr.z *= leninv;
-	return qr;
+	Quat qm;
+	qm.w = ( q1.w * ratioA + q2.w * ratioB );
+	qm.x = ( q1.x * ratioA + q2.x * ratioB );
+	qm.y = ( q1.y * ratioA + q2.y * ratioB );
+	qm.z = ( q1.z * ratioA + q2.z * ratioB );
+	return qm;
 }
 
 Vec3 ApplyQuatToVec( Quat q, Vec3 v ) {
