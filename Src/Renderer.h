@@ -213,10 +213,10 @@ static void CreateShaderProgramFromSourceFiles(
     char* fragProgramFilePath, 
     ShaderProgram* bindDataStorage,
     Stack* allocater,
-    FileSys* fileSys
+    System* system
 ) {
-    char* vertSrc = (char*)fileSys->ReadWholeFile( vertProgramFilePath, allocater );
-    char* fragSrc = (char*)fileSys->ReadWholeFile( fragProgramFilePath, allocater );
+    char* vertSrc = (char*)system->ReadWholeFile( vertProgramFilePath, allocater );
+    char* fragSrc = (char*)system->ReadWholeFile( fragProgramFilePath, allocater );
 
     driver->CreateShaderProgram( driver, vertSrc, fragSrc, bindDataStorage );
 

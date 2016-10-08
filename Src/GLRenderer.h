@@ -1,15 +1,3 @@
-struct RendererStorage{
-    RenderDriver baseDriver;
-
-    ShaderProgram texturedQuadShader;
-    uint32 quadVDataPtr;
-    uint32 quadUVDataPtr;
-    uint32 quadIDataPtr;
-    int32 quadPosAttribPtr;
-    int32 quadUVAttribPtr;
-    int32 quadMat4UniformPtr;
-};
-
 struct GL_API {
     PFNGLGENFRAMEBUFFERSPROC glGenFramebuffers = NULL;
     PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer = NULL;
@@ -476,6 +464,7 @@ static void DrawInterleavedStream(
     glDisable( GL_SCISSOR_TEST );
 }
 
+#if 0
 static void RenderTexturedQuad( 
     void* api, 
     RendererStorage* rendererStorage, 
@@ -511,6 +500,7 @@ static void RenderTexturedQuad(
     gl_api->glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage->quadIDataPtr );
     glDrawElements( GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL );
 }
+#endif
 
 #include "tinyxml2/tinyxml2.h"
 #include "tinyxml2/tinyxml2.cpp"
@@ -854,8 +844,11 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
 "    gl_FragColor = texture( tex1, gl_TexCoord[0].xy );" \
 "}"
 
-static GLRenderDriver InitGLRenderer( GL_API* glApi, uint16 screen_w, uint16 screen_h, 
-    RendererStorage* rendererStorage ) {
+static GLRenderDriver InitGLRenderer( 
+    GL_API* glApi, 
+    uint16 screen_w, 
+    uint16 screen_h 
+) {
 
     GLRenderDriver driver = { };
     driver.baseDriver.CopyVertexDataToGpuMem = &CopyVertexDataToGpuMem;
@@ -884,55 +877,13 @@ static GLRenderDriver InitGLRenderer( GL_API* glApi, uint16 screen_w, uint16 scr
     printf( "Max Vertex Attributes: %d\n", k );
 
     //Initialize clear color
-    glClearColor( 50.0f / 255.0f, 15.0f / 255.0f, 32.0f / 255.0f, 1.0f );
+    glClearColor( 1.0f / 255.0f, 200.0f / 255.0f, 175.0f / 255.0f, 1.0f );
 
     glEnable( GL_DEPTH_TEST );
     glEnable( GL_CULL_FACE );
     glCullFace( GL_BACK );
 
     glViewport( 0, 0, screen_w, screen_h );
-
-    CreateShaderProgram( 
-        (RenderDriver*)&driver,
-        TexturedQuadVertShaderSrc, 
-        TexturedQuadFragShaderSrc, 
-        &rendererStorage->texturedQuadShader 
-    );
-    GLfloat quadVData[12] = { -1.0f, 1.0f, 0.0f, -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f };
-    GLfloat quadUVData[8] = { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f };
-    const GLuint quadIndexData[6] = { 0, 1, 2, 0, 2, 3 };
-    GLuint quadDataPtrs [3];
-    glApi->glGenBuffers( 3, (GLuint*)quadDataPtrs );
-
-    rendererStorage->quadVDataPtr = quadDataPtrs[0];
-    glApi->glBindBuffer( GL_ARRAY_BUFFER, quadDataPtrs[0] );
-    glApi->glBufferData( GL_ARRAY_BUFFER, 12 * sizeof( GLfloat ), 
-        &quadVData[0], GL_STATIC_DRAW 
-    );
-    rendererStorage->quadUVDataPtr = quadDataPtrs[1];
-    glApi->glBindBuffer( GL_ARRAY_BUFFER, quadDataPtrs[1] );
-    glApi->glBufferData( GL_ARRAY_BUFFER, 8 * sizeof( GLfloat ), 
-        &quadUVData[0], GL_STATIC_DRAW 
-    );
-    rendererStorage->quadIDataPtr = quadDataPtrs[2];
-    glApi->glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, quadDataPtrs[2] );
-    glApi->glBufferData( 
-        GL_ELEMENT_ARRAY_BUFFER, 6 * sizeof( GLuint ), 
-        &quadIndexData[0], GL_STATIC_DRAW 
-    );
-
-    /*rendererStorage->quadPosAttribPtr = GetShaderProgramInputPtr( 
-        &rendererStorage->texturedQuadShader, 
-        "position" 
-    );
-    rendererStorage->quadUVAttribPtr = GetShaderProgramInputPtr( 
-        &rendererStorage->texturedQuadShader, 
-        "texCoord" 
-    );
-    rendererStorage->quadMat4UniformPtr = GetShaderProgramInputPtr( 
-        &rendererStorage->texturedQuadShader, 
-        "modelMatrix" 
-    );*/
 
     //Check for error
     GLenum error = glGetError();

@@ -1,6 +1,3 @@
-#define SCREEN_WIDTH 1024
-#define SCREEN_HEIGHT 680
-
 #include <string>
 #include <assert.h>
 #include <cstring>
@@ -23,14 +20,24 @@ typedef intptr_t intptr;
 	                      STUFF THE OS PROVIDES THE GAME
 -----------------------------------------------------------------------------*/
 #include "Memory.h"
-#include "FileSys.h"
+
+struct System {
+	uint16 windowWidth;
+	uint16 windowHeight;
+
+	void* (*ReadWholeFile) (char*, Stack*);
+	int (*GetMostRecentMatchingFile) (char*, char*);
+	int (*TrackFileUpdates)( char* filePath );
+	bool (*DidFileUpdate)( int trackingIndex );
+};
+
 #include "Math3D.h"
 #include "Renderer.h"
 #include "Sound.h"
 #include "Input.h"
 
-#define GAME_INIT(name) void* name( GlobalMem* mainSlab, RenderDriver* renderDriver, SoundDriver* soundDriver, FileSys* fileSys )
+#define GAME_INIT(name) void* name( GlobalMem* mainSlab, RenderDriver* renderDriver, SoundDriver* soundDriver, System* system )
 typedef GAME_INIT( gameInit );
 
-#define GAME_UPDATEANDRENDER(name) bool name( void* gameMemory, float millisecondsElapsed, InputState* i, SoundDriver* soundDriver, RenderDriver* renderDriver, FileSys* fileSys )
+#define GAME_UPDATEANDRENDER(name) bool name( void* gameMemory, float millisecondsElapsed, InputState* i, SoundDriver* soundDriver, RenderDriver* renderDriver, System* system )
 typedef GAME_UPDATEANDRENDER( updateAndRender );

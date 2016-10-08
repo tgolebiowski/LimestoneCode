@@ -15,8 +15,8 @@
 
 struct App {
 	HMODULE gameCodeHandle;
-	void* (*GameInit)( GlobalMem*, RenderDriver*,SoundDriver*, FileSys* );
-	bool (*UpdateAndRender)( void*, float, InputState*, SoundDriver*,RenderDriver*, FileSys*);
+	void* (*GameInit)( GlobalMem*, RenderDriver*,SoundDriver*, System* );
+	bool (*UpdateAndRender)( void*, float, InputState*, SoundDriver*,RenderDriver*, System*);
 	void (*MixSound)( SoundDriver* );
 };
 
@@ -628,44 +628,83 @@ static void PushAudioToSoundCard( Win32Sound* win32Sound ) {
 
 #include "GLRenderer.h"
 
-GL_API InitGLAPI_Win32() {
-	GL_API gl_api = { };
+GLRenderDriver Win32InitGLRenderer( 
+	System* system, 
+	Stack* stackForGLAPI
+) {
+	PIXELFORMATDESCRIPTOR pfd = {
+		sizeof( PIXELFORMATDESCRIPTOR ),
+		1,
+	        PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
+		    PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
+		    32,                       //Colordepth of the framebuffer.
+		    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //Don't care....
+		    32,                       //Number of bits for the depthbuffer
+	        0,                        //Number of bits for the stencilbuffer
+		    0,                        //Number of Aux buffers in the framebuffer.
+		    0, 0, 0, 0, 0             //Don't care...
+	};
 
-	gl_api.glBindBuffer = (PFNGLBINDBUFFERPROC)wglGetProcAddress( "glBindBuffer" );
-	gl_api.glCreateProgram = (PFNGLCREATEPROGRAMPROC)wglGetProcAddress( "glCreateProgram" );
-	gl_api.glBufferData = (PFNGLBUFFERDATAPROC)wglGetProcAddress( "glBufferData" );
-	gl_api.glGenBuffers = (PFNGLGENBUFFERSPROC)wglGetProcAddress( "glGenBuffers" );
-	gl_api.glUseProgram = (PFNGLUSEPROGRAMPROC)wglGetProcAddress( "glUseProgram" );
-	gl_api.glActiveTexture = (PFNGLACTIVETEXTUREPROC)wglGetProcAddress( "glActiveTexture" );
-	//gl_api.glGenTextures = (PFNGLGENTEXTURESPROC)wglGetProcAddress( "glGenTextures" );
-	//gl_api.glBindTexture = (PFNGLBINDTEXTUREPROC)wglGetProcAddress( "glBindTexture" );
-	//gl_api.glTexParameteri = (PFNGLTEXPARAMETERIPROC)wglGetProcAddress( "glTexParameteri" );
-	//gl_api.glTexImage2D = (PFNGLTEXIMAGE2DPROC)wglGetProcAddress( "glTexImage2D" );
-	gl_api.glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress( "glEnableVertexAttribArray" );
-	gl_api.glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress( "glVertexAttribPointer" );
-	gl_api.glGenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)wglGetProcAddress( "glGenFramebuffers" );
-	gl_api.glBindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)wglGetProcAddress( "glBindFramebuffer" );
-	gl_api.glIsShader = (PFNGLISSHADERPROC)wglGetProcAddress( "glIsShader" );
-	gl_api.glGetShaderiv = (PFNGLGETSHADERIVPROC)wglGetProcAddress( "glGetShaderiv" );
-	gl_api.glCreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress( "glCreateShader" );
-	gl_api.glCompileShader = (PFNGLCOMPILESHADERPROC)wglGetProcAddress( "glCompileShader" );
-	gl_api.glShaderSource = (PFNGLSHADERSOURCEPROC)wglGetProcAddress( "glShaderSource" );
-	gl_api.glAttachShader = (PFNGLATTACHSHADERPROC)wglGetProcAddress( "glAttachShader" );
-	gl_api.glDeleteShader = (PFNGLDELETESHADERPROC)wglGetProcAddress( "glDeleteShader" );
-	gl_api.glDeleteProgram = (PFNGLDELETEPROGRAMPROC)wglGetProcAddress( "glDeleteProgram" );
-	gl_api.glLinkProgram = (PFNGLLINKPROGRAMPROC)wglGetProcAddress( "glLinkProgram" );
-	gl_api.glGetProgramiv = (PFNGLGETPROGRAMIVPROC)wglGetProcAddress("glGetProgramiv" );
-	gl_api.glGetActiveAttrib = (PFNGLGETACTIVEATTRIBPROC)wglGetProcAddress( "glGetActiveAttrib" );
-	gl_api.glGetActiveUniform = (PFNGLGETACTIVEUNIFORMPROC)wglGetProcAddress( "glGetActiveUniform" );
-	gl_api.glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)wglGetProcAddress( "glGetUniformLocation" );
-	gl_api.glUniform1i = (PFNGLUNIFORM1IPROC)wglGetProcAddress( "glUniform1i" );
-	gl_api.glUniform4fv = (PFNGLUNIFORM4FVPROC)wglGetProcAddress( "glUniform4fv" );
-	gl_api.glUniform3fv = (PFNGLUNIFORM3FVPROC)wglGetProcAddress( "glUniform3fv" );
-	gl_api.glUniform2fv =  (PFNGLUNIFORM2FVPROC)wglGetProcAddress( "glUniform2fv" );
-	gl_api.glUniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)wglGetProcAddress( "glUniformMatrix4fv" );
-	gl_api.glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)wglGetProcAddress( "glGetAttribLocation" );
+	appInfo.deviceContext = GetDC( appInfo.hwnd );
 
-	return gl_api;
+	int letWindowsChooseThisPixelFormat;
+	letWindowsChooseThisPixelFormat = ChoosePixelFormat( 
+		appInfo.deviceContext, 
+		&pfd 
+	); 
+	SetPixelFormat( 
+		appInfo.deviceContext, 
+		letWindowsChooseThisPixelFormat, 
+		&pfd 
+	);
+
+	appInfo.openglRenderContext = wglCreateContext( appInfo.deviceContext );
+	if( wglMakeCurrent ( appInfo.deviceContext, appInfo.openglRenderContext ) == false ) {
+		printf( "Couldn't make GL context current.\n" );
+		return { };
+	}
+
+	GL_API* glApi = (GL_API*)StackAllocA( stackForGLAPI, sizeof( GL_API ) );
+
+	glApi->glBindBuffer = (PFNGLBINDBUFFERPROC)wglGetProcAddress( "glBindBuffer" );
+	glApi->glCreateProgram = (PFNGLCREATEPROGRAMPROC)wglGetProcAddress( "glCreateProgram" );
+	glApi->glBufferData = (PFNGLBUFFERDATAPROC)wglGetProcAddress( "glBufferData" );
+	glApi->glGenBuffers = (PFNGLGENBUFFERSPROC)wglGetProcAddress( "glGenBuffers" );
+	glApi->glUseProgram = (PFNGLUSEPROGRAMPROC)wglGetProcAddress( "glUseProgram" );
+	glApi->glActiveTexture = (PFNGLACTIVETEXTUREPROC)wglGetProcAddress( "glActiveTexture" );
+	//glApi->glGenTextures = (PFNGLGENTEXTURESPROC)wglGetProcAddress( "glGenTextures" );
+	//glApi->glBindTexture = (PFNGLBINDTEXTUREPROC)wglGetProcAddress( "glBindTexture" );
+	//glApi->glTexParameteri = (PFNGLTEXPARAMETERIPROC)wglGetProcAddress( "glTexParameteri" );
+	//glApi->glTexImage2D = (PFNGLTEXIMAGE2DPROC)wglGetProcAddress( "glTexImage2D" );
+	glApi->glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress( "glEnableVertexAttribArray" );
+	glApi->glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress( "glVertexAttribPointer" );
+	glApi->glGenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)wglGetProcAddress( "glGenFramebuffers" );
+	glApi->glBindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)wglGetProcAddress( "glBindFramebuffer" );
+	glApi->glIsShader = (PFNGLISSHADERPROC)wglGetProcAddress( "glIsShader" );
+	glApi->glGetShaderiv = (PFNGLGETSHADERIVPROC)wglGetProcAddress( "glGetShaderiv" );
+	glApi->glCreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress( "glCreateShader" );
+	glApi->glCompileShader = (PFNGLCOMPILESHADERPROC)wglGetProcAddress( "glCompileShader" );
+	glApi->glShaderSource = (PFNGLSHADERSOURCEPROC)wglGetProcAddress( "glShaderSource" );
+	glApi->glAttachShader = (PFNGLATTACHSHADERPROC)wglGetProcAddress( "glAttachShader" );
+	glApi->glDeleteShader = (PFNGLDELETESHADERPROC)wglGetProcAddress( "glDeleteShader" );
+	glApi->glDeleteProgram = (PFNGLDELETEPROGRAMPROC)wglGetProcAddress( "glDeleteProgram" );
+	glApi->glLinkProgram = (PFNGLLINKPROGRAMPROC)wglGetProcAddress( "glLinkProgram" );
+	glApi->glGetProgramiv = (PFNGLGETPROGRAMIVPROC)wglGetProcAddress("glGetProgramiv" );
+	glApi->glGetActiveAttrib = (PFNGLGETACTIVEATTRIBPROC)wglGetProcAddress( "glGetActiveAttrib" );
+	glApi->glGetActiveUniform = (PFNGLGETACTIVEUNIFORMPROC)wglGetProcAddress( "glGetActiveUniform" );
+	glApi->glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)wglGetProcAddress( "glGetUniformLocation" );
+	glApi->glUniform1i = (PFNGLUNIFORM1IPROC)wglGetProcAddress( "glUniform1i" );
+	glApi->glUniform4fv = (PFNGLUNIFORM4FVPROC)wglGetProcAddress( "glUniform4fv" );
+	glApi->glUniform3fv = (PFNGLUNIFORM3FVPROC)wglGetProcAddress( "glUniform3fv" );
+	glApi->glUniform2fv =  (PFNGLUNIFORM2FVPROC)wglGetProcAddress( "glUniform2fv" );
+	glApi->glUniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)wglGetProcAddress( "glUniformMatrix4fv" );
+	glApi->glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)wglGetProcAddress( "glGetAttribLocation" );
+
+	return InitGLRenderer( 
+		glApi, 
+		system->windowWidth, 
+		system->windowHeight 
+	);
 }
 
 void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyframe, Armature* armature ) {
@@ -838,11 +877,21 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 		return -1;
 	}
 
-	// center position of the window
-	appInfo.fullScreenWidth = GetSystemMetrics(SM_CXSCREEN);
-	appInfo.fullScreenHeight = GetSystemMetrics(SM_CYSCREEN);
-	appInfo.windowPosX = ( appInfo.fullScreenWidth / 2) - (SCREEN_WIDTH / 2);
-	appInfo.windowPosY = ( appInfo.fullScreenHeight / 2) - (SCREEN_HEIGHT / 2);
+	System system = { };
+	//system.screenHeight = GetSystemMetrics(SM_CXSCREEN);
+	//system.screenWidth = GetSystemMetrics(SM_CYSCREEN);
+	system.windowHeight = 680;
+	system.windowWidth = 1080;
+	system.ReadWholeFile = &ReadWholeFile;
+	system.GetMostRecentMatchingFile = &GetMostRecentMatchingFile;
+	system.TrackFileUpdates = &TrackFileUpdates;
+	system.DidFileUpdate = &DidFileUpdate;
+
+	//Center position of window
+	appInfo.fullScreenWidth = GetSystemMetrics( SM_CXSCREEN );
+	appInfo.fullScreenHeight = GetSystemMetrics( SM_CYSCREEN );
+	appInfo.windowPosX = ( appInfo.fullScreenWidth / 2 ) - (system.windowWidth / 2 );
+	appInfo.windowPosY = ( appInfo.fullScreenHeight / 2 ) - (system.windowHeight / 2 );
  
 	// set up the window for a windowed application by default
 	//long wndStyle = WS_OVERLAPPEDWINDOW;
@@ -865,8 +914,8 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 		WS_BORDER, 
 		appInfo.windowPosX, 
 		appInfo.windowPosY, 
-		SCREEN_WIDTH, 
-		SCREEN_HEIGHT, 
+		system.windowWidth, 
+		system.windowHeight,
 		NULL, 
 		NULL, 
 		appInfo.appInstance, 
@@ -874,40 +923,6 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	);
 
 	GetClientRect( appInfo.hwnd, appInfo.windowRect );
-
-	{
-		PIXELFORMATDESCRIPTOR pfd = {
-			sizeof( PIXELFORMATDESCRIPTOR ),
-			1,
-	        PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,    //Flags
-		    PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
-		    32,                       //Colordepth of the framebuffer.
-		    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //Don't care....
-		    32,                       //Number of bits for the depthbuffer
-	        0,                        //Number of bits for the stencilbuffer
-		    0,                        //Number of Aux buffers in the framebuffer.
-		    0, 0, 0, 0, 0             //Don't care...
-		};
-
-		appInfo.deviceContext = GetDC( appInfo.hwnd );
-
-		int letWindowsChooseThisPixelFormat;
-		letWindowsChooseThisPixelFormat = ChoosePixelFormat( 
-			appInfo.deviceContext, 
-			&pfd 
-		); 
-		SetPixelFormat( 
-			appInfo.deviceContext, 
-			letWindowsChooseThisPixelFormat, 
-			&pfd 
-		);
-
-		appInfo.openglRenderContext = wglCreateContext( appInfo.deviceContext );
-		if( wglMakeCurrent ( appInfo.deviceContext, appInfo.openglRenderContext ) == false ) {
-			printf( "Couldn't make GL context current.\n" );
-			return -1;
-		}
-	}
 
 	BOOL canSupportHiResTimer = QueryPerformanceFrequency( &appInfo.timerResolution );
 	assert( canSupportHiResTimer );
@@ -922,21 +937,11 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 	Stack systemsMemory = AllocateStackInGlobalMem( &gameSlab, KILOBYTES( 200 ) );
 
-	GL_API glApi = InitGLAPI_Win32();
-	RendererStorage renderStorage = { };
-	GLRenderDriver glDriver = InitGLRenderer( 
-		&glApi, 
-		SCREEN_WIDTH, 
-		SCREEN_HEIGHT, 
-		&renderStorage 
+	GLRenderDriver glDriver = Win32InitGLRenderer( 
+		&system, 
+		&systemsMemory
 	);
 	Win32Sound win32Sound = Win32InitSound( appInfo.hwnd, 60, &systemsMemory );
-
-	FileSys fileSys = { };
-	fileSys.ReadWholeFile = &ReadWholeFile;
-	fileSys.GetMostRecentMatchingFile = &GetMostRecentMatchingFile;
-	fileSys.TrackFileUpdates = &TrackFileUpdates;
-	fileSys.DidFileUpdate = &DidFileUpdate;
 
 	printf(
 		"Remaining System Memory: %Id\n", 
@@ -956,7 +961,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 		&gameSlab, 
 		(RenderDriver*)&glDriver,
 		&win32Sound.driver,
-		&fileSys
+		&system
 	);
 
 	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
@@ -1026,9 +1031,9 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 				POINT mousePosition;
 				GetCursorPos( &mousePosition );
 				inputSnapshot.mouseX = ( (float)(mousePosition.x - appInfo.windowPosX)) / 
-				    ( (float)SCREEN_WIDTH / 2.0f ) - 1.0f;
+				    ( (float)system.windowWidth / 2.0f ) - 1.0f;
 				inputSnapshot.mouseY = ( ( (float)(mousePosition.y - appInfo.windowPosY)) / 
-					( (float)SCREEN_HEIGHT / 2.0f ) - 1.0f) * -1.0f;
+					( (float)system.windowHeight / 2.0f ) - 1.0f) * -1.0f;
 
 				inputSnapshot.mouseButtons[0] = 
 				( 1 << 16 ) & GetAsyncKeyState( VK_LBUTTON );
@@ -1069,12 +1074,12 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 				&inputSnapshot,
 				&win32Sound.driver,
 				(RenderDriver*)&glDriver,
-				&fileSys
+				&system
 			);
 
 		    PushAudioToSoundCard( &win32Sound );
 
-			SwapBuffers( appInfo.deviceContext );
+			BOOL swapBufferSuccess = SwapBuffers( appInfo.deviceContext );
 			glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		} else {
 			printf( "Game code was not loaded...\n" );

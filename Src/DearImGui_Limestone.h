@@ -1,6 +1,6 @@
 #define IMGUI_DISABLE_WIN32_DEFAULT_CLIPBOARD_FUNCS
 #define IMGUI_DISABLE_WIN32_DEFAULT_IME_FUNCS
-#define IMGUI_DISABLE_TEST_WINDOWS
+
 #include "imgui\imgui.cpp"
 
 static void RenderImGuiVisuals(ImDrawList** const cmd_lists, int cmd_lists_count);
@@ -108,72 +108,14 @@ static void RenderImGuiVisuals(ImDrawList** const cmd_lists, int cmd_lists_count
     }
 
     #undef OFFSETOF
-
-#if 0
-
-    GL_API* glApi = (GL_API*)drawStruct->internalAPI;
-
-    glEnable( GL_BLEND );
-    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-    glDisable( GL_CULL_FACE );
-    glDisable( GL_DEPTH_TEST );
-    glDisable( GL_SCISSOR_TEST );
-
-    glUseProgram( drawStruct->ImGuiUIShader.programID );
-
-    int32 im_posAttribute = GetShaderProgramInputPtr( 
-        &drawStruct->ImGuiUIShader, 
-        "pos" 
-    );
-    int32 im_uvAttribute = GetShaderProgramInputPtr( 
-        &drawStruct->ImGuiUIShader, 
-        "uv" 
-    );
-    int32 im_colorAttribute = GetShaderProgramInputPtr( 
-        &drawStruct->ImGuiUIShader, 
-        "color" 
-    );
-
-    // Setup orthographic projection matrix
-
-    // Render command lists
-    #define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
-    for (int n = 0; n < cmd_lists_count; n++)
-    {
-        const ImDrawList* cmd_list = cmd_lists[n];
-        char* vtx_buffer = (char*)&cmd_list->vtx_buffer.front();
-
-        int startIndex = 0;
-        for (size_t cmd_i = 0; cmd_i < cmd_list->commands.size(); cmd_i++)
-        {
-            const ImDrawCmd* pcmd = &cmd_list->commands[cmd_i];
-
-            glBindBuffer( GL_ARRAY_BUFFER, drawStruct->imguiVertexDataPtr );
-            glBufferData( GL_ARRAY_BUFFER, pcmd->vtx_count * sizeof(ImDrawVert), vtx_buffer, GL_DYNAMIC_DRAW );
-
-            glEnableVertexAttribArray( im_posAttribute );
-            glEnableVertexAttribArray( im_uvAttribute );
-            glEnableVertexAttribArray( im_colorAttribute );
-            glVertexAttribPointer( im_posAttribute, 2, GL_FLOAT, false, sizeof( ImDrawVert ), (GLvoid*)OFFSETOF( ImDrawVert, pos ) );
-            glVertexAttribPointer( im_uvAttribute, 2, GL_FLOAT, true, sizeof( ImDrawVert ), (GLvoid*)OFFSETOF( ImDrawVert, uv ) );
-            glVertexAttribPointer( im_colorAttribute, 4, GL_UNSIGNED_BYTE, true, sizeof( ImDrawVert ), (GLvoid*)OFFSETOF( ImDrawVert, col ) );
-            glActiveTexture( GL_TEXTURE0 );
-            glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)pcmd->texture_id);
-
-            glDrawArrays( GL_TRIANGLES, 0, (GLsizei)pcmd->vtx_count );
-            vtx_buffer += ( sizeof( ImDrawVert ) * pcmd->vtx_count );
-        }
-    }
-    #undef OFFSETOF
-    glDisable( GL_BLEND );
-    glUseProgram( 0 );
-    glEnable( GL_CULL_FACE );
-    glEnable( GL_DEPTH_TEST );
-    glDisable( GL_SCISSOR_TEST );
-#endif
 }
 
-static void UpdateImguiInput( InputState* i, void* savedInternalState ) {
+static void UpdateImgui( 
+    InputState* i, 
+    void* savedInternalState, 
+    int screenWidth, 
+    int screenHeight 
+) {
     ImGui::SetInternalState( savedInternalState );
 
     float mX = i->mouseX;
@@ -186,8 +128,8 @@ static void UpdateImguiInput( InputState* i, void* savedInternalState ) {
     imguiIO.MemAllocFn = ImGuiMemAlloc;
     imguiIO.MemFreeFn = ImGuiMemFree;
 
-    imguiIO.MousePos.x = ( ( mX + 1.0f ) / 2.0f ) * SCREEN_WIDTH;
-    imguiIO.MousePos.y = ( 1.0f - ( ( mY + 1.0f ) / 2.0f ) ) * SCREEN_HEIGHT;
+    imguiIO.MousePos.x = ( ( mX + 1.0f ) / 2.0f ) * screenWidth;
+    imguiIO.MousePos.y = ( 1.0f - ( ( mY + 1.0f ) / 2.0f ) ) * screenHeight;
     imguiIO.MouseDown[0] = i->mouseButtons[0];
 
     char* keysInputted = i->keysPressedSinceLastUpdate;
@@ -203,11 +145,15 @@ static void UpdateImguiInput( InputState* i, void* savedInternalState ) {
     imguiIO.KeysDown[ InputState::TAB ] = i->spcKeys[ InputState::TAB ];
 
     ImguiLimestoneDriver* imData = (ImguiLimestoneDriver*)imguiIO.UserData;
+
+    ImGui::NewFrame();
 }
 
 static void* InitImGui_LimeStone( 
     Stack* allocater, 
-    RenderDriver* rDriver
+    RenderDriver* rDriver,
+    int screenWidth,
+    int screenHeight
 ) {
     ImguiLimestoneDriver* imguiDriver = (ImguiLimestoneDriver*)
         StackAlloc( allocater, sizeof( ImguiLimestoneDriver ) );
@@ -227,8 +173,8 @@ static void* InitImGui_LimeStone(
     imguiDriver->imguiVertexDataPtr = rDriver->AllocGpuBuffForDynamicStream( rDriver );
 
     ImGuiIO& imguiIO = ImGui::GetIO();
-    imguiIO.DisplaySize.x = SCREEN_WIDTH;
-    imguiIO.DisplaySize.y = SCREEN_HEIGHT;
+    imguiIO.DisplaySize.x = screenWidth;
+    imguiIO.DisplaySize.y = screenHeight;
     imguiIO.DeltaTime = 1.0f / 60.0f;
     imguiIO.UserData = (void*)imguiDriver;
     imguiIO.KeyMap[ ImGuiKey_Backspace ] = InputState::BACKSPACE;
@@ -260,90 +206,3 @@ static void* InitImGui_LimeStone(
 
     return imguiState;
 }
-
-#if 0
-struct InAppConsole
-{
-    ImVector<char*>       Items;
-    bool                  ScrollToBottom;
-    ImVector<char*>       History;
-    // -1: new line, 0..History.size()-1 browsing history.
-    int                   HistoryPos;    
-    ImVector<const char*> Commands;
-
-    InAppConsole()
-    {
-        Items = ImVector<char*>();
-        ClearLog();
-        HistoryPos = -1;
-        Commands.push_back("HISTORY");
-        Commands.push_back("CLEAR");
-    }
-    ~InAppConsole()
-    {
-        ClearLog();
-        for (size_t i = 0; i < Items.size(); i++) 
-            free(History[i]); 
-    }
-
-    void ClearLog()
-    {
-        for (size_t i = 0; i < Items.size(); i++)  {
-            free(Items[i]); 
-        }
-        Items.clear();
-        ScrollToBottom = true;
-    }
-
-    void AddLog(const char* fmt, ...)
-    {
-        char buf[1024];
-        va_list args;
-        va_start(args, fmt);
-        ImFormatStringV(buf, IM_ARRAYSIZE(buf), fmt, args);
-        va_end(args);
-        Items.push_back(strdup(buf));
-        ScrollToBottom = true;
-    }
-
-    void Run(const char* title, bool* opened)
-    {
-        ImGui::SetNextWindowSize(ImVec2(520,600), ImGuiSetCond_FirstUseEver);
-        if (!ImGui::Begin(title, opened))
-        {
-            ImGui::End();
-            return;
-        }
-
-        ImGui::BeginChild( "Command Buttons", ImVec2(0,ImGui::GetTextLineHeightWithSpacing()));
-        ImGui::SameLine(); 
-        if (ImGui::SmallButton("Clear")) {
-            ClearLog();
-        }
-        ImGui::EndChild();
-
-        ImGui::Separator();
-
-        ImGui::BeginChild("ScrollingRegion", ImVec2(0,-ImGui::GetTextLineHeightWithSpacing()*2));
-        if (ImGui::BeginPopupContextWindow())
-        {
-            if (ImGui::Selectable("Clear")) 
-                ClearLog();
-            ImGui::EndPopup();
-        }
-        for (size_t i = 0; i < Items.size(); i++)
-        {
-            const char* item = Items[i];
-            ImVec4 col(1,1,1,1);
-            if (strstr(item, "[error]")) col = ImVec4(1.0f,0.4f,0.4f,1.0f);
-            else if (strncmp(item, "# ", 2) == 0) col = ImVec4(1.0f,0.8f,0.6f,1.0f);
-            ImGui::PushStyleColor(ImGuiCol_Text, col);
-            ImGui::TextUnformatted(item);
-            ImGui::PopStyleColor();
-        }
-        ImGui::EndChild();
-
-        ImGui::End();
-    }
-};
-#endif
