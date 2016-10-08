@@ -16,6 +16,8 @@ typedef int64_t int64;
 typedef uintptr_t uintptr;
 typedef intptr_t intptr;
 
+#define global_variable static
+
 /* --------------------------------------------------------------------------
 	                      STUFF THE OS PROVIDES THE GAME
 -----------------------------------------------------------------------------*/

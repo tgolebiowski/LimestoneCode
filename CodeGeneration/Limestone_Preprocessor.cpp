@@ -409,7 +409,7 @@ StructDefinition ParseStructDefinition( Tokenizer* tokenizer ) {
 		if( IsStringMatch( prevMetaString, editableMetaFlag ) ) {
 			GenerateImguiEditor( &definition );
 		} else if( IsStringMatch( prevMetaString, serializableMetaFlag ) ) {
-			GenerateSerializationCode( &definition );
+			//GenerateSerializationCode( &definition );
 		}
 	}
 
@@ -417,10 +417,10 @@ StructDefinition ParseStructDefinition( Tokenizer* tokenizer ) {
 }
 
 void main( int argc, char** argv ) {
-
 	//Reminder for self
-	if( strcmp( argv[1], "-h" ) == 0 ) {
-		printf("Format: input src file, out file path" );
+	if( strcmp( argv[1], "-h" ) == 0 || argc < 3 ) {
+		printf("Format: input src file, out file path------\n\n" );
+		return;
 	}
 
 	char* headerName = "Meta.h";
@@ -444,10 +444,6 @@ void main( int argc, char** argv ) {
 		cppName,
 		strlen( cppName )
 	);
-
-	printf("fileToProcess: %s\n", fileToProcess );
-	printf( "generatedHeaderFilePath: %s\n", generatedHeaderFilePath );
-	printf("generatedCPPFilePath: %s\n", generatedCPPFilePath );
 
 	char* sourceFileToProcess = ReadSourceFileIntoMemoryAndNullTerminate( 
 		fileToProcess

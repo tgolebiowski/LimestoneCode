@@ -15,9 +15,9 @@
 
 struct App {
 	HMODULE gameCodeHandle;
-	void* (*GameInit)( GlobalMem*, RenderDriver*,SoundDriver*, System* );
-	bool (*UpdateAndRender)( void*, float, InputState*, SoundDriver*,RenderDriver*, System*);
-	void (*MixSound)( SoundDriver* );
+	gameInit* GameInit;
+	updateAndRender* UpdateAndRender;
+	mixSound* MixSound;
 };
 
 struct DynamicFileTracking {
@@ -28,34 +28,15 @@ struct DynamicFileTracking {
 	FILETIME fileTimes[4];
 };
 
-static struct {
-	HINSTANCE appInstance;
-	HWND hwnd;
-	WNDCLASSEX wc;
-	HDC deviceContext;
+global_variable HDC deviceContext;
+global_variable HGLRC openglRenderContext;
 
-	HGLRC openglRenderContext;
-	LPRECT windowRect;
-	LARGE_INTEGER timerResolution;
+global_variable bool appIsRunning;
+global_variable DynamicFileTracking fileTracking;
 
-	uint16 fullScreenWidth;
-	uint16 fullScreenHeight;
-	uint16 windowPosX;
-	uint16 windowPosY;
-	bool running;
-	bool isFullScreen;
-
-	#define KEYPRESSBUFER_LEN 24
-	char keyboardInputBuffer[ KEYPRESSBUFER_LEN ];
-	int keyPressBufferIndex;
-
-	int64 mSecsPerFrame;
-
-	App gameapp;
-
-	int dllTrackingIndex;
-	DynamicFileTracking fileTracking;
-} appInfo;
+#define KEY_HISTORY_LEN 24
+global_variable char keypressHistory[ KEY_HISTORY_LEN ];
+global_variable int keypressHistoryIndex;
 
 /*-----------------------------------------------------------------------------------------
 	                            Ancillary Helpers
@@ -107,8 +88,87 @@ void EnableCrashingOnCrashes()
 			pSetPolicy(dwFlags & ~EXCEPTION_SWALLOWING);
 		}
 	}
+	FreeLibrary( kernel32 );
 }
 
+InputState QueryInput( 
+	int windowWidth, 
+	int windowHeight, 
+	int windowPosX, 
+	int windowPosY 
+) {
+	InputState inputSnapshot = { };
+	memset( &inputSnapshot.romanCharKeys, 0, sizeof(bool) * 32 );
+	for( int keyIndex = 0; keyIndex < 26; ++keyIndex ) {
+		const int asciiStart = (int)'a';
+		int keyChar = asciiStart + keyIndex;
+
+		if( keyChar >= 'a' && keyChar <= 'z' ) {
+			keyChar -= ( 'a' - 'A');
+		}
+
+		short keystate = GetAsyncKeyState( keyChar );
+		inputSnapshot.romanCharKeys[keyIndex] = ( 1 << 16 ) & keystate;
+	}
+
+	inputSnapshot.spcKeys[ InputState::CTRL ] = 
+	( 1 << 16 ) & GetAsyncKeyState( VK_CONTROL );
+	inputSnapshot.spcKeys[ InputState::BACKSPACE ] = 
+	( 1 << 16 ) & GetAsyncKeyState( VK_BACK );
+	inputSnapshot.spcKeys[ InputState::TAB ] = 
+	( 1 << 16 ) & GetAsyncKeyState( VK_TAB );
+	inputSnapshot.spcKeys[ InputState::DEL ] =
+	( 1 << 16 ) & GetAsyncKeyState( VK_DELETE );
+
+	memcpy( 
+		&inputSnapshot.keysPressedSinceLastUpdate, 
+		keypressHistory,
+		24
+		);
+	memset( &keypressHistory, 0, KEY_HISTORY_LEN );
+	keypressHistoryIndex = 0;
+
+	POINT mousePosition;
+	GetCursorPos( &mousePosition );
+	inputSnapshot.mouseX = ( (float)(mousePosition.x - windowPosX)) / 
+	( (float)windowWidth / 2.0f ) - 1.0f;
+	inputSnapshot.mouseY = ( ( (float)(mousePosition.y - windowPosY)) / 
+		( (float)windowHeight / 2.0f ) - 1.0f) * -1.0f;
+
+	inputSnapshot.mouseButtons[0] = 
+	( 1 << 16 ) & GetAsyncKeyState( VK_LBUTTON );
+	inputSnapshot.mouseButtons[1] = 
+	( 1 << 16 ) & GetAsyncKeyState( VK_MBUTTON );
+	inputSnapshot.mouseButtons[2] = 
+	( 1 << 16 ) & GetAsyncKeyState( VK_RBUTTON );
+
+	XINPUT_STATE state;
+	DWORD queryResult;
+	memset( &state, 0, sizeof( XINPUT_STATE ) ) ;
+	queryResult = XInputGetState( 0, &state );
+	if( queryResult == ERROR_SUCCESS ) {
+				//Note: polling of the sticks results in the range not quite reaching 1.0 in the positive direction
+				//it is like this to avoid branching on greater or less than 0.0
+		inputSnapshot.controllerState.leftStick_x = ((float)state.Gamepad.sThumbLX / 32768.0f );
+		inputSnapshot.controllerState.leftStick_y = ((float)state.Gamepad.sThumbLY / 32768.0f );
+		inputSnapshot.controllerState.rightStick_x = ((float)state.Gamepad.sThumbRX / 32768.0f );
+		inputSnapshot.controllerState.rightStick_y = ((float)state.Gamepad.sThumbRY / 32768.0f );
+		inputSnapshot.controllerState.leftTrigger = ((float)state.Gamepad.bLeftTrigger / 255.0f );
+		inputSnapshot.controllerState.rightTrigger = ((float)state.Gamepad.bRightTrigger / 255.0f );
+		inputSnapshot.controllerState.leftBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+		inputSnapshot.controllerState.rightBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
+		inputSnapshot.controllerState.button1 = state.Gamepad.wButtons & XINPUT_GAMEPAD_A;
+		inputSnapshot.controllerState.button2 = state.Gamepad.wButtons & XINPUT_GAMEPAD_B;
+		inputSnapshot.controllerState.button3 = state.Gamepad.wButtons & XINPUT_GAMEPAD_X;
+		inputSnapshot.controllerState.button4 = state.Gamepad.wButtons & XINPUT_GAMEPAD_Y;
+		inputSnapshot.controllerState.specialButtonLeft = state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK;
+		inputSnapshot.controllerState.specialButtonRight = state.Gamepad.wButtons & XINPUT_GAMEPAD_START;
+	} else {
+		inputSnapshot.controllerState = { };
+	}
+
+	return inputSnapshot;
+}
 
 /*-----------------------------------------------------------------------------------------
                                 File system query
@@ -216,14 +276,14 @@ int TrackFileUpdates( char* filePath ) {
 	if( handle != INVALID_HANDLE_VALUE ) {
 		int filePathLen = strlen( filePath );
 		FILETIME fileTime = fileFindData.ftLastWriteTime;
-		char* recordedNameStart = appInfo.fileTracking.writeHead;
+		char* recordedNameStart = fileTracking.writeHead;
 
-		int newTrackIndex = appInfo.fileTracking.numTrackedFiles;
+		int newTrackIndex = fileTracking.numTrackedFiles;
 		strcpy( recordedNameStart, filePath );
-		appInfo.fileTracking.fileNames[ newTrackIndex ] = recordedNameStart;
-		appInfo.fileTracking.fileTimes[ newTrackIndex ] = fileTime;
-		appInfo.fileTracking.writeHead += filePathLen + 1;
-		++appInfo.fileTracking.numTrackedFiles;
+		fileTracking.fileNames[ newTrackIndex ] = recordedNameStart;
+		fileTracking.fileTimes[ newTrackIndex ] = fileTime;
+		fileTracking.writeHead += filePathLen + 1;
+		++fileTracking.numTrackedFiles;
 
 		FindClose( handle );
 
@@ -235,20 +295,20 @@ int TrackFileUpdates( char* filePath ) {
 
 bool DidFileUpdate( int trackingIndex ) {
 	WIN32_FIND_DATA findFileData = { };
-	char* fileName = appInfo.fileTracking.fileNames[ trackingIndex ];
+	char* fileName = fileTracking.fileNames[ trackingIndex ];
 	HANDLE h = FindFirstFile( fileName, &findFileData );
 
 	if( h != INVALID_HANDLE_VALUE ) {
 		FILETIME currentFileTime = findFileData.ftLastWriteTime;
 		int compareResult = CompareFileTime( 
 			&currentFileTime, 
-			&appInfo.fileTracking.fileTimes[ trackingIndex ] 
+			&fileTracking.fileTimes[ trackingIndex ] 
 		);
 		FindClose( h );
 
 		bool result = compareResult == 1;
 		if( result ) {
-			appInfo.fileTracking.fileTimes[ trackingIndex ] = currentFileTime;
+			fileTracking.fileTimes[ trackingIndex ] = currentFileTime;
 		}
 
 		return result;
@@ -258,22 +318,21 @@ bool DidFileUpdate( int trackingIndex ) {
 }
 
 #define GAME_CODE_FILEPATH "App.dll"
-
-void LoadGameCode() {
-	if( appInfo.gameapp.gameCodeHandle != NULL ) {
-		FreeLibrary( appInfo.gameapp.gameCodeHandle );
-		appInfo.gameapp.GameInit = NULL;
-		appInfo.gameapp.UpdateAndRender = NULL;
-		appInfo.gameapp.MixSound = NULL;
+void LoadGameCode( App* gameapp ) {
+	if( gameapp->gameCodeHandle != NULL ) {
+		FreeLibrary( gameapp->gameCodeHandle );
+		gameapp->GameInit = NULL;
+		gameapp->UpdateAndRender = NULL;
+		gameapp->MixSound = NULL;
 	}
 
 	CopyFile( GAME_CODE_FILEPATH, "App_Running.dll", false );
 
 	HMODULE dllHandle = LoadLibrary( "App_Running.dll" );
-	appInfo.gameapp.gameCodeHandle = dllHandle;
-	appInfo.gameapp.GameInit = (gameInit*)GetProcAddress( dllHandle, "GameInit" );
-	appInfo.gameapp.UpdateAndRender = (updateAndRender*)GetProcAddress( dllHandle, "UpdateAndRender" );
-	appInfo.gameapp.MixSound = (mixSound*)GetProcAddress( dllHandle, "MixSound" );
+	gameapp->gameCodeHandle = dllHandle;
+	gameapp->GameInit = (gameInit*)GetProcAddress( dllHandle, "GameInit" );
+	gameapp->UpdateAndRender = (updateAndRender*)GetProcAddress( dllHandle, "UpdateAndRender" );
+	gameapp->MixSound = (mixSound*)GetProcAddress( dllHandle, "MixSound" );
 }
 
 /*-----------------------------------------------------------------------------------------
@@ -512,7 +571,7 @@ static Win32Sound Win32InitSound( HWND hwnd, int targetGameHZ, Stack* systemStor
 	return win32Sound;
 }
 
-static void PushAudioToSoundCard( Win32Sound* win32Sound ) {
+static void PushAudioToSoundCard( App* gameapp, Win32Sound* win32Sound ) {
 	memset( 
 		win32Sound->driver.srb.samples,
 		0, 
@@ -573,7 +632,7 @@ static void PushAudioToSoundCard( Win32Sound* win32Sound ) {
 	}
 
 	//Mix together currently playing sounds
-	appInfo.gameapp.MixSound( &win32Sound->driver );
+	gameapp->MixSound( &win32Sound->driver );
 
 	//Push mixed sounds to the actual card
 	VOID* region0;
@@ -629,6 +688,7 @@ static void PushAudioToSoundCard( Win32Sound* win32Sound ) {
 #include "GLRenderer.h"
 
 GLRenderDriver Win32InitGLRenderer( 
+	HWND hwnd,
 	System* system, 
 	Stack* stackForGLAPI
 ) {
@@ -645,21 +705,14 @@ GLRenderDriver Win32InitGLRenderer(
 		    0, 0, 0, 0, 0             //Don't care...
 	};
 
-	appInfo.deviceContext = GetDC( appInfo.hwnd );
+	deviceContext = GetDC( hwnd );
 
 	int letWindowsChooseThisPixelFormat;
-	letWindowsChooseThisPixelFormat = ChoosePixelFormat( 
-		appInfo.deviceContext, 
-		&pfd 
-	); 
-	SetPixelFormat( 
-		appInfo.deviceContext, 
-		letWindowsChooseThisPixelFormat, 
-		&pfd 
-	);
+	letWindowsChooseThisPixelFormat = ChoosePixelFormat( deviceContext, &pfd ); 
+	SetPixelFormat( deviceContext, letWindowsChooseThisPixelFormat, &pfd );
 
-	appInfo.openglRenderContext = wglCreateContext( appInfo.deviceContext );
-	if( wglMakeCurrent ( appInfo.deviceContext, appInfo.openglRenderContext ) == false ) {
+	openglRenderContext = wglCreateContext( deviceContext );
+	if( wglMakeCurrent ( deviceContext, openglRenderContext ) == false ) {
 		printf( "Couldn't make GL context current.\n" );
 		return { };
 	}
@@ -672,10 +725,6 @@ GLRenderDriver Win32InitGLRenderer(
 	glApi->glGenBuffers = (PFNGLGENBUFFERSPROC)wglGetProcAddress( "glGenBuffers" );
 	glApi->glUseProgram = (PFNGLUSEPROGRAMPROC)wglGetProcAddress( "glUseProgram" );
 	glApi->glActiveTexture = (PFNGLACTIVETEXTUREPROC)wglGetProcAddress( "glActiveTexture" );
-	//glApi->glGenTextures = (PFNGLGENTEXTURESPROC)wglGetProcAddress( "glGenTextures" );
-	//glApi->glBindTexture = (PFNGLBINDTEXTUREPROC)wglGetProcAddress( "glBindTexture" );
-	//glApi->glTexParameteri = (PFNGLTEXPARAMETERIPROC)wglGetProcAddress( "glTexParameteri" );
-	//glApi->glTexImage2D = (PFNGLTEXIMAGE2DPROC)wglGetProcAddress( "glTexImage2D" );
 	glApi->glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress( "glEnableVertexAttribArray" );
 	glApi->glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress( "glVertexAttribPointer" );
 	glApi->glGenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)wglGetProcAddress( "glGenFramebuffers" );
@@ -789,26 +838,27 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyfr
                                  Win32 App required stuff
 ------------------------------------------------------------------------------------------*/
 
-static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
+static LRESULT CALLBACK WndProc( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 	switch (uMsg) {
 		case WM_CLOSE: {
-			appInfo.running = false;
-			wglMakeCurrent( appInfo.deviceContext, NULL );
-			wglDeleteContext( appInfo.openglRenderContext );
-			ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
-			DestroyWindow( appInfo.hwnd );
+			appIsRunning = false;
+			wglMakeCurrent( deviceContext, NULL );
+			wglDeleteContext( openglRenderContext );
+			ReleaseDC( hwnd, deviceContext );
+			DestroyWindow( hwnd );
 			break;
 		}
 
 		case WM_DESTROY: {
-			appInfo.running = false;
-			wglMakeCurrent( appInfo.deviceContext, NULL );
-			wglDeleteContext( appInfo.openglRenderContext );
-			ReleaseDC( appInfo.hwnd, appInfo.deviceContext );
+			appIsRunning = false;
+			wglMakeCurrent( deviceContext, NULL );
+			wglDeleteContext( openglRenderContext );
+			ReleaseDC( hwnd, deviceContext );
 			PostQuitMessage( 0 );
 			break;
 		}
 
+		//...I forget why this is here, windows opengl magic I think...
 		case WM_ERASEBKGND: {
 			return 666;
 		}
@@ -831,14 +881,14 @@ static LRESULT CALLBACK WndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 				keyCharValue = '-';
 			}
 
-			appInfo.keyboardInputBuffer[ appInfo.keyPressBufferIndex++ ] = keyCharValue;
+			keypressHistory[ keypressHistoryIndex++ ] = keyCharValue;
 
 			break;
 		}
 	}
 
 	// Pass All Unhandled Messages To DefWindowProc
-	return DefWindowProc(hWnd,uMsg,wParam,lParam);
+	return DefWindowProc(hwnd,uMsg,wParam,lParam);
 }
 
 static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow ) {
@@ -848,38 +898,10 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	freopen( "conout$","w",stderr );
 	printf( "Program Started, console initialized\n" );
 
-	appInfo.appInstance = hInstance;
-
 	const char WindowName[] = "Wet Clay";
 
-	appInfo.running = true;
-	appInfo.isFullScreen = false;
-	appInfo.mSecsPerFrame = 16; //60FPS
-
-	appInfo.wc.cbSize = sizeof(WNDCLASSEX);
-	appInfo.wc.style = CS_OWNDC;
-	appInfo.wc.lpfnWndProc = WndProc;
-	appInfo.wc.cbClsExtra = 0;
-	appInfo.wc.cbWndExtra = 0;
-	appInfo.wc.hInstance = appInfo.appInstance;
-	appInfo.wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-	appInfo.wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-	appInfo.wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-	appInfo.wc.lpszMenuName = NULL;
-	appInfo.wc.lpszClassName = WindowName;
-	appInfo.wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
-
-	EnableCrashingOnCrashes();
-
-	if( !RegisterClassEx( &appInfo.wc ) ) {
-		printf( "Failed to register class\n" );
-		appInfo.running = false;
-		return -1;
-	}
-
+	int64 mSecsPerFrame = 16; //60FPS
 	System system = { };
-	//system.screenHeight = GetSystemMetrics(SM_CXSCREEN);
-	//system.screenWidth = GetSystemMetrics(SM_CYSCREEN);
 	system.windowHeight = 680;
 	system.windowWidth = 1080;
 	system.ReadWholeFile = &ReadWholeFile;
@@ -888,46 +910,61 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	system.DidFileUpdate = &DidFileUpdate;
 
 	//Center position of window
-	appInfo.fullScreenWidth = GetSystemMetrics( SM_CXSCREEN );
-	appInfo.fullScreenHeight = GetSystemMetrics( SM_CYSCREEN );
-	appInfo.windowPosX = ( appInfo.fullScreenWidth / 2 ) - (system.windowWidth / 2 );
-	appInfo.windowPosY = ( appInfo.fullScreenHeight / 2 ) - (system.windowHeight / 2 );
- 
-	// set up the window for a windowed application by default
-	//long wndStyle = WS_OVERLAPPEDWINDOW;
- 
-	if( appInfo.isFullScreen ) {
-		appInfo.windowPosX = 0;
-		appInfo.windowPosY = 0;
+	uint16 fullScreenWidth = GetSystemMetrics( SM_CXSCREEN );
+	uint16 fullScreenHeight = GetSystemMetrics( SM_CYSCREEN );
+	uint16 windowPosX = ( fullScreenWidth / 2 ) - (system.windowWidth / 2 );
+	uint16 windowPosY = ( fullScreenHeight / 2 ) - (system.windowHeight / 2 );
 
-		//change resolution before the window is created
-		//SysSetDisplayMode(width, height, SCRDEPTH);
-		//TODO: implement
+	WNDCLASSEX wc = { };
+	wc.cbSize = sizeof(WNDCLASSEX);
+	wc.style = CS_OWNDC;
+	wc.lpfnWndProc = WndProc;
+	wc.cbClsExtra = 0;
+	wc.cbWndExtra = 0;
+	wc.hInstance = hInstance;
+	wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	wc.lpszMenuName = NULL;
+	wc.lpszClassName = WindowName;
+	wc.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
+
+	if( !RegisterClassEx( &wc ) ) {
+		printf( "Failed to register class\n" );
+		return -1;
 	}
+
+	EnableCrashingOnCrashes();
  
 	// at this point WM_CREATE message is sent/received
 	// the WM_CREATE branch inside WinProc function will execute here
-	appInfo.hwnd = CreateWindowEx(
+	HWND hwnd = CreateWindowEx(
 		0, 
 		WindowName, 
 		"Wet Clay App", 
 		WS_BORDER, 
-		appInfo.windowPosX, 
-		appInfo.windowPosY, 
+		windowPosX, 
+		windowPosY, 
 		system.windowWidth, 
 		system.windowHeight,
 		NULL, 
 		NULL, 
-		appInfo.appInstance, 
+		hInstance, 
 		NULL
 	);
 
-	GetClientRect( appInfo.hwnd, appInfo.windowRect );
+	LPRECT windowRect = { };
+	GetClientRect( hwnd, windowRect );
 
-	BOOL canSupportHiResTimer = QueryPerformanceFrequency( &appInfo.timerResolution );
+	SetWindowLong( hwnd, GWL_STYLE, 0 );
+	ShowWindow ( hwnd, SW_SHOWNORMAL );
+	UpdateWindow( hwnd );
+
+	LARGE_INTEGER timerResolution;
+	BOOL canSupportHiResTimer = QueryPerformanceFrequency( &timerResolution );
 	assert( canSupportHiResTimer );
 
-	appInfo.gameapp = { };
+	App gameapp = { };
 
 	GlobalMem gameSlab;
 	gameSlab.slabSize = MEGABYTES( 32 );
@@ -938,137 +975,61 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	Stack systemsMemory = AllocateStackInGlobalMem( &gameSlab, KILOBYTES( 200 ) );
 
 	GLRenderDriver glDriver = Win32InitGLRenderer( 
+		hwnd,
 		&system, 
 		&systemsMemory
 	);
-	Win32Sound win32Sound = Win32InitSound( appInfo.hwnd, 60, &systemsMemory );
+	Win32Sound win32Sound = Win32InitSound( hwnd, 60, &systemsMemory );
 
 	printf(
 		"Remaining System Memory: %Id\n", 
 		((intptr)systemsMemory.end - (intptr)systemsMemory.current) 
 	);
 
-	LoadGameCode();
-	assert( appInfo.gameapp.GameInit != NULL );
+	LoadGameCode( &gameapp );
+	assert( gameapp.GameInit != NULL );
 
-	appInfo.fileTracking = { };
-	appInfo.fileTracking.writeHead = &appInfo.fileTracking.stringBuffer[0];
+	fileTracking = { };
+	fileTracking.writeHead = &fileTracking.stringBuffer[0];
 
-	appInfo.dllTrackingIndex = TrackFileUpdates( GAME_CODE_FILEPATH );
-	assert( appInfo.dllTrackingIndex != -1 );
+	int dllTrackingIndex = TrackFileUpdates( GAME_CODE_FILEPATH );
+	assert( dllTrackingIndex != -1 );
 
-	void* gameMemoryPtr = appInfo.gameapp.GameInit( 
+	void* gameMemoryPtr = gameapp.GameInit( 
 		&gameSlab, 
 		(RenderDriver*)&glDriver,
 		&win32Sound.driver,
 		&system
 	);
 
-	SetWindowLong( appInfo.hwnd, GWL_STYLE, 0 );
-	ShowWindow ( appInfo.hwnd, SW_SHOWNORMAL );
-	UpdateWindow( appInfo.hwnd );
+	appIsRunning = true;
 
 	MSG Msg;
-	do {
-		while( PeekMessage( &Msg, NULL, 0, 0, PM_REMOVE ) ) {
-			TranslateMessage( &Msg );
-			DispatchMessage( &Msg );
-		}
-
-		if( DidFileUpdate( appInfo.dllTrackingIndex ) ) {
-			LoadGameCode();
+	while( appIsRunning ) {
+		if( DidFileUpdate( dllTrackingIndex ) ) {
+			LoadGameCode( &gameapp );
 		}
 
 		static LARGE_INTEGER startTime;
+		LARGE_INTEGER elapsedTime;
 		LARGE_INTEGER lastTime = startTime;
 		QueryPerformanceCounter( &startTime );
 
-		LARGE_INTEGER elapsedTime;
 		elapsedTime.QuadPart = startTime.QuadPart - lastTime.QuadPart;
 		elapsedTime.QuadPart *= 1000;
-		elapsedTime.QuadPart /= appInfo.timerResolution.QuadPart;
+		elapsedTime.QuadPart /= timerResolution.QuadPart;
 
 		//GAME LOOP
-		if(
-			appInfo.running && 
-			appInfo.gameapp.UpdateAndRender != NULL &&
-			appInfo.gameapp.MixSound != NULL 
-		) {
-			appInfo.keyPressBufferIndex = 0;
+		if(	gameapp.UpdateAndRender != NULL && gameapp.MixSound != NULL ) {
+		    InputState inputSnapshot = QueryInput( 
+		    	system.windowWidth, 
+		    	system.windowHeight,
+		    	windowPosX,
+		    	windowPosY
+		    );
+		    keypressHistoryIndex = 0;
 
-			InputState inputSnapshot = { };
-			{
-				memset( &inputSnapshot.romanCharKeys, 0, sizeof(bool) * 32 );
-				for( int keyIndex = 0; keyIndex < 26; ++keyIndex ) {
-					const int asciiStart = (int)'a';
-					int keyChar = asciiStart + keyIndex;
-
-					if( keyChar >= 'a' && keyChar <= 'z' ) {
-						keyChar -= ( 'a' - 'A');
-					}
-
-					short keystate = GetAsyncKeyState( keyChar );
-					inputSnapshot.romanCharKeys[keyIndex] = ( 1 << 16 ) & keystate;
-				}
-
-				inputSnapshot.spcKeys[ InputState::CTRL ] = 
-				    ( 1 << 16 ) & GetAsyncKeyState( VK_CONTROL );
-				inputSnapshot.spcKeys[ InputState::BACKSPACE ] = 
-				    ( 1 << 16 ) & GetAsyncKeyState( VK_BACK );
-				inputSnapshot.spcKeys[ InputState::TAB ] = 
-				    ( 1 << 16 ) & GetAsyncKeyState( VK_TAB );
-				inputSnapshot.spcKeys[ InputState::DEL ] =
-				    ( 1 << 16 ) & GetAsyncKeyState( VK_DELETE );
-
-				memcpy( 
-					&inputSnapshot.keysPressedSinceLastUpdate, 
-					appInfo.keyboardInputBuffer,
-					24
-				);
-				memset( &appInfo.keyboardInputBuffer, 0, KEYPRESSBUFER_LEN );
-				appInfo.keyPressBufferIndex = 0;
-
-				POINT mousePosition;
-				GetCursorPos( &mousePosition );
-				inputSnapshot.mouseX = ( (float)(mousePosition.x - appInfo.windowPosX)) / 
-				    ( (float)system.windowWidth / 2.0f ) - 1.0f;
-				inputSnapshot.mouseY = ( ( (float)(mousePosition.y - appInfo.windowPosY)) / 
-					( (float)system.windowHeight / 2.0f ) - 1.0f) * -1.0f;
-
-				inputSnapshot.mouseButtons[0] = 
-				( 1 << 16 ) & GetAsyncKeyState( VK_LBUTTON );
-				inputSnapshot.mouseButtons[1] = 
-				( 1 << 16 ) & GetAsyncKeyState( VK_MBUTTON );
-				inputSnapshot.mouseButtons[2] = 
-				( 1 << 16 ) & GetAsyncKeyState( VK_RBUTTON );
-
-				XINPUT_STATE state;
-				DWORD queryResult;
-				memset( &state, 0, sizeof( XINPUT_STATE ) ) ;
-				queryResult = XInputGetState( 0, &state );
-				if( queryResult == ERROR_SUCCESS ) {
-				//Note: polling of the sticks results in the range not quite reaching 1.0 in the positive direction
-				//it is like this to avoid branching on greater or less than 0.0
-					inputSnapshot.controllerState.leftStick_x = ((float)state.Gamepad.sThumbLX / 32768.0f );
-					inputSnapshot.controllerState.leftStick_y = ((float)state.Gamepad.sThumbLY / 32768.0f );
-					inputSnapshot.controllerState.rightStick_x = ((float)state.Gamepad.sThumbRX / 32768.0f );
-					inputSnapshot.controllerState.rightStick_y = ((float)state.Gamepad.sThumbRY / 32768.0f );
-					inputSnapshot.controllerState.leftTrigger = ((float)state.Gamepad.bLeftTrigger / 255.0f );
-					inputSnapshot.controllerState.rightTrigger = ((float)state.Gamepad.bRightTrigger / 255.0f );
-					inputSnapshot.controllerState.leftBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
-					inputSnapshot.controllerState.rightBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
-					inputSnapshot.controllerState.button1 = state.Gamepad.wButtons & XINPUT_GAMEPAD_A;
-					inputSnapshot.controllerState.button2 = state.Gamepad.wButtons & XINPUT_GAMEPAD_B;
-					inputSnapshot.controllerState.button3 = state.Gamepad.wButtons & XINPUT_GAMEPAD_X;
-					inputSnapshot.controllerState.button4 = state.Gamepad.wButtons & XINPUT_GAMEPAD_Y;
-					inputSnapshot.controllerState.specialButtonLeft = state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK;
-					inputSnapshot.controllerState.specialButtonRight = state.Gamepad.wButtons & XINPUT_GAMEPAD_START;
-				} else {
-					inputSnapshot.controllerState = { };
-				}
-			}
-
-			appInfo.running = appInfo.gameapp.UpdateAndRender( 
+			appIsRunning = gameapp.UpdateAndRender( 
 				gameMemoryPtr, 
 				(float)elapsedTime.QuadPart, 
 				&inputSnapshot,
@@ -1077,26 +1038,37 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 				&system
 			);
 
-		    PushAudioToSoundCard( &win32Sound );
+		    PushAudioToSoundCard( &gameapp, &win32Sound );
 
-			BOOL swapBufferSuccess = SwapBuffers( appInfo.deviceContext );
+			BOOL swapBufferSuccess = SwapBuffers( deviceContext );
 			glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 		} else {
 			printf( "Game code was not loaded...\n" );
 		}
 
+		//Windows Message pump is here, so if there is a system level Close or
+		//Destory command, the UpdateAndRender method does not reset the appIsRunning
+		//flag to true
+		while( PeekMessage( &Msg, NULL, 0, 0, PM_REMOVE ) ) {
+			TranslateMessage( &Msg );
+			DispatchMessage( &Msg );
+		}
+
+		//End loop timer query
 		LARGE_INTEGER endTime, computeTime;
-		QueryPerformanceCounter( &endTime );
-		computeTime.QuadPart = endTime.QuadPart - startTime.QuadPart;
-		computeTime.QuadPart *= 1000;
-		computeTime.QuadPart /= appInfo.timerResolution.QuadPart;
-		if( computeTime.QuadPart <= appInfo.mSecsPerFrame ) {
-			Sleep(appInfo.mSecsPerFrame - computeTime.QuadPart );
+		{
+			QueryPerformanceCounter( &endTime );
+			computeTime.QuadPart = endTime.QuadPart - startTime.QuadPart;
+			computeTime.QuadPart *= 1000;
+			computeTime.QuadPart /= timerResolution.QuadPart;
+		}
+
+		if( computeTime.QuadPart <= mSecsPerFrame ) {
+			Sleep(mSecsPerFrame - computeTime.QuadPart );
 		} else {
 			printf("Didn't sleep, compute was %ld\n", computeTime.QuadPart );
 		}
-
-	} while( appInfo.running );
+	};
 
 	FreeConsole();
 

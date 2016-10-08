@@ -1,89 +1,109 @@
-struct IndexedWriteBuffer {
+struct WriteState {
 	int bufferLength;
 	char* buffer;
 	int writeIndex;
 };
 
+void sprintTokenToIndexedBuffer( char* targetBuffer, int* index, Token* token ) {
+	int sprintfReturn = sprintf( 
+		&targetBuffer[ *index ],
+		"%.*s",
+		token->tokenLength,
+		token->tokenStart
+	);
+
+	*index += sprintfReturn;
+}
+
+void sprintConstToIndexedBuffer( char* buffer, int* index, char* string ) {
+	int sprintfReturn = sprintf (
+		&buffer[ *index ],
+		"%s",
+		string
+	);
+	*index += sprintfReturn;
+}
+
 void GenerateIntrospectionCode( StructDefinition* d ) {
 	char buffer [1024] = { };
-	IndexedWriteBuffer iwb = { 1024, buffer, 0 };
-	#define sprintToIWB(...) iwb.writeIndex += sprintf( \
-	&iwb.buffer[ iwb.writeIndex ], __VA_ARGS__ );
+	WriteState ws = { 1024, buffer, 0 };
+	#define write(...) ws.writeIndex += sprintf( \
+	&ws.buffer[ ws.writeIndex ], __VA_ARGS__ );
 
-	sprintToIWB( "\nstatic StructIntrospectData %.*sIntroData = {\n",
+	write( "\nstatic StructIntrospectData %.*sIntroData = {\n",
 		d->typeNameToken->tokenLength, d->typeNameToken->tokenStart
 	)
-	sprintToIWB( "\t%d,\n", d->memberCount )
+	write( "\t%d,\n", d->memberCount )
 
-	sprintToIWB( "\t{\n")
+	write( "\t{\n")
     for( int mIndex = 0; mIndex < d->memberCount; ++mIndex ) {
     	Member* m = &d->memberDefinitions[ mIndex ];
 
     	if( mIndex > 0 ) {
-    		sprintToIWB( ",\n")
+    		write( ",\n")
     	}
     	if( m->metaData ) {
-    		sprintToIWB( "\t\t{ %d, { ", m->metaData->tagCount )
+    		write( "\t\t{ %d, { ", m->metaData->tagCount )
     		for( int mdIndex = 0; mdIndex < m->metaData->tagCount; ++mdIndex ) {
     			Token* metaTagToken = m->metaData->tagTokens[ mdIndex ];
 
-    			if( mdIndex > 0 ) { sprintToIWB( ", " ) }
-    			sprintToIWB( "\"%.*s\"",
+    			if( mdIndex > 0 ) { write( ", " ) }
+    			write( "\"%.*s\"",
     				metaTagToken->tokenLength, metaTagToken->tokenStart
     			)
     		}
-    		sprintToIWB( " }, " )
+    		write( " }, " )
     	} else {
-    		sprintToIWB( "\t\t{ 0, { }, ")
+    		write( "\t\t{ 0, { }, ")
     	}
 
-    	sprintToIWB( "\"%.*s\", ",
+    	write( "\"%.*s\", ",
     		m->memberNameToken->tokenLength, m->memberNameToken->tokenStart
     	)
 
-    	sprintToIWB( "offsetof( %.*s, %.*s ), ",
+    	write( "offsetof( %.*s, %.*s ), ",
     		d->typeNameToken->tokenLength, d->typeNameToken->tokenStart,
     		m->memberNameToken->tokenLength, m->memberNameToken->tokenStart
     	)
     	//Member data size
-    	sprintToIWB( "sizeof( %.*s",
+    	write( "sizeof( %.*s",
     		m->typeToken->tokenLength, m->typeToken->tokenStart
     	)
     	for( int ptrLevel = 0; ptrLevel < m->ptrLevel - 1; ++ptrLevel ) {
-    		sprintToIWB( "*" )
+    		write( "*" )
     	}
-    	sprintToIWB( " )" )
+    	write( " )" )
 
-    	sprintToIWB( ", %d", m->ptrLevel );
-    	sprintToIWB( " }")
+    	write( ", %d", m->ptrLevel );
+    	write( " }")
 
 
     }
-    sprintToIWB( "\n\t}, \n")
+    write( "\n\t}, \n")
 
     if( d->metaData != NULL ) {
-    	sprintToIWB( "\t%d,\n", d->metaData->tagCount )
-    	sprintToIWB( "\t{ " )
+    	write( "\t%d,\n", d->metaData->tagCount )
+    	write( "\t{ " )
     	for( int mdIndex = 0; mdIndex < d->metaData->tagCount; ++mdIndex ) {
     		Token* mdTagToken = d->metaData->tagTokens[ mdIndex ];
-    		if( mdIndex > 0 ) sprintToIWB( ", " )
-    		sprintToIWB("\"%.*s\"", mdTagToken->tokenLength, mdTagToken->tokenStart	)
+    		if( mdIndex > 0 ) write( ", " )
+    		write("\"%.*s\"", mdTagToken->tokenLength, mdTagToken->tokenStart	)
     	}
-    	sprintToIWB( " }\n" )
+    	write( " }\n" )
 	} else {
-		sprintToIWB( "\t0,\n" )
-		sprintToIWB( "\t{ }\n" )
+		write( "\t0,\n" )
+		write( "\t{ }\n" )
 	}
 
-    sprintToIWB( "};\n" )
+    write( "};\n" )
 
-    sprintToIWB( "StructIntrospectData* getIntrospectionData( %.*s* s ) {\n",
+    write( "StructIntrospectData* getIntrospectionData( %.*s* s ) {\n",
     	d->typeNameToken->tokenLength, d->typeNameToken->tokenStart
     )
-    sprintToIWB( "\treturn &%.*sIntroData;\n",
+    write( "\treturn &%.*sIntroData;\n",
     	d->typeNameToken->tokenLength, d->typeNameToken->tokenStart
     )
-    sprintToIWB( "}\n" )
+    write( "}\n" )
 
 	writeConstStringToFile( buffer, outFile_CPP );
 }
@@ -146,26 +166,7 @@ void GenerateImguiEditor( StructDefinition* d ) {
 	writeConstStringToFile( "\n}", outFile_CPP );
 }
 
-void sprintTokenToIndexedBuffer( char* targetBuffer, int* index, Token* token ) {
-	int sprintfReturn = sprintf( 
-		&targetBuffer[ *index ],
-		"%.*s",
-		token->tokenLength,
-		token->tokenStart
-	);
-
-	*index += sprintfReturn;
-}
-
-void sprintConstToIndexedBuffer( char* buffer, int* index, char* string ) {
-	int sprintfReturn = sprintf (
-		&buffer[ *index ],
-		"%s",
-		string
-	);
-	*index += sprintfReturn;
-}
-
+#if 0
 void GenerateSerializationCode( StructDefinition* d ) {
 	//Set up write buffers...
 	char srlzSrcBuffer [ 1024 ] = { };
@@ -350,3 +351,4 @@ void GenerateSerializationCode( StructDefinition* d ) {
 	writeConstStringToFile( srlzSrcBuffer, outFile_CPP );
 	writeConstStringToFile( desrlzBuffer, outFile_CPP );
 }
+#endif

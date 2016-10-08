@@ -12,6 +12,7 @@ pushd ..\build
 	del *.exe
 
 	call cl /W0 /Od /Zi /FeLimestoneMeta ..\%Dir%\CodeGeneration\Limestone_Preprocessor.cpp user32.lib /link
+	REM call LimestoneMeta ..\%Dir%\Src\App.cpp ..\%Dir%\
 
 	SET myTime=%TIME:~0,2%_%TIME:~3,2%_%TIME:~6,2%
 	SET myTime=%myTime: =0%
