@@ -88,7 +88,7 @@ struct Framebuffer {
     PtrToGpuMem textureBindingID;
 };
 
-#ifdef APP_H
+#ifdef DLL_ONLY
 void SetRendererCameraProjection( 
 	float width, 
 	float height, 

@@ -27,7 +27,7 @@ struct SoundDriver {
 #define MIX_SOUND(name) void name(SoundDriver* driver)
 typedef MIX_SOUND( mixSound );
 
-#ifdef APP_H
+#ifdef DLL_ONLY
 PlayingSound* QueueLoadedSound( LoadedSound* sound, PlayingSound* activeSoundList ) {
 	for( uint8 soundIndex = 0; soundIndex < MAXSOUNDSATONCE; ++soundIndex ) {
 		if( activeSoundList[ soundIndex ].baseSound == NULL ) {

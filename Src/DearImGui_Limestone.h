@@ -50,7 +50,7 @@ static void* ImGuiMemAlloc( size_t size ) {
     return newMem;
 }
 
-static void ImGuiMemFree( void* v ) {
+static void ImGuiMemFree( void* v) {
 
 }
 
