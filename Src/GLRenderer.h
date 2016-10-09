@@ -777,12 +777,12 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
     uint16 counter = 0;
 
     const uint32 vertCount = indexCount / 3;
-    storage->vData = (Vec3*)StackAllocA( allocater, vertCount * sizeof( Vec3 ), 16 );
-    storage->uvData = (float*)StackAllocA( allocater, vertCount * 2 * sizeof( float ), 4 );
-    storage->normalData = (Vec3*)StackAllocA( allocater, vertCount * sizeof( Vec3 ), 4 );
+    storage->vData = (Vec3*)StackAllocAligned( allocater, vertCount * sizeof( Vec3 ), 16 );
+    storage->uvData = (float*)StackAllocAligned( allocater, vertCount * 2 * sizeof( float ), 4 );
+    storage->normalData = (Vec3*)StackAllocAligned( allocater, vertCount * sizeof( Vec3 ), 4 );
     if( rawBoneWeightData != NULL ) {
-        storage->boneWeightData = (float*)StackAllocA( allocater, sizeof(float) * vertCount * MAXBONESPERVERT, 4 );
-        storage->boneIndexData = (uint32*)StackAllocA( allocater, sizeof(uint32) * vertCount * MAXBONESPERVERT, 4 );
+        storage->boneWeightData = (float*)StackAllocAligned( allocater, sizeof(float) * vertCount * MAXBONESPERVERT, 4 );
+        storage->boneIndexData = (uint32*)StackAllocAligned( allocater, sizeof(uint32) * vertCount * MAXBONESPERVERT, 4 );
     } else {
         storage->boneWeightData = NULL;
         storage->boneIndexData = NULL;

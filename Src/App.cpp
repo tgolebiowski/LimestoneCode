@@ -1,6 +1,5 @@
 #define APP_H
 #include "App.h"
-
 #include "DearImGui_Limestone.h"
 
 struct GameMemory {
@@ -9,10 +8,10 @@ struct GameMemory {
 };
 
 extern "C" GAME_INIT( GameInit ) {
-    Stack lostSection = AllocateStackInGlobalMem( mainSlab, KILOBYTES( 1 ) );
-    void* gMemPtr = StackAllocA( &lostSection, sizeof( GameMemory ) );
+    Stack lostSection = AllocateNewStackFromStack( mainSlab, KILOBYTES( 1 ) );
+    void* gMemPtr = StackAllocAligned( &lostSection, sizeof( GameMemory ) );
     GameMemory* gMem = (GameMemory*)gMemPtr;
-    gMem->imguiStack = AllocateStackInGlobalMem( mainSlab, MEGABYTES( 1 ) );
+    gMem->imguiStack = AllocateNewStackFromStack( mainSlab, MEGABYTES( 1 ) );
 
     gMem->imguiStatePtr = InitImGui_LimeStone( 
     	&gMem->imguiStack, 

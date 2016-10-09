@@ -202,7 +202,7 @@ void* ReadWholeFile( char* filename, Stack* allocater ) {
 
 	//Reserve Space
 	void* data = 0;
-	data = StackAllocA( allocater, fileSize.QuadPart );
+	data = StackAllocAligned( allocater, fileSize.QuadPart );
 	memset( data, 0, fileSize.QuadPart );
 	assert( data != 0 );
 
@@ -542,13 +542,13 @@ static Win32Sound Win32InitSound( HWND hwnd, int targetGameHZ, Stack* systemStor
 				SoundDriver* driver = &win32Sound.driver;
 				driver->srb.samplesPerSecond = SamplesPerSecond;
 				driver->srb.samplesToWrite = BufferSize / sizeof( int16 );
-				driver->srb.samples = (int16*)StackAllocA(
+				driver->srb.samples = (int16*)StackAllocAligned(
 					systemStorage,
 					BufferSize 
 				);
 
 				size_t playingInfoBufferSize = sizeof( PlayingSound ) * MAXSOUNDSATONCE;
-				driver->activeSoundList = (PlayingSound*)StackAllocA(
+				driver->activeSoundList = (PlayingSound*)StackAllocAligned(
 					systemStorage,
 					playingInfoBufferSize 
 				);
@@ -717,7 +717,7 @@ GLRenderDriver Win32InitGLRenderer(
 		return { };
 	}
 
-	GL_API* glApi = (GL_API*)StackAllocA( stackForGLAPI, sizeof( GL_API ) );
+	GL_API* glApi = (GL_API*)StackAllocAligned( stackForGLAPI, sizeof( GL_API ) );
 
 	glApi->glBindBuffer = (PFNGLBINDBUFFERPROC)wglGetProcAddress( "glBindBuffer" );
 	glApi->glCreateProgram = (PFNGLCREATEPROGRAMPROC)wglGetProcAddress( "glCreateProgram" );
@@ -966,13 +966,18 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 	App gameapp = { };
 
-	GlobalMem gameSlab;
-	gameSlab.slabSize = MEGABYTES( 32 );
-	gameSlab.slabStart = VirtualAlloc( NULL, gameSlab.slabSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE );
-	assert( gameSlab.slabStart != NULL );
-	gameSlab.current = gameSlab.slabStart;
+	Stack gameSlab;
+	gameSlab.size = MEGABYTES( 32 );
+	gameSlab.start = VirtualAlloc( 
+		NULL, 
+		gameSlab.size, 
+		MEM_COMMIT | MEM_RESERVE, 
+		PAGE_EXECUTE_READWRITE 
+	);
+	gameSlab.current = gameSlab.start;
+	assert( gameSlab.start != NULL );
 
-	Stack systemsMemory = AllocateStackInGlobalMem( &gameSlab, KILOBYTES( 200 ) );
+	Stack systemsMemory = AllocateNewStackFromStack( &gameSlab, KILOBYTES( 200 ) );
 
 	GLRenderDriver glDriver = Win32InitGLRenderer( 
 		hwnd,
@@ -981,10 +986,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	);
 	Win32Sound win32Sound = Win32InitSound( hwnd, 60, &systemsMemory );
 
-	printf(
-		"Remaining System Memory: %Id\n", 
-		((intptr)systemsMemory.end - (intptr)systemsMemory.current) 
-	);
+	printf( "Remaining System Memory: %Id\n", SPACE_IN_STACK( (&gameSlab) ) );
 
 	LoadGameCode( &gameapp );
 	assert( gameapp.GameInit != NULL );

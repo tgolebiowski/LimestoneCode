@@ -46,11 +46,11 @@ struct ImguiLimestoneDriver {
 
 static void* ImGuiMemAlloc( size_t size ) {
     Stack* mem = ((ImguiLimestoneDriver*)ImGui::GetIO().UserData)->mem;
-    void* newMem = StackAllocA( mem, size );
+    void* newMem = StackAllocAligned( mem, size );
     return newMem;
 }
 
-static void ImGuiMemFree( void* v) {
+static void ImGuiMemFree( void* v ) {
 
 }
 
@@ -161,7 +161,7 @@ static void* InitImGui_LimeStone(
     imguiDriver->mem = allocater;
 
     size_t imguiStateSize = ImGui::GetInternalStateSize();
-    void* imguiState = StackAllocA( allocater, imguiStateSize );
+    void* imguiState = StackAllocAligned( allocater, imguiStateSize );
     ImGui::SetInternalState( imguiState, true );
 
     rDriver->CreateShaderProgram(
