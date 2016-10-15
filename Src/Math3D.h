@@ -6,6 +6,9 @@
 
 #define PI 3.14159265359
 
+#define MAXf(f1, f2) f1 > f2 ? f1 : f2
+#define MINf(f1, f2) f1 < f2 ? f1 : f2
+
 struct Vec2 {
 	float x, y;
 };

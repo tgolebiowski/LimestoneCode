@@ -241,7 +241,7 @@ static PtrToGpuMem CopyVertexDataToGpuMem(
     return glVBOPtr;
 }
 
-static PtrToGpuMem AllocGpuBuffForDynamicStream( RenderDriver* driver ) {
+static PtrToGpuMem AllocNewGpuArray( RenderDriver* driver ) {
     GL_API* glApi = ((GLRenderDriver*)driver)->glApi;
 
     PtrToGpuMem newBuff = 0;
@@ -250,9 +250,21 @@ static PtrToGpuMem AllocGpuBuffForDynamicStream( RenderDriver* driver ) {
     return newBuff;
 }
 
+static void CopyDataToGpuArray( 
+    RenderDriver* renderDriver,
+    PtrToGpuMem copyTarget, 
+    void* data, 
+    uint64 dataSize 
+) {
+    GL_API* glApi = ((GLRenderDriver*)renderDriver)->glApi;
+
+    glApi->glBindBuffer( GL_ARRAY_BUFFER, copyTarget );
+    glApi->glBufferData( GL_ARRAY_BUFFER, dataSize, data, GL_DYNAMIC_DRAW );
+}
+
 static void DrawMesh( 
-    RenderDriver* driver, 
-    RenderCommand* command 
+RenderDriver* driver, 
+RenderCommand* command 
 ) {
     GLRenderDriver* glDriver = (GLRenderDriver*)driver;
     GL_API* gl_api = (GL_API*)glDriver->glApi;
@@ -329,7 +341,11 @@ static void DrawMesh(
         glBindTexture( GL_TEXTURE_2D, command->samplerData[ samplerIndex ] );
     }
 
-    glDrawArrays( GL_TRIANGLES, 0, command->elementCount );
+    GLenum primType = GL_TRIANGLES;
+    if( command->dolines ) {
+        primType = GL_LINES;
+    }
+    glDrawArrays( primType, 0, command->elementCount );
 
     for( 
         int samplerIndex = 0; 
@@ -399,41 +415,34 @@ static void DrawInterleavedStream(
         );
     }
 
-    /*
-    FOR REFERENCE, OLD IMGUI DRAW CODE
-    glVertexAttribPointer( im_posAttribute, 2, GL_FLOAT, false, sizeof( ImDrawVert ), (GLvoid*)OFFSETOF( ImDrawVert, pos ) );
-    glVertexAttribPointer( im_uvAttribute, 2, GL_FLOAT, true, sizeof( ImDrawVert ), (GLvoid*)OFFSETOF( ImDrawVert, uv ) );
-    glVertexAttribPointer( im_colorAttribute, 4, GL_UNSIGNED_BYTE, true, sizeof( ImDrawVert ), (GLvoid*)OFFSETOF( ImDrawVert, col ) );
-    */
+#if 0
+for( 
+    int uniformIndex = 0; 
+    uniformIndex < command->shader->uniformCount; 
+    ++uniformIndex 
+) {
+    GLuint uniformPtr = command->shader->uniformPtrs[ uniformIndex ];
+    GLenum type = command->shader->uniformTypes[ uniformIndex ];
+    void* uniformData = command->uniformData[ uniformIndex ];
 
-    #if 0
-    for( 
-        int uniformIndex = 0; 
-        uniformIndex < command->shader->uniformCount; 
-        ++uniformIndex 
-    ) {
-        GLuint uniformPtr = command->shader->uniformPtrs[ uniformIndex ];
-        GLenum type = command->shader->uniformTypes[ uniformIndex ];
-        void* uniformData = command->uniformData[ uniformIndex ];
-
-        if( uniformData == 0 ) {
-            continue;
-        }
-
-        if( type == GL_FLOAT_VEC4 ) {
-            gl_api->glUniform4fv( uniformPtr, 1, (float*)uniformData );
-        } else if( type == GL_FLOAT_MAT4 ) {
-            gl_api->glUniformMatrix4fv( uniformPtr, 1, GL_FALSE, (float*)uniformData );
-        } else if( type == GL_FLOAT_VEC2 ) {
-            gl_api->glUniform2fv( uniformPtr, 1, (float*)uniformData );
-        } else if( type == GL_FLOAT_VEC3 ) {
-            gl_api->glUniform3fv( uniformPtr, 1, (float*)uniformData );
-        } else {
-            //Oops! an unsupported uniform type!
-            assert(false);
-        }
+    if( uniformData == 0 ) {
+        continue;
     }
-    #endif
+
+    if( type == GL_FLOAT_VEC4 ) {
+        gl_api->glUniform4fv( uniformPtr, 1, (float*)uniformData );
+    } else if( type == GL_FLOAT_MAT4 ) {
+        gl_api->glUniformMatrix4fv( uniformPtr, 1, GL_FALSE, (float*)uniformData );
+    } else if( type == GL_FLOAT_VEC2 ) {
+        gl_api->glUniform2fv( uniformPtr, 1, (float*)uniformData );
+    } else if( type == GL_FLOAT_VEC3 ) {
+        gl_api->glUniform3fv( uniformPtr, 1, (float*)uniformData );
+    } else {
+        //Oops! an unsupported uniform type!
+        assert(false);
+    }
+}
+#endif
 
     for( 
         int samplerIndex = 0; 
@@ -463,44 +472,6 @@ static void DrawInterleavedStream(
     glEnable( GL_DEPTH_TEST );
     glDisable( GL_SCISSOR_TEST );
 }
-
-#if 0
-static void RenderTexturedQuad( 
-    void* api, 
-    RendererStorage* rendererStorage, 
-    PtrToGpuMem texture, 
-    float width, float height, 
-    float x, float y 
-) {
-    GL_API* gl_api = (GL_API*)api;
-
-    Mat4 transform, translation, scale; 
-    SetToIdentity( &translation ); 
-    SetToIdentity( &scale );
-    SetScale( &scale, width, height, 1.0f  ); 
-    SetTranslation( &translation, x, y, 0.0f );
-    transform = MultMatrix( scale, translation );
-
-    gl_api->glUseProgram( rendererStorage->texturedQuadShader.programID );
-    gl_api->glUniformMatrix4fv( rendererStorage->quadMat4UniformPtr, 1, false, (float*)&transform );
-
-    //Set vertex data
-    gl_api->glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->quadVDataPtr );
-    gl_api->glEnableVertexAttribArray( rendererStorage->quadPosAttribPtr );
-    gl_api->glVertexAttribPointer( rendererStorage->quadPosAttribPtr, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
-    //Set UV data
-    gl_api->glBindBuffer( GL_ARRAY_BUFFER, rendererStorage->quadUVDataPtr );
-    gl_api->glEnableVertexAttribArray( rendererStorage->quadUVAttribPtr );
-    gl_api->glVertexAttribPointer( rendererStorage->quadUVAttribPtr, 2, GL_FLOAT, GL_FALSE, 0, 0 );
-
-    gl_api->glActiveTexture( GL_TEXTURE0 );
-    glBindTexture( GL_TEXTURE_2D, (GLuint)texture );
-
-    gl_api->glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, rendererStorage->quadIDataPtr );
-    glDrawElements( GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL );
-}
-#endif
 
 #include "tinyxml2/tinyxml2.h"
 #include "tinyxml2/tinyxml2.cpp"
@@ -849,16 +820,16 @@ static GLRenderDriver InitGLRenderer(
     uint16 screen_w, 
     uint16 screen_h 
 ) {
-
     GLRenderDriver driver = { };
-    driver.baseDriver.CopyVertexDataToGpuMem = &CopyVertexDataToGpuMem;
-    driver.baseDriver.CreateShaderProgram = &CreateShaderProgram;
-    driver.baseDriver.DrawMesh = &DrawMesh;
     driver.baseDriver.ParseMeshDataFromCollada = &ParseMeshDataFromCollada;
+    driver.baseDriver.AllocNewGpuArray = &AllocNewGpuArray;
+    driver.baseDriver.CopyVertexDataToGpuMem = &CopyVertexDataToGpuMem;
+    driver.baseDriver.CopyDataToGpuArray = &CopyDataToGpuArray;
     driver.baseDriver.CopyTextureDataToGpuMem = &CopyTextureDataToGpuMem;
-    driver.baseDriver.AllocGpuBuffForDynamicStream = &AllocGpuBuffForDynamicStream;
-    driver.baseDriver.DrawInterleavedStream = &DrawInterleavedStream;
+    driver.baseDriver.CreateShaderProgram = &CreateShaderProgram;
     driver.baseDriver.ClearShaderProgram = &ClearShaderProgram;
+    driver.baseDriver.DrawMesh = &DrawMesh;
+    driver.baseDriver.DrawInterleavedStream = &DrawInterleavedStream;
 
     driver.glApi = glApi;
 
@@ -877,9 +848,9 @@ static GLRenderDriver InitGLRenderer(
     printf( "Max Vertex Attributes: %d\n", k );
 
     //Initialize clear color
-    glClearColor( 1.0f / 255.0f, 200.0f / 255.0f, 175.0f / 255.0f, 1.0f );
+    glClearColor( 128.0f / 255.0f, 128.0f / 255.0f, 128.0f / 255.0f, 1.0f );
 
-    glEnable( GL_DEPTH_TEST );
+    glDisable( GL_DEPTH_TEST );
     glEnable( GL_CULL_FACE );
     glCullFace( GL_BACK );
 

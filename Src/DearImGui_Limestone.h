@@ -128,7 +128,7 @@ static void UpdateImgui(
     imguiIO.MemAllocFn = ImGuiMemAlloc;
     imguiIO.MemFreeFn = ImGuiMemFree;
 
-    imguiIO.MousePos.x = ( ( mX + 1.0f ) / 2.0f ) * screenWidth;
+    imguiIO.MousePos.x = ( ( mX + 1.0f ) / 2.0f ) * screenWidth - 16;
     imguiIO.MousePos.y = ( 1.0f - ( ( mY + 1.0f ) / 2.0f ) ) * screenHeight;
     imguiIO.MouseDown[0] = i->mouseButtons[0];
 
@@ -170,7 +170,7 @@ static void* InitImGui_LimeStone(
         ImGuiFragShaderSrc, 
         &imguiDriver->ImGuiUIShader 
     );
-    imguiDriver->imguiVertexDataPtr = rDriver->AllocGpuBuffForDynamicStream( rDriver );
+    imguiDriver->imguiVertexDataPtr = rDriver->AllocNewGpuArray( rDriver );
 
     ImGuiIO& imguiIO = ImGui::GetIO();
     imguiIO.DisplaySize.x = screenWidth;

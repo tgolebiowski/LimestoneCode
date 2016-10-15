@@ -977,7 +977,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	gameSlab.current = gameSlab.start;
 	assert( gameSlab.start != NULL );
 
-	Stack systemsMemory = AllocateNewStackFromStack( &gameSlab, KILOBYTES( 200 ) );
+	Stack systemsMemory = AllocateNewStackFromStack( &gameSlab, MEGABYTES( 8 ) );
 
 	GLRenderDriver glDriver = Win32InitGLRenderer( 
 		hwnd,

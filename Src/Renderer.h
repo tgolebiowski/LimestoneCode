@@ -10,14 +10,15 @@ struct TextureData;
 typedef uint32 PtrToGpuMem;
 
 struct RenderDriver {
+    bool (*ParseMeshDataFromCollada)( void*, Stack*, MeshGeometryData*, Armature*);
+    PtrToGpuMem (*AllocNewGpuArray)( RenderDriver* );
 	PtrToGpuMem (*CopyVertexDataToGpuMem)( RenderDriver*, void*, size_t );
+    void (*CopyDataToGpuArray)( RenderDriver*, PtrToGpuMem, void*, uint64 );
+    void (*CopyTextureDataToGpuMem)( RenderDriver*, TextureData*, PtrToGpuMem* );
 	void (*CreateShaderProgram)( RenderDriver*, char*, char*, ShaderProgram* );
     void (*ClearShaderProgram)( RenderDriver*, ShaderProgram* );
 	void (*DrawMesh)( RenderDriver*, RenderCommand* );
     void (*DrawInterleavedStream)( RenderDriver*, RenderCommand_Interleaved* );
-	bool (*ParseMeshDataFromCollada)( void*, Stack*, MeshGeometryData*, Armature*);
-    void (*CopyTextureDataToGpuMem)( RenderDriver*, TextureData*, PtrToGpuMem* );
-    PtrToGpuMem (*AllocGpuBuffForDynamicStream)( RenderDriver* );
 };
 
 #define MAXBONESPERVERT 4
@@ -71,6 +72,7 @@ struct RenderCommand_Interleaved {
 struct RenderCommand {
 	ShaderProgram* shader;
 
+    bool dolines;
 	uint32 elementCount;
 
     uint32 vertexInputData [ MAX_SUPPORTED_VERT_INPUTS ];
@@ -89,21 +91,17 @@ struct Framebuffer {
 };
 
 #ifdef DLL_ONLY
-void SetRendererCameraProjection( 
+//Ranges on this matrix are exactly xyz: width, height, depth
+void CreateOrthoCameraMatrix( 
 	float width, 
 	float height, 
-	float farPlane, 
-	float nearPlane, 
-	Mat4* m 
+    float depth,
+	Mat4* m
 ) {
-    float halfWidth = width * 0.5f;
-    float halfHeight = height * 0.5f;
-    float depth = farPlane - nearPlane;
-
-    m->m[0][0] = 1.0f / halfWidth; m->m[0][1] = 0.0f; m->m[0][2] = 0.0f; m->m[0][3] = 0.0f;
-    m->m[1][0] = 0.0f; m->m[1][1] = 1.0f / halfHeight; m->m[1][2] = 0.0f; m->m[1][3] = 0.0f;
-    m->m[2][0] = 0.0f; m->m[2][1] = 0.0f; m->m[2][2] = -2.0f / depth; m->m[2][3] = 0.0f;
-    m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = -(nearPlane + farPlane) / depth; m->m[3][3] = 1.0f;
+    m->m[0][0] = 1.0f / width; m->m[0][1] = 0.0f; m->m[0][2] = 0.0f; m->m[0][3] = 0.0f;
+    m->m[1][0] = 0.0f; m->m[1][1] = 1.0f / height; m->m[1][2] = 0.0f; m->m[1][3] = 0.0f;
+    m->m[2][0] = 0.0f; m->m[2][1] = 0.0f; m->m[2][2] = 1.0f / depth; m->m[2][3] = 0.0f;
+    m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = 0.0f; m->m[3][3] = 1.0f;
 }
 
 static void CreateEmptyTexture(
@@ -202,6 +200,14 @@ static int32 GetShaderProgramInputPtr( ShaderProgram* shader, char* inputName ) 
 static int GetIndexOfProgramVertexInput( ShaderProgram* shader, char* inputName ) {
     for( int i = 0; i < shader->vertInputCount; ++i ) {
         if( strcmp( shader->vertexInputNames[i] , inputName ) == 0 ) {
+            return i;
+        }
+    }
+}
+
+static int GetIndexOfProgramUniformInput( ShaderProgram* shader, char* inputName ) {
+    for( int i = 0; i < shader->uniformCount; ++i ) {
+        if( strcmp( shader->uniformNames[i] , inputName ) == 0 ) {
             return i;
         }
     }
