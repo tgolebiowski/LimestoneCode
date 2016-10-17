@@ -11,14 +11,13 @@ typedef uint32 PtrToGpuMem;
 
 struct RenderDriver {
     bool (*ParseMeshDataFromCollada)( void*, Stack*, MeshGeometryData*, Armature*);
-    PtrToGpuMem (*AllocNewGpuArray)( RenderDriver* );
-	PtrToGpuMem (*CopyVertexDataToGpuMem)( RenderDriver*, void*, size_t );
-    void (*CopyDataToGpuArray)( RenderDriver*, PtrToGpuMem, void*, uint64 );
-    void (*CopyTextureDataToGpuMem)( RenderDriver*, TextureData*, PtrToGpuMem* );
-	void (*CreateShaderProgram)( RenderDriver*, char*, char*, ShaderProgram* );
-    void (*ClearShaderProgram)( RenderDriver*, ShaderProgram* );
-	void (*DrawMesh)( RenderDriver*, RenderCommand* );
-    void (*DrawInterleavedStream)( RenderDriver*, RenderCommand_Interleaved* );
+    PtrToGpuMem (*AllocNewGpuArray)( void );
+	PtrToGpuMem (*CopyVertexDataToGpuMem)( void*, size_t );
+    void (*CopyDataToGpuArray)( PtrToGpuMem, void*, uint64 );
+    void (*CopyTextureDataToGpuMem)( TextureData*, PtrToGpuMem* );
+	void (*CreateShaderProgram)( char*, char*, ShaderProgram* );
+    void (*ClearShaderProgram)( ShaderProgram* );
+	void (*Draw)( RenderCommand*, bool );
 };
 
 #define MAXBONESPERVERT 4
@@ -57,25 +56,27 @@ struct ShaderProgram {
     uint8 vertInputCount, uniformCount, samplerCount;
 };
 
-struct RenderCommand_Interleaved {
-    ShaderProgram* shader;
-    uint32 elementCount;
-
-    void* streamData;
-    size_t streamSize;
-    size_t vertSize;
-    PtrToGpuMem bufferForStream;
-    uint8 vertexAttributeOffsets [ MAX_SUPPORTED_VERT_INPUTS ];
-    PtrToGpuMem sampleData[ MAX_SUPPORTED_VERT_INPUTS ];
-};
-
 struct RenderCommand {
+    enum {
+        INTERLEAVESTREAM, SEPARATE_GPU_BUFFS
+    };
+
 	ShaderProgram* shader;
 
-    bool dolines;
 	uint32 elementCount;
 
-    uint32 vertexInputData [ MAX_SUPPORTED_VERT_INPUTS ];
+    uint8 vertexFormat;
+    union {
+        uint32 vertexInputData [ MAX_SUPPORTED_VERT_INPUTS ];
+        struct {
+            void* streamData;
+            size_t streamSize;
+            size_t vertSize;
+            PtrToGpuMem bufferForStream;
+            uint8 vertexAttributeOffsets [ MAX_SUPPORTED_VERT_INPUTS ];
+        } VertexFormat;
+    };
+
     void* uniformData[ MAX_SUPPORTED_UNIFORMS ];
     PtrToGpuMem samplerData[ MAX_SUPPORTED_TEX_SAMPLERS ];
 };
@@ -224,7 +225,7 @@ static void CreateShaderProgramFromSourceFiles(
     char* vertSrc = (char*)system->ReadWholeFile( vertProgramFilePath, allocater );
     char* fragSrc = (char*)system->ReadWholeFile( fragProgramFilePath, allocater );
 
-    driver->CreateShaderProgram( driver, vertSrc, fragSrc, bindDataStorage );
+    driver->CreateShaderProgram( vertSrc, fragSrc, bindDataStorage );
 
     FreeFromStack( allocater, (void*)fragSrc );
     FreeFromStack( allocater, (void*)vertSrc );

@@ -717,40 +717,14 @@ GLRenderDriver Win32InitGLRenderer(
 		return { };
 	}
 
-	GL_API* glApi = (GL_API*)StackAllocAligned( stackForGLAPI, sizeof( GL_API ) );
+	#define GLE( ret, name, ... ) \
+	    gl##name = (name##proc*)wglGetProcAddress( "gl" #name );
 
-	glApi->glBindBuffer = (PFNGLBINDBUFFERPROC)wglGetProcAddress( "glBindBuffer" );
-	glApi->glCreateProgram = (PFNGLCREATEPROGRAMPROC)wglGetProcAddress( "glCreateProgram" );
-	glApi->glBufferData = (PFNGLBUFFERDATAPROC)wglGetProcAddress( "glBufferData" );
-	glApi->glGenBuffers = (PFNGLGENBUFFERSPROC)wglGetProcAddress( "glGenBuffers" );
-	glApi->glUseProgram = (PFNGLUSEPROGRAMPROC)wglGetProcAddress( "glUseProgram" );
-	glApi->glActiveTexture = (PFNGLACTIVETEXTUREPROC)wglGetProcAddress( "glActiveTexture" );
-	glApi->glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress( "glEnableVertexAttribArray" );
-	glApi->glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress( "glVertexAttribPointer" );
-	glApi->glGenFramebuffers = (PFNGLGENFRAMEBUFFERSPROC)wglGetProcAddress( "glGenFramebuffers" );
-	glApi->glBindFramebuffer = (PFNGLBINDFRAMEBUFFERPROC)wglGetProcAddress( "glBindFramebuffer" );
-	glApi->glIsShader = (PFNGLISSHADERPROC)wglGetProcAddress( "glIsShader" );
-	glApi->glGetShaderiv = (PFNGLGETSHADERIVPROC)wglGetProcAddress( "glGetShaderiv" );
-	glApi->glCreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress( "glCreateShader" );
-	glApi->glCompileShader = (PFNGLCOMPILESHADERPROC)wglGetProcAddress( "glCompileShader" );
-	glApi->glShaderSource = (PFNGLSHADERSOURCEPROC)wglGetProcAddress( "glShaderSource" );
-	glApi->glAttachShader = (PFNGLATTACHSHADERPROC)wglGetProcAddress( "glAttachShader" );
-	glApi->glDeleteShader = (PFNGLDELETESHADERPROC)wglGetProcAddress( "glDeleteShader" );
-	glApi->glDeleteProgram = (PFNGLDELETEPROGRAMPROC)wglGetProcAddress( "glDeleteProgram" );
-	glApi->glLinkProgram = (PFNGLLINKPROGRAMPROC)wglGetProcAddress( "glLinkProgram" );
-	glApi->glGetProgramiv = (PFNGLGETPROGRAMIVPROC)wglGetProcAddress("glGetProgramiv" );
-	glApi->glGetActiveAttrib = (PFNGLGETACTIVEATTRIBPROC)wglGetProcAddress( "glGetActiveAttrib" );
-	glApi->glGetActiveUniform = (PFNGLGETACTIVEUNIFORMPROC)wglGetProcAddress( "glGetActiveUniform" );
-	glApi->glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)wglGetProcAddress( "glGetUniformLocation" );
-	glApi->glUniform1i = (PFNGLUNIFORM1IPROC)wglGetProcAddress( "glUniform1i" );
-	glApi->glUniform4fv = (PFNGLUNIFORM4FVPROC)wglGetProcAddress( "glUniform4fv" );
-	glApi->glUniform3fv = (PFNGLUNIFORM3FVPROC)wglGetProcAddress( "glUniform3fv" );
-	glApi->glUniform2fv =  (PFNGLUNIFORM2FVPROC)wglGetProcAddress( "glUniform2fv" );
-	glApi->glUniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)wglGetProcAddress( "glUniformMatrix4fv" );
-	glApi->glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)wglGetProcAddress( "glGetAttribLocation" );
+	GL_FUNCS
+
+	#undef GLE
 
 	return InitGLRenderer( 
-		glApi, 
 		system->windowWidth, 
 		system->windowHeight 
 	);

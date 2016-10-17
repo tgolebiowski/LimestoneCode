@@ -1,71 +1,74 @@
-struct GL_API {
-    PFNGLGENFRAMEBUFFERSPROC glGenFramebuffers = NULL;
-    PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer = NULL;
-    PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D = NULL;
+#define GL_FUNCS \
+GLE( void, GenBuffers, GLsizei n, GLuint* buffers ) \
+GLE( void, BindBuffer, GLenum target, GLuint buffer ) \
+GLE( void, BufferData, GLenum target, GLsizeiptr size, const GLvoid* data, GLenum usage ) \
+\
+GLE( boolean, isShader, GLuint shader ) \
+GLE( void, GetShaderiv, GLuint shader, GLenum pname, GLint* params ) \
+GLE( void, GetProgramiv, GLuint shader, GLenum pname, GLint* params ) \
+\
+GLE( GLuint, CreateShader, GLuint type ) \
+GLE( void, ShaderSource, GLuint shader, GLsizei count, const GLchar** src, const GLint* length ) \
+GLE( void, CompileShader, GLuint shader ) \
+GLE( void, AttachShader, GLuint program, GLuint shader ) \
+GLE( void, DeleteShader, GLuint shader ) \
+GLE( void, DeleteProgram, GLuint program ) \
+\
+GLE( GLuint, CreateProgram, void ) \
+GLE( void, LinkProgram, GLuint program ) \
+GLE( void, UseProgram, GLuint program ) \
+\
+GLE( void, GetActiveAttrib, GLuint program, GLuint index, GLsizei bufSize, GLsizei* length, GLint* size, GLenum* type, GLchar* name ) \
+GLE( void, EnableVertexAttribArray, GLuint index ) \
+GLE( void, VertexAttribPointer, GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid* pointer ) \
+GLE( GLint, GetAttribLocation, GLuint program, const GLchar* name ) \
+\
+GLE( void, GetActiveUniform, GLuint program, GLuint index, GLsizei bufSize, GLsizei* length, GLint* size, GLenum* type, GLchar* name ) \
+GLE( GLint, GetUniformLocation, GLuint program, const GLchar* name ) \
+GLE( void, Uniform1i, GLint location, GLint value ) \
+GLE( void, Uniform2fv, GLint location, GLsizei count, GLfloat* value ) \
+GLE( void, Uniform3fv, GLint location, GLsizei count, GLfloat* value ) \
+GLE( void, Uniform4fv, GLint location, GLsizei count, GLfloat* value ) \
+GLE( void, UniformMatrix4fv, GLint location, GLsizei count, GLboolean transpose, const GLvoid* value ) \
+\
+GLE( void, ActiveTexture, GLenum texture ) \
+\
+GLE( void, GenFrameBuffers, GLsizei n, GLuint* ids ) \
+GLE( void, BindFramebuffer, GLenum target, GLuint framebuffer ) \
+GLE( void, FramebufferTexture2D, GLenum target, GLenum attachment, GLenum texTarget, GLuint texture, GLint level )
 
-    PFNGLBINDBUFFERPROC glBindBuffer = NULL;
-    PFNGLBUFFERDATAPROC glBufferData = NULL;
-    PFNGLGENBUFFERSPROC glGenBuffers = NULL;
+#define GLDECL WINAPI
 
-    //PFNGLGENTEXTURESPROC glGenTextures = NULL;
-    //PFNGLBINDTEXTUREPROC glBindTexture = NULL;
-    //PFNGLTEXPARAMETERIPROC glTexParameteri = NULL;
-    //PFNGLTEXIMAGE2DPROC glTexImage2D = NULL;
-    PFNGLACTIVETEXTUREPROC glActiveTexture = NULL;
+#define GLE( ret, name, ... ) \
+typedef ret GLDECL name##proc(__VA_ARGS__); \
+static name##proc * gl##name = NULL;
 
-    PFNGLISSHADERPROC glIsShader = NULL;
-    PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog = NULL;
-    PFNGLGETSHADERIVPROC glGetShaderiv = NULL;
-    PFNGLGETPROGRAMIVPROC glGetProgramiv = NULL;
+GL_FUNCS
 
-    PFNGLCREATESHADERPROC glCreateShader = NULL;
-    PFNGLSHADERSOURCEPROC glShaderSource = NULL;
-    PFNGLCOMPILESHADERPROC glCompileShader = NULL;
-    PFNGLATTACHSHADERPROC glAttachShader = NULL;
-    PFNGLDELETESHADERPROC glDeleteShader = NULL;
-    PFNGLDELETEPROGRAMPROC glDeleteProgram = NULL;
-
-    PFNGLCREATEPROGRAMPROC glCreateProgram = NULL;
-    PFNGLLINKPROGRAMPROC glLinkProgram = NULL;
-    PFNGLUSEPROGRAMPROC glUseProgram = NULL;
-
-    PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation = NULL;
-    PFNGLGETACTIVEATTRIBPROC glGetActiveAttrib = NULL;
-    PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
-    PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
-
-    PFNGLGETACTIVEUNIFORMPROC glGetActiveUniform = NULL;
-    PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
-    PFNGLUNIFORM1IPROC glUniform1i = NULL;
-    PFNGLUNIFORM4FVPROC glUniform4fv = NULL;
-    PFNGLUNIFORM3FVPROC glUniform3fv = NULL;
-    PFNGLUNIFORM2FVPROC glUniform2fv = NULL;
-    PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv = NULL;
-};
+#undef GLE
 
 struct GLRenderDriver {
     RenderDriver baseDriver;
-
-    GL_API* glApi;
 };
 
 /*----------------------------------------------------------------------------------
                                   Shader stuff
 ----------------------------------------------------------------------------------*/
 
-static void PrintGLShaderLog( GL_API* glApi, GLuint shader ) {
+static void PrintGLShaderLog( GLuint shader ) {
     //Shader log length
     int infoLogLength = 0;
     int maxLength = infoLogLength;
 
     //Get info string length
-    glApi->glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &maxLength );
+    glGetShaderiv( shader, GL_INFO_LOG_LENGTH, &maxLength );
 
     //Allocate string
     GLchar infoLog[ 256 ];
 
     //Get info log
-    glApi->glGetShaderInfoLog( shader, maxLength, &infoLogLength, infoLog );
+    assert(false); //FIGURE OUT HOW TO GET SHADER LOG!!!!
+    //glGetShaderInfoLog( shader, maxLength, &infoLogLength, infoLog );
     if( infoLogLength > 0 ) {
         //Print Log
         printf( "%s\n", infoLog );
@@ -81,13 +84,9 @@ static void PrintGLShaderLog( GL_API* glApi, GLuint shader ) {
 #include "stb/stb_image.h"
 
 static void CopyTextureDataToGpuMem( 
-    RenderDriver* renderDriver, 
     TextureData* texData, 
     PtrToGpuMem* texBindID 
 ) {
-    GLRenderDriver* glRenderDriver = (GLRenderDriver*)renderDriver;
-    GL_API* glApi = glRenderDriver->glApi;
-
     GLenum pixelFormat;
     if( texData->channelsPerPixel == 3 ) {
         pixelFormat = GL_RGB;
@@ -122,66 +121,59 @@ static void CopyTextureDataToGpuMem(
 }
 
 static void ClearShaderProgram(
-    RenderDriver* driver,
     ShaderProgram* shader
 ) {
-    GL_API* glApi = ((GLRenderDriver*)driver)->glApi;
-
-    glApi->glDeleteProgram( shader->programID );
+    glDeleteProgram( shader->programID );
     memset( shader, 0, sizeof( ShaderProgram ) );
 }
 
-static void CreateShaderProgram( 
-    RenderDriver* driver,
+static void CreateShaderProgram(
     char* vertSrc, 
     char* fragSrc, 
     ShaderProgram* bindDataStorage 
 ) {
-    GLRenderDriver* glDriver = (GLRenderDriver*)driver;
-    GL_API* glApi = glDriver->glApi;
+    bindDataStorage->programID = glCreateProgram();
 
-    bindDataStorage->programID = glApi->glCreateProgram();
-
-    GLuint vertexShader = glApi->glCreateShader( GL_VERTEX_SHADER );
-    glApi->glShaderSource( vertexShader, 1, &vertSrc, NULL );
-    glApi->glCompileShader( vertexShader );
+    GLuint vertexShader = glCreateShader( GL_VERTEX_SHADER );
+    glShaderSource( vertexShader, 1, (const char**)&vertSrc, NULL );
+    glCompileShader( vertexShader );
 
     GLint compiled = GL_FALSE;
-    glApi->glGetShaderiv( vertexShader, GL_COMPILE_STATUS, &compiled );
+    glGetShaderiv( vertexShader, GL_COMPILE_STATUS, &compiled );
     if( compiled != GL_TRUE ) {
         printf( "Could not compile Vertex Shader.\n" );
-        PrintGLShaderLog( glApi, vertexShader );
+        PrintGLShaderLog( vertexShader );
     } else {
         printf( "Vertex Shader compiled.\n" );
-        glApi->glAttachShader( bindDataStorage->programID, vertexShader );
+        glAttachShader( bindDataStorage->programID, vertexShader );
     }
 
-    GLuint fragShader = glApi->glCreateShader( GL_FRAGMENT_SHADER );
-    glApi->glShaderSource( fragShader, 1, &fragSrc, NULL );
-    glApi->glCompileShader( fragShader );
+    GLuint fragShader = glCreateShader( GL_FRAGMENT_SHADER );
+    glShaderSource( fragShader, 1, (const char**)&fragSrc, NULL );
+    glCompileShader( fragShader );
 
     compiled = GL_FALSE;
-    glApi->glGetShaderiv( fragShader, GL_COMPILE_STATUS, &compiled );
+    glGetShaderiv( fragShader, GL_COMPILE_STATUS, &compiled );
     if( compiled != GL_TRUE ) {
         printf( "Unable to compile fragment shader.\n");
-        PrintGLShaderLog( glApi, fragShader );
+        PrintGLShaderLog( fragShader );
     } else {
-        glApi->glAttachShader( bindDataStorage->programID, fragShader );
+        glAttachShader( bindDataStorage->programID, fragShader );
     }
 
-    glApi->glLinkProgram( bindDataStorage->programID );
+    glLinkProgram( bindDataStorage->programID );
     //Check for errors
     compiled = GL_TRUE;
-    glApi->glGetProgramiv( bindDataStorage->programID, GL_LINK_STATUS, &compiled );
+    glGetProgramiv( bindDataStorage->programID, GL_LINK_STATUS, &compiled );
     if( compiled != GL_TRUE ) {
         printf( "Error linking program\n" );
         return;
     }
     printf( "Shader Program Linked Successfully\n");
 
-    glApi->glUseProgram( bindDataStorage->programID );
-    glApi->glDeleteShader( vertexShader );
-    glApi->glDeleteShader( fragShader );
+    glUseProgram( bindDataStorage->programID );
+    glDeleteShader( vertexShader );
+    glDeleteShader( fragShader );
 
     uint32 nameWriteTargetOffset = 0;
     GLsizei nameLen;
@@ -191,11 +183,11 @@ static void CreateShaderProgram(
     //Record All vertex inputs
     bindDataStorage->vertInputCount = 0;
     GLint activeGLAttributeCount;
-    glApi->glGetProgramiv( bindDataStorage->programID, GL_ACTIVE_ATTRIBUTES, &activeGLAttributeCount );
+    glGetProgramiv( bindDataStorage->programID, GL_ACTIVE_ATTRIBUTES, &activeGLAttributeCount );
     for( GLuint attributeIndex = 0; attributeIndex < activeGLAttributeCount; ++attributeIndex ) {
         char* nameWriteTarget = &bindDataStorage->nameBuffer[ nameWriteTargetOffset ];
-        glApi->glGetActiveAttrib( bindDataStorage->programID, attributeIndex, 512 - nameWriteTargetOffset, &nameLen, &attribSize, &attribType, nameWriteTarget );
-        bindDataStorage->vertexInputPtrs[ attributeIndex ] = glApi->glGetAttribLocation( bindDataStorage->programID, nameWriteTarget );
+        glGetActiveAttrib( bindDataStorage->programID, attributeIndex, 512 - nameWriteTargetOffset, &nameLen, &attribSize, &attribType, nameWriteTarget );
+        bindDataStorage->vertexInputPtrs[ attributeIndex ] = glGetAttribLocation( bindDataStorage->programID, nameWriteTarget );
         bindDataStorage->vertexInputNames[ attributeIndex ] = nameWriteTarget;
         bindDataStorage->vertexInputTypes[ attributeIndex ] = attribType;
         nameWriteTargetOffset += nameLen + 1;
@@ -206,16 +198,15 @@ static void CreateShaderProgram(
     bindDataStorage->uniformCount = 0;
     bindDataStorage->samplerCount = 0;
     GLint activeGLUniformCount;
-    glApi->glGetProgramiv( bindDataStorage->programID, GL_ACTIVE_UNIFORMS, &activeGLUniformCount );
+    glGetProgramiv( bindDataStorage->programID, GL_ACTIVE_UNIFORMS, &activeGLUniformCount );
     for( GLuint uniformIndex = 0; uniformIndex < activeGLUniformCount; ++uniformIndex ) {
         char* nameWriteTarget = &bindDataStorage->nameBuffer[ nameWriteTargetOffset ];
-        glApi->glGetActiveUniform( bindDataStorage->programID, uniformIndex, 512 - nameWriteTargetOffset, &nameLen, &attribSize, &attribType, nameWriteTarget );
+        glGetActiveUniform( bindDataStorage->programID, uniformIndex, 512 - nameWriteTargetOffset, &nameLen, &attribSize, &attribType, nameWriteTarget );
         if( attribType == GL_SAMPLER_2D ) {
-            bindDataStorage->samplerPtrs[ bindDataStorage->samplerCount ] = glApi->glGetUniformLocation( bindDataStorage->programID, nameWriteTarget );
-            glApi->glUniform1i( bindDataStorage->samplerPtrs[ bindDataStorage->samplerCount ], bindDataStorage->samplerCount );
+            bindDataStorage->samplerPtrs[ bindDataStorage->samplerCount ] = glGetUniformLocation( bindDataStorage->programID, nameWriteTarget );
             bindDataStorage->samplerNames[ bindDataStorage->samplerCount++ ] = nameWriteTarget;
         } else {
-            bindDataStorage->uniformPtrs[ uniformIndex - bindDataStorage->samplerCount ] = glApi->glGetUniformLocation( bindDataStorage->programID, nameWriteTarget );
+            bindDataStorage->uniformPtrs[ uniformIndex - bindDataStorage->samplerCount ] = glGetUniformLocation( bindDataStorage->programID, nameWriteTarget );
             bindDataStorage->uniformNames[ uniformIndex - bindDataStorage->samplerCount ] = nameWriteTarget;
             bindDataStorage->uniformTypes[ uniformIndex - bindDataStorage->samplerCount ] = attribType;
             ++bindDataStorage->uniformCount;
@@ -223,83 +214,104 @@ static void CreateShaderProgram(
         nameWriteTargetOffset += nameLen + 1;       
      }
 
-    glApi->glUseProgram(0);
+    glUseProgram(0);
 }
 
 static PtrToGpuMem CopyVertexDataToGpuMem( 
-    RenderDriver* driver, 
     void* data, 
     size_t size 
 ) {
-    GLRenderDriver* glDriver = (GLRenderDriver*)driver;
-    GL_API* gl_api = glDriver->glApi;
-
     GLuint glVBOPtr;
-    gl_api->glGenBuffers( 1, &glVBOPtr );
-    gl_api->glBindBuffer( GL_ARRAY_BUFFER, glVBOPtr );
-    gl_api->glBufferData( GL_ARRAY_BUFFER, size, data, GL_STATIC_DRAW );
+    glGenBuffers( 1, &glVBOPtr );
+    glBindBuffer( GL_ARRAY_BUFFER, glVBOPtr );
+    glBufferData( GL_ARRAY_BUFFER, size, data, GL_STATIC_DRAW );
     return glVBOPtr;
 }
 
-static PtrToGpuMem AllocNewGpuArray( RenderDriver* driver ) {
-    GL_API* glApi = ((GLRenderDriver*)driver)->glApi;
-
+static PtrToGpuMem AllocNewGpuArray() {
     PtrToGpuMem newBuff = 0;
-    glApi->glGenBuffers( 1, &newBuff );
+    glGenBuffers( 1, &newBuff );
 
     return newBuff;
 }
 
-static void CopyDataToGpuArray( 
-    RenderDriver* renderDriver,
-    PtrToGpuMem copyTarget, 
-    void* data, 
-    uint64 dataSize 
-) {
-    GL_API* glApi = ((GLRenderDriver*)renderDriver)->glApi;
-
-    glApi->glBindBuffer( GL_ARRAY_BUFFER, copyTarget );
-    glApi->glBufferData( GL_ARRAY_BUFFER, dataSize, data, GL_DYNAMIC_DRAW );
+static void CopyDataToGpuArray( PtrToGpuMem copyTarget, void* data, uint64 dataSize ) {
+    glBindBuffer( GL_ARRAY_BUFFER, copyTarget );
+    glBufferData( GL_ARRAY_BUFFER, dataSize, data, GL_DYNAMIC_DRAW );
 }
 
-static void DrawMesh( 
-RenderDriver* driver, 
-RenderCommand* command 
-) {
-    GLRenderDriver* glDriver = (GLRenderDriver*)driver;
-    GL_API* gl_api = (GL_API*)glDriver->glApi;
-
+static void Draw( RenderCommand* command, bool doLines ) {
     //Bind Shader
-    gl_api->glUseProgram( command->shader->programID );
+    glUseProgram( command->shader->programID );
 
     //Vertex input data
-    for( 
-        int attributeIndex = 0; 
-        attributeIndex < command->shader->vertInputCount; 
-        ++attributeIndex 
-    ) {
-        GLuint attribPtr = command->shader->vertexInputPtrs[ attributeIndex ];
-        GLenum type = command->shader->vertexInputTypes[ attributeIndex ];
+    if( command->vertexFormat == RenderCommand::INTERLEAVESTREAM ) {
+        glBindBuffer( GL_ARRAY_BUFFER, command->VertexFormat.bufferForStream );
+        glBufferData( GL_ARRAY_BUFFER, command->VertexFormat.streamSize, command->VertexFormat.streamData, GL_DYNAMIC_DRAW );
 
-        uint32 attribBufferPtr = command->vertexInputData[ attributeIndex ];
+        for( 
+            int vertexInputIndex = 0;
+            vertexInputIndex < command->shader->vertInputCount;
+            ++vertexInputIndex
+        ) {
+            GLuint attribPtr = command->shader->vertexInputPtrs[ vertexInputIndex ];
+            GLenum type = command->shader->vertexInputTypes[ vertexInputIndex ];
 
-        if( attribBufferPtr == 0 ) {
-            continue;
+            int count;
+            GLenum attType = GL_FLOAT;
+            GLboolean normalize = GL_FALSE;
+            if( type == GL_FLOAT_VEC4 ) {
+                attType = GL_UNSIGNED_BYTE;
+                normalize = GL_TRUE;
+                count = 4;
+            } else if( type == GL_FLOAT_VEC3 ) {
+                count = 3;
+            } else if( type == GL_FLOAT_VEC2 ) {
+                count = 2;
+            } else {
+                //Oops! an unsupported vertex type!
+                assert(false);
+            }
+
+            glEnableVertexAttribArray( attribPtr );
+            glVertexAttribPointer( 
+                attribPtr,
+                count, 
+                attType,
+                normalize,
+                command->VertexFormat.vertSize,
+                (GLvoid*)command->VertexFormat.vertexAttributeOffsets[ vertexInputIndex ]
+            );
         }
+    } else if( command->vertexFormat == RenderCommand::SEPARATE_GPU_BUFFS ) {
+        for( 
+            int attributeIndex = 0; 
+            attributeIndex < command->shader->vertInputCount; 
+            ++attributeIndex 
+            ) {
+            GLuint attribPtr = command->shader->vertexInputPtrs[ attributeIndex ];
+            GLenum type = command->shader->vertexInputTypes[ attributeIndex ];
 
-        int count;
-        if( type == GL_FLOAT_VEC3 ) {
-            count = 3;
-        } else if( type == GL_FLOAT_VEC2 ) {
-            count = 2;
-        } else {
-            //Oops! an unsupported vertex type!
-            assert(false);
+            uint32 attribBufferPtr = command->vertexInputData[ attributeIndex ];
+
+            if( attribBufferPtr == 0 ) {
+                continue;
+            }
+
+            int count;
+            if( type == GL_FLOAT_VEC3 ) {
+                count = 3;
+            } else if( type == GL_FLOAT_VEC2 ) {
+                count = 2;
+            } else {
+                //Oops! an unsupported vertex type!
+                assert(false);
+            }
+
+            glBindBuffer( GL_ARRAY_BUFFER, attribBufferPtr );
+            glEnableVertexAttribArray( attribPtr );
+            glVertexAttribPointer( attribPtr, count, GL_FLOAT, GL_FALSE, 0, 0 );
         }
-
-        gl_api->glBindBuffer( GL_ARRAY_BUFFER, attribBufferPtr );
-        gl_api->glEnableVertexAttribArray( attribPtr );
-        gl_api->glVertexAttribPointer( attribPtr, count, GL_FLOAT, GL_FALSE, 0, 0 );
     }
 
     for( 
@@ -316,13 +328,13 @@ RenderCommand* command
         }
 
         if( type == GL_FLOAT_VEC4 ) {
-            gl_api->glUniform4fv( uniformPtr, 1, (float*)uniformData );
+            glUniform4fv( uniformPtr, 1, (float*)uniformData );
         } else if( type == GL_FLOAT_MAT4 ) {
-            gl_api->glUniformMatrix4fv( uniformPtr, 1, GL_FALSE, (float*)uniformData );
+            glUniformMatrix4fv( uniformPtr, 1, GL_FALSE, (float*)uniformData );
         } else if( type == GL_FLOAT_VEC2 ) {
-            gl_api->glUniform2fv( uniformPtr, 1, (float*)uniformData );
+            glUniform2fv( uniformPtr, 1, (float*)uniformData );
         } else if( type == GL_FLOAT_VEC3 ) {
-            gl_api->glUniform3fv( uniformPtr, 1, (float*)uniformData );
+            glUniform3fv( uniformPtr, 1, (float*)uniformData );
         } else {
             //Oops! an unsupported uniform type!
             assert(false);
@@ -337,12 +349,12 @@ RenderCommand* command
         if( command->samplerData == 0 ) {
             continue;
         }
-        gl_api->glActiveTexture( GL_TEXTURE0 + samplerIndex );
+        glActiveTexture( GL_TEXTURE0 + samplerIndex );
         glBindTexture( GL_TEXTURE_2D, command->samplerData[ samplerIndex ] );
     }
 
     GLenum primType = GL_TRIANGLES;
-    if( command->dolines ) {
+    if( doLines ) {
         primType = GL_LINES;
     }
     glDrawArrays( primType, 0, command->elementCount );
@@ -352,126 +364,12 @@ RenderCommand* command
         samplerIndex < command->shader->samplerCount; 
         ++samplerIndex 
     ) {
-        gl_api->glActiveTexture( GL_TEXTURE0 + samplerIndex );
+        glActiveTexture( GL_TEXTURE0 + samplerIndex );
         glBindTexture( GL_TEXTURE_2D, 0 );
     }
-    gl_api->glUseProgram( 0 );
+    glUseProgram( 0 );
 }
 
-static void DrawInterleavedStream(
-    RenderDriver* driver,
-    RenderCommand_Interleaved* command
-) {
-    GL_API* glApi = ((GLRenderDriver*)driver)->glApi;
-
-    glApi->glBindBuffer( GL_ARRAY_BUFFER, command->bufferForStream );
-    glApi->glBufferData( 
-        GL_ARRAY_BUFFER,
-        command->streamSize, 
-        command->streamData, 
-        GL_DYNAMIC_DRAW
-    );
-
-    glEnable( GL_BLEND );
-    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-    glDisable( GL_CULL_FACE );
-    glDisable( GL_DEPTH_TEST );
-    glDisable( GL_SCISSOR_TEST );
-
-    glApi->glUseProgram( command->shader->programID );
-
-    for( 
-        int vertexInputIndex = 0;
-        vertexInputIndex < command->shader->vertInputCount;
-        ++vertexInputIndex
-    ) {
-        GLuint attribPtr = command->shader->vertexInputPtrs[ vertexInputIndex ];
-        GLenum type = command->shader->vertexInputTypes[ vertexInputIndex ];
-
-        int count;
-        GLenum attType = GL_FLOAT;
-        GLboolean normalize = GL_FALSE;
-        if( type == GL_FLOAT_VEC4 ) {
-            attType = GL_UNSIGNED_BYTE;
-            normalize = GL_TRUE;
-            count = 4;
-        } else if( type == GL_FLOAT_VEC3 ) {
-            count = 3;
-        } else if( type == GL_FLOAT_VEC2 ) {
-            count = 2;
-        } else {
-            //Oops! an unsupported vertex type!
-            assert(false);
-        }
-
-        glApi->glEnableVertexAttribArray( attribPtr );
-        glApi->glVertexAttribPointer( 
-            attribPtr,
-            count, 
-            attType,
-            normalize,
-            command->vertSize,
-            (GLvoid*)command->vertexAttributeOffsets[ vertexInputIndex ]
-        );
-    }
-
-#if 0
-for( 
-    int uniformIndex = 0; 
-    uniformIndex < command->shader->uniformCount; 
-    ++uniformIndex 
-) {
-    GLuint uniformPtr = command->shader->uniformPtrs[ uniformIndex ];
-    GLenum type = command->shader->uniformTypes[ uniformIndex ];
-    void* uniformData = command->uniformData[ uniformIndex ];
-
-    if( uniformData == 0 ) {
-        continue;
-    }
-
-    if( type == GL_FLOAT_VEC4 ) {
-        gl_api->glUniform4fv( uniformPtr, 1, (float*)uniformData );
-    } else if( type == GL_FLOAT_MAT4 ) {
-        gl_api->glUniformMatrix4fv( uniformPtr, 1, GL_FALSE, (float*)uniformData );
-    } else if( type == GL_FLOAT_VEC2 ) {
-        gl_api->glUniform2fv( uniformPtr, 1, (float*)uniformData );
-    } else if( type == GL_FLOAT_VEC3 ) {
-        gl_api->glUniform3fv( uniformPtr, 1, (float*)uniformData );
-    } else {
-        //Oops! an unsupported uniform type!
-        assert(false);
-    }
-}
-#endif
-
-    for( 
-        int samplerIndex = 0; 
-        samplerIndex < command->shader->samplerCount; 
-        ++samplerIndex 
-    ) {
-        if( command->sampleData[ samplerIndex ] == 0 ) {
-            continue;
-        }
-        glApi->glActiveTexture( GL_TEXTURE0 + samplerIndex );
-        glBindTexture( GL_TEXTURE_2D, command->sampleData[ samplerIndex ] );
-    }
-
-    glDrawArrays( GL_TRIANGLES, 0, command->elementCount );
-
-    for( 
-        int samplerIndex = 0; 
-        samplerIndex < command->shader->samplerCount; 
-        ++samplerIndex 
-    ) {
-        glApi->glActiveTexture( GL_TEXTURE0 + samplerIndex );
-        glBindTexture( GL_TEXTURE_2D, 0 );
-    }
-    glApi->glUseProgram( 0 ); 
-    glDisable( GL_BLEND );
-    glEnable( GL_CULL_FACE );
-    glEnable( GL_DEPTH_TEST );
-    glDisable( GL_SCISSOR_TEST );
-}
 
 #include "tinyxml2/tinyxml2.h"
 #include "tinyxml2/tinyxml2.cpp"
@@ -816,29 +714,13 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
 "}"
 
 static GLRenderDriver InitGLRenderer( 
-    GL_API* glApi, 
     uint16 screen_w, 
     uint16 screen_h 
 ) {
-    GLRenderDriver driver = { };
-    driver.baseDriver.ParseMeshDataFromCollada = &ParseMeshDataFromCollada;
-    driver.baseDriver.AllocNewGpuArray = &AllocNewGpuArray;
-    driver.baseDriver.CopyVertexDataToGpuMem = &CopyVertexDataToGpuMem;
-    driver.baseDriver.CopyDataToGpuArray = &CopyDataToGpuArray;
-    driver.baseDriver.CopyTextureDataToGpuMem = &CopyTextureDataToGpuMem;
-    driver.baseDriver.CreateShaderProgram = &CreateShaderProgram;
-    driver.baseDriver.ClearShaderProgram = &ClearShaderProgram;
-    driver.baseDriver.DrawMesh = &DrawMesh;
-    driver.baseDriver.DrawInterleavedStream = &DrawInterleavedStream;
-
-    driver.glApi = glApi;
-
-	printf( "Vendor: %s\n", glGetString( GL_VENDOR ) );
+    printf( "Vendor: %s\n", glGetString( GL_VENDOR ) );
     printf( "Renderer: %s\n", glGetString( GL_RENDERER ) );
     printf( "GL Version: %s\n", glGetString( GL_VERSION ) );
     printf( "GLSL Version: %s\n", glGetString( GL_SHADING_LANGUAGE_VERSION ) );
-
-    glFrontFace( GL_CCW );
 
     GLint k;
     glGetIntegerv( GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &k );
@@ -850,8 +732,14 @@ static GLRenderDriver InitGLRenderer(
     //Initialize clear color
     glClearColor( 128.0f / 255.0f, 128.0f / 255.0f, 128.0f / 255.0f, 1.0f );
 
-    glDisable( GL_DEPTH_TEST );
+    glEnable( GL_BLEND );
+    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+
+    glEnable( GL_DEPTH_TEST );
+    glDepthFunc( GL_LEQUAL );
+
     glEnable( GL_CULL_FACE );
+    glFrontFace( GL_CW );
     glCullFace( GL_BACK );
 
     glViewport( 0, 0, screen_w, screen_h );
@@ -866,6 +754,16 @@ static GLRenderDriver InitGLRenderer(
     } else {
         printf( "Initialized OpenGL\n" );
     }
+
+    GLRenderDriver driver = { };
+    driver.baseDriver.ParseMeshDataFromCollada = &ParseMeshDataFromCollada;
+    driver.baseDriver.AllocNewGpuArray = &AllocNewGpuArray;
+    driver.baseDriver.CopyVertexDataToGpuMem = &CopyVertexDataToGpuMem;
+    driver.baseDriver.CopyDataToGpuArray = &CopyDataToGpuArray;
+    driver.baseDriver.CopyTextureDataToGpuMem = &CopyTextureDataToGpuMem;
+    driver.baseDriver.CreateShaderProgram = &CreateShaderProgram;
+    driver.baseDriver.ClearShaderProgram = &ClearShaderProgram;
+    driver.baseDriver.Draw = &Draw;
 
     return driver;
 }

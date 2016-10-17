@@ -3,6 +3,12 @@
 
 #include "imgui\imgui.cpp"
 
+/*
+TODO: 
+-do stuff with clipping rectangles
+-add window height/width info to shader as uniform
+*/
+
 static void RenderImGuiVisuals(ImDrawList** const cmd_lists, int cmd_lists_count);
 static void InitImGui_LimeStone();
 
@@ -15,7 +21,7 @@ char* ImGuiVertShaderSrc =
 "out vec4 Frag_Color;"
 "void main() {"
 "    gl_Position = vec4("
-"        ( pos.x / 512.0) - 1.0,"
+"        -( pos.x / 512.0) - 1.0,"
 "        -( pos.y/ 340.0) + 1.0,"
 "        0.5f,"
 "        1.0f"
@@ -54,6 +60,7 @@ static void ImGuiMemFree( void* v) {
 
 }
 
+//COMMENT COPIED FROM IMGUI EXAMPLE
 // This is the main rendering function that you have to implement and provide to ImGui (via setting up 'RenderDrawListsFn' in the ImGuiIO structure)
 // If text or lines are blurry when integrating ImGui in your engine:
 // in your Render function, try translating your projection matrix by (0.5f,0.5f) or (0.375f,0.375f)
@@ -88,20 +95,22 @@ static void RenderImGuiVisuals(ImDrawList** const cmd_lists, int cmd_lists_count
                 &imData->ImGuiUIShader,
                 "col"
             );
-            RenderCommand_Interleaved command = { };
+            RenderCommand command = { };
             command.shader = &imData->ImGuiUIShader;
-            command.bufferForStream = imData->imguiVertexDataPtr;
-            command.vertexAttributeOffsets[ 0 ] = OFFSETOF( ImDrawVert, pos );
-            command.vertexAttributeOffsets[ 1 ] = OFFSETOF( ImDrawVert, uv );
-            command.vertexAttributeOffsets[ 2 ] = OFFSETOF( ImDrawVert, col );
-            command.sampleData[ 0 ] = imData->imguiFontTexturePtr;
-            command.vertSize = sizeof( ImDrawVert );
+            command.vertexFormat = RenderCommand::INTERLEAVESTREAM;
+            command.VertexFormat.bufferForStream = imData->imguiVertexDataPtr;
+            command.VertexFormat.vertexAttributeOffsets[ 0 ] = OFFSETOF( ImDrawVert, pos );
+            command.VertexFormat.vertexAttributeOffsets[ 1 ] = OFFSETOF( ImDrawVert, uv );
+            command.VertexFormat.vertexAttributeOffsets[ 2 ] = OFFSETOF( ImDrawVert, col );
+            command.VertexFormat.vertSize = sizeof( ImDrawVert );
+            command.VertexFormat.streamData = (void*)vtx_buffer;
+            command.VertexFormat.streamSize = pcmd->vtx_count * sizeof( ImDrawVert );
+
+            command.samplerData[ 0 ] = imData->imguiFontTexturePtr;
 
             command.elementCount = pcmd->vtx_count;
-            command.streamData = (void*)vtx_buffer;
-            command.streamSize = pcmd->vtx_count * sizeof( ImDrawVert );
 
-            renderDriver->DrawInterleavedStream( renderDriver, &command );
+            renderDriver->Draw( &command, false );
 
             vtx_buffer += ( sizeof( ImDrawVert ) * pcmd->vtx_count );
         }
@@ -133,8 +142,8 @@ static void UpdateImgui(
     imguiIO.MouseDown[0] = i->mouseButtons[0];
 
     char* keysInputted = i->keysPressedSinceLastUpdate;
-    /*  24 here is a magic number corresponding to InputState struct's 
-        keysPressedSinceLastUpdate array length                        */
+    //24 here is a magic number corresponding to InputState struct's 
+    //keysPressedSinceLastUpdate array length
     for( int charIndex = 0; charIndex < 24; ++charIndex ) {
         if( keysInputted[ charIndex ] != 0 ) {
             imguiIO.AddInputCharacter( keysInputted[ charIndex ] );
@@ -165,12 +174,11 @@ static void* InitImGui_LimeStone(
     ImGui::SetInternalState( imguiState, true );
 
     rDriver->CreateShaderProgram(
-        rDriver,
         ImGuiVertShaderSrc, 
         ImGuiFragShaderSrc, 
         &imguiDriver->ImGuiUIShader 
     );
-    imguiDriver->imguiVertexDataPtr = rDriver->AllocNewGpuArray( rDriver );
+    imguiDriver->imguiVertexDataPtr = rDriver->AllocNewGpuArray();
 
     ImGuiIO& imguiIO = ImGui::GetIO();
     imguiIO.DisplaySize.x = screenWidth;
@@ -196,7 +204,6 @@ static void* InitImGui_LimeStone(
         bytes_per_pixels
     };
     rDriver->CopyTextureDataToGpuMem( 
-        rDriver, 
         &imguiTexData, 
         &imguiDriver->imguiFontTexturePtr
     );
