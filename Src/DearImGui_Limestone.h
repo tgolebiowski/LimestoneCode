@@ -21,8 +21,8 @@ char* ImGuiVertShaderSrc =
 "out vec4 Frag_Color;"
 "void main() {"
 "    gl_Position = vec4("
-"        -( pos.x / 512.0) - 1.0,"
-"        -( pos.y/ 340.0) + 1.0,"
+"        ( pos.x / 512.0) - 1.0,"
+"        -( pos.y / 340.0) + 1.0,"
 "        0.5f,"
 "        1.0f"
 "    );"
@@ -110,12 +110,11 @@ static void RenderImGuiVisuals(ImDrawList** const cmd_lists, int cmd_lists_count
 
             command.elementCount = pcmd->vtx_count;
 
-            renderDriver->Draw( &command, false );
+            renderDriver->Draw( &command, false, true );
 
             vtx_buffer += ( sizeof( ImDrawVert ) * pcmd->vtx_count );
         }
     }
-
     #undef OFFSETOF
 }
 

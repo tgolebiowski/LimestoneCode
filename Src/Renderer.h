@@ -10,14 +10,14 @@ struct TextureData;
 typedef uint32 PtrToGpuMem;
 
 struct RenderDriver {
-    bool (*ParseMeshDataFromCollada)( void*, Stack*, MeshGeometryData*, Armature*);
+    bool (*ParseMeshDataFromCollada)( void*, Stack*, MeshGeometryData*, Armature* );
     PtrToGpuMem (*AllocNewGpuArray)( void );
 	PtrToGpuMem (*CopyVertexDataToGpuMem)( void*, size_t );
     void (*CopyDataToGpuArray)( PtrToGpuMem, void*, uint64 );
     void (*CopyTextureDataToGpuMem)( TextureData*, PtrToGpuMem* );
 	void (*CreateShaderProgram)( char*, char*, ShaderProgram* );
     void (*ClearShaderProgram)( ShaderProgram* );
-	void (*Draw)( RenderCommand*, bool );
+	void (*Draw)( RenderCommand*, bool, bool );
 };
 
 #define MAXBONESPERVERT 4

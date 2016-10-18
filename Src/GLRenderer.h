@@ -240,7 +240,7 @@ static void CopyDataToGpuArray( PtrToGpuMem copyTarget, void* data, uint64 dataS
     glBufferData( GL_ARRAY_BUFFER, dataSize, data, GL_DYNAMIC_DRAW );
 }
 
-static void Draw( RenderCommand* command, bool doLines ) {
+static void Draw( RenderCommand* command, bool doLines, bool noBackFaceCull ) {
     //Bind Shader
     glUseProgram( command->shader->programID );
 
@@ -357,7 +357,16 @@ static void Draw( RenderCommand* command, bool doLines ) {
     if( doLines ) {
         primType = GL_LINES;
     }
+
+    if( noBackFaceCull ) {
+        glDisable( GL_CULL_FACE );
+    }
+
     glDrawArrays( primType, 0, command->elementCount );
+
+    if( noBackFaceCull ) {
+        glEnable( GL_CULL_FACE );
+    }
 
     for( 
         int samplerIndex = 0; 
@@ -738,9 +747,9 @@ static GLRenderDriver InitGLRenderer(
     glEnable( GL_DEPTH_TEST );
     glDepthFunc( GL_LEQUAL );
 
-    glEnable( GL_CULL_FACE );
-    glFrontFace( GL_CW );
     glCullFace( GL_BACK );
+    glFrontFace( GL_CCW );
+    glEnable( GL_CULL_FACE );
 
     glViewport( 0, 0, screen_w, screen_h );
 
