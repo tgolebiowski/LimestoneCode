@@ -17,12 +17,13 @@ char* ImGuiVertShaderSrc =
 "attribute vec2 pos;"
 "attribute vec2 uv;"
 "attribute vec4 color;"
+"uniform vec2 windowDimensions;"
 "out vec2 Frag_UV;"
 "out vec4 Frag_Color;"
 "void main() {"
 "    gl_Position = vec4("
-"        ( pos.x / 512.0) - 1.0,"
-"        -( pos.y / 340.0) + 1.0,"
+"        ( pos.x / ( windowDimensions.x / 2.0 ) ) - 1.0,"
+"        -( pos.y / ( windowDimensions.y / 2.0 ) ) + 1.0,"
 "        0.5f,"
 "        1.0f"
 "    );"
@@ -47,6 +48,7 @@ struct ImguiLimestoneDriver {
     ImFontAtlas defaultAtlas;
     ImFont defaultFont;
     RenderDriver* renderDriver;
+    float x, y;
     Stack* mem;
 };
 
@@ -95,6 +97,11 @@ static void RenderImGuiVisuals(ImDrawList** const cmd_lists, int cmd_lists_count
                 &imData->ImGuiUIShader,
                 "col"
             );
+            int windowUniform = GetIndexOfProgramUniformInput(
+                &imData->ImGuiUIShader,
+                "windowDimensions"
+            );
+
             RenderCommand command = { };
             command.shader = &imData->ImGuiUIShader;
             command.vertexFormat = RenderCommand::INTERLEAVESTREAM;
@@ -107,6 +114,9 @@ static void RenderImGuiVisuals(ImDrawList** const cmd_lists, int cmd_lists_count
             command.VertexFormat.streamSize = pcmd->vtx_count * sizeof( ImDrawVert );
 
             command.samplerData[ 0 ] = imData->imguiFontTexturePtr;
+
+            float windowDimensionsVec [2] = { imData->x, imData->y };
+            command.uniformData[ windowUniform ] = windowDimensionsVec;
 
             command.elementCount = pcmd->vtx_count;
 
@@ -121,8 +131,8 @@ static void RenderImGuiVisuals(ImDrawList** const cmd_lists, int cmd_lists_count
 static void UpdateImgui( 
     InputState* i, 
     void* savedInternalState, 
-    int screenWidth, 
-    int screenHeight 
+    int windowWidth, 
+    int windowHeight 
 ) {
     ImGui::SetInternalState( savedInternalState );
 
@@ -136,8 +146,8 @@ static void UpdateImgui(
     imguiIO.MemAllocFn = ImGuiMemAlloc;
     imguiIO.MemFreeFn = ImGuiMemFree;
 
-    imguiIO.MousePos.x = ( ( mX + 1.0f ) / 2.0f ) * screenWidth - 16;
-    imguiIO.MousePos.y = ( 1.0f - ( ( mY + 1.0f ) / 2.0f ) ) * screenHeight;
+    imguiIO.MousePos.x = ( ( mX + 1.0f ) / 2.0f ) * windowWidth;
+    imguiIO.MousePos.y = ( 1.0f - ( ( mY + 1.0f ) / 2.0f ) ) * windowHeight;
     imguiIO.MouseDown[0] = i->mouseButtons[0];
 
     char* keysInputted = i->keysPressedSinceLastUpdate;
@@ -153,6 +163,9 @@ static void UpdateImgui(
     imguiIO.KeysDown[ InputState::TAB ] = i->spcKeys[ InputState::TAB ];
 
     ImguiLimestoneDriver* imData = (ImguiLimestoneDriver*)imguiIO.UserData;
+
+    imData->x = windowWidth;
+    imData->y = windowHeight;
 
     ImGui::NewFrame();
 }

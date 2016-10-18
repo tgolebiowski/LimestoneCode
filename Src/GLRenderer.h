@@ -10,6 +10,7 @@ GLE( void, GetProgramiv, GLuint shader, GLenum pname, GLint* params ) \
 GLE( GLuint, CreateShader, GLuint type ) \
 GLE( void, ShaderSource, GLuint shader, GLsizei count, const GLchar** src, const GLint* length ) \
 GLE( void, CompileShader, GLuint shader ) \
+GLE( void, GetShaderInfoLog, GLuint shader, GLsizei maxLength, GLsizei* length, GLchar* infoLog ) \
 GLE( void, AttachShader, GLuint program, GLuint shader ) \
 GLE( void, DeleteShader, GLuint shader ) \
 GLE( void, DeleteProgram, GLuint program ) \
@@ -67,8 +68,7 @@ static void PrintGLShaderLog( GLuint shader ) {
     GLchar infoLog[ 256 ];
 
     //Get info log
-    assert(false); //FIGURE OUT HOW TO GET SHADER LOG!!!!
-    //glGetShaderInfoLog( shader, maxLength, &infoLogLength, infoLog );
+    glGetShaderInfoLog( shader, maxLength, &infoLogLength, infoLog );
     if( infoLogLength > 0 ) {
         //Print Log
         printf( "%s\n", infoLog );
