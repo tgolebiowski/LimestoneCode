@@ -25,9 +25,9 @@ struct MeshGeometryData {
 	Vec3* vData;
 	Vec3* normalData;
 	float* uvData;
-	float* boneWeightData;
-	uint32* boneIndexData;
 	uint32 dataCount;
+    float* boneWeightData;
+    uint32* boneIndexData;
 };
 
 struct TextureData {
@@ -92,8 +92,8 @@ struct Framebuffer {
 };
 
 #ifdef DLL_ONLY
-//Ranges on this matrix are exactly xyz: width, height, depth
-void CreateOrthoCameraMatrix( 
+//View Ranges on this matrix are exactly xyz: width, height, depth
+static void CreateOrthoCameraMatrix( 
 	float width, 
 	float height, 
     float depth,
@@ -103,6 +103,38 @@ void CreateOrthoCameraMatrix(
     m->m[1][0] = 0.0f; m->m[1][1] = 1.0f / height; m->m[1][2] = 0.0f; m->m[1][3] = 0.0f;
     m->m[2][0] = 0.0f; m->m[2][1] = 0.0f; m->m[2][2] = 1.0f / depth; m->m[2][3] = 0.0f;
     m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = 0.0f; m->m[3][3] = 1.0f;
+}
+
+static Mat4 CreatePerspectiveMatrix( 
+    float fov, 
+    float aspect, 
+    float nearPlane,
+    float farPlane 
+) {
+    float depth = farPlane - nearPlane;
+    float inverseTanFov = 1.0 / tanf( fov / 2.0 );
+
+    return {
+        -inverseTanFov / aspect, 0.0f, 0.0f, 0.0f,
+        0.0f, inverseTanFov, 0.0f, 0.0f,
+        0.0f, 0.0f, -( ( farPlane + nearPlane ) / depth ), -1.0f,
+        0.0f, 0.0f, ( ( farPlane * nearPlane ) / depth ), 1.0f
+    };
+}
+
+//A NOTE viewprojection is MultMatrix( view, projection )
+
+static Mat4 CreateViewMatrix( Quat rotation, Vec3 p ) {
+    Vec3 xAxis = ApplyQuatToVec( rotation, { -1.0f, 0.0f, 0.0f } );
+    Vec3 yAxis = ApplyQuatToVec( rotation, { 0.0f, -1.0f, 0.0f } );
+    Vec3 zAxis = ApplyQuatToVec( rotation, { 0.0f, 0.0f, -1.0f } );
+
+    return {
+        xAxis.x, yAxis.x, zAxis.x, 0.0f,
+        xAxis.y, yAxis.y, zAxis.y, 0.0f,
+        xAxis.z, yAxis.z, zAxis.z, 0.0f,
+        -Dot( xAxis, p ), -Dot( yAxis, p ), -Dot( zAxis, p ), 1.0f
+    };
 }
 
 static void CreateEmptyTexture(
@@ -116,64 +148,6 @@ static void CreateEmptyTexture(
     texData->width = width;
     texData->height = height;
     texData->channelsPerPixel = 4;
-}
-
-static void SetSampler( 
-    RenderCommand* params, 
-    char* targetSamplerName, 
-    PtrToGpuMem texBinding 
-) {
-    for( int samplerIndex = 0; samplerIndex < params->shader->samplerCount; ++samplerIndex ) {
-        if( strcmp( params->shader->samplerNames[ samplerIndex ], targetSamplerName ) == 0 ) {
-            params->samplerData[ samplerIndex ] = texBinding;
-            return;
-        }
-    }
-
-    printf( "Cannot set sampler named: %s because it couldn't be found\n", targetSamplerName );
-}
-
-static void SetVertexInput( 
-    RenderCommand* params, 
-    char* targetInputName, 
-    PtrToGpuMem gpuDataPtr 
-) {
-    for( int vertexInputIndex = 0; 
-        vertexInputIndex < params->shader->vertInputCount; 
-        ++vertexInputIndex ) 
-    {
-        if( strcmp( 
-            params->shader->vertexInputNames[ vertexInputIndex ], 
-            targetInputName ) == 0 
-        ) {
-            params->vertexInputData[ vertexInputIndex ] = gpuDataPtr;
-            return;
-        }
-    }
-
-    printf( 
-        "Cannot set vertex input named: %s because it couldn't be found\n", 
-        targetInputName 
-    );
-}
-
-static void SetUniform( 
-    RenderCommand* params, 
-    char* uniformName, 
-    void* uniformData 
-) {
-    for( 
-    	int uniformNamesIndex = 0; 
-    	uniformNamesIndex < params->shader->uniformCount; 
-    	++uniformNamesIndex 
-    ) {
-        if( strcmp( params->shader->uniformNames[ uniformNamesIndex ], uniformName ) == 0 ) {
-            params->uniformData[ uniformNamesIndex ] = uniformData;
-            return;
-        }
-    }
-
-    printf( "Cannot set uniform named: %s because it couldn't be found\n", uniformName );
 }
 
 static int32 GetShaderProgramInputPtr( ShaderProgram* shader, char* inputName ) {

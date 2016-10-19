@@ -1,42 +1,3 @@
-struct CameraState {
-	Mat4 projection;
-	Mat4 viewMatrix;
-};
-
-static Mat4 CreatePerspectiveMatrix( 
-	float fov, 
-	float aspect, 
-	float nearPlane,
-	float farPlane 
-) {
-	float depth = farPlane - nearPlane;
-	float inverseTanFov = 1.0 / tanf( fov / 2.0 );
-
-	return {
-		-inverseTanFov / aspect, 0.0f, 0.0f, 0.0f,
-		0.0f, inverseTanFov, 0.0f, 0.0f,
-		0.0f, 0.0f, -( ( farPlane + nearPlane ) / depth ), -1.0f,
-		0.0f, 0.0f, ( ( farPlane * nearPlane ) / depth ), 1.0f
-	};
-}
-
-static Mat4 CreateViewMatrix( Quat rotation, Vec3 p ) {
-	Vec3 xAxis = ApplyQuatToVec( rotation, { -1.0f, 0.0f, 0.0f } );
-	Vec3 yAxis = ApplyQuatToVec( rotation, { 0.0f, -1.0f, 0.0f } );
-	Vec3 zAxis = ApplyQuatToVec( rotation, { 0.0f, 0.0f, -1.0f } );
-
-	return {
-		xAxis.x, yAxis.x, zAxis.x, 0.0f,
-		xAxis.y, yAxis.y, zAxis.y, 0.0f,
-		xAxis.z, yAxis.z, zAxis.z, 0.0f,
-		-Dot( xAxis, p ), -Dot( yAxis, p ), -Dot( zAxis, p ), 1.0f
-	};
-}
-
-static inline Mat4 GetViewProjectionMatrix( CameraState* stateInfo ) {
-	return MultMatrix( stateInfo->viewMatrix, stateInfo->projection );
-}
-
 static Vec3 GetRayFromScreenCoords( 
 	Vec2 screenCoords, 
 	Mat4 projectionMatrix, 
@@ -52,7 +13,13 @@ static Vec3 GetRayFromScreenCoords(
 	return p;
 }
 
-static int RayPlaneIntersection( Vec3 plane_p, Vec3 plane_n, Vec3 ray_p, Vec3 ray_n, Vec3* intersectionPoint ) {
+static int RayPlaneIntersection( 
+	Vec3 plane_p, 
+	Vec3 plane_n, 
+	Vec3 ray_p, 
+	Vec3 ray_n, 
+	Vec3* intersectionPoint 
+) {
 	if( Dot( ray_n, plane_n ) > 0.0f ) { //We want to detect intersection even if the plane is facing "away"
 		plane_n = plane_n * 1.0f;
 	}
