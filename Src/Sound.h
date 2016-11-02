@@ -15,6 +15,7 @@ struct PlayingSound {
 	LoadedSound* baseSound;
 	float volume;
 	bool playing;
+	bool looping;
 	uint32 lastPlayLocation;
 };
 
@@ -67,30 +68,42 @@ extern "C" MIX_SOUND( MixSound ) {
 	PlayingSound* activeSoundList = driver->activeSoundList;
 
 	for( uint8 soundIndex = 0; soundIndex < MAXSOUNDSATONCE; ++soundIndex ) {
+
 		if( activeSoundList[ soundIndex ].baseSound != NULL ) {
 			if( !activeSoundList[ soundIndex ].playing ) continue;
+
 			PlayingSound* activeSound = &activeSoundList[ soundIndex ];
 
 			uint32 samplesToWrite = srb->samplesToWrite / 2;
 			uint32 samplesLeftInSound = activeSound->baseSound->sampleCount - activeSound->lastPlayLocation;
-			if( samplesLeftInSound < samplesToWrite ) {
-				samplesToWrite = samplesLeftInSound;
+			if( samplesLeftInSound < samplesToWrite && !activeSound->looping ) {
+				samplesToWrite = samplesLeftInSound - 1;
 			}
+
 			for( int32 sampleIndex = 0; sampleIndex < samplesToWrite; ++sampleIndex ) {
-				int16 value = (int16)( activeSound->volume * (float)activeSound->baseSound->samples[0][ ( sampleIndex + activeSound->lastPlayLocation ) ] );
+				int32 readIndex = ( sampleIndex + activeSound->lastPlayLocation ) % activeSound->baseSound->sampleCount;
+				float baseSampleValue = (float)activeSound->baseSound->samples[0][ readIndex ];
+				int16 value = (int16)( activeSound->volume * baseSampleValue );
 
-				int32 i = sampleIndex * 2;
+				int32 writeIndex = sampleIndex * 2;
 
-		        srb->samples[ i ] += value;     //Left Channel
-		        srb->samples[ i + 1 ] += value; //Right Channel
+		        srb->samples[ writeIndex ] += value;     //Left Channel
+		        srb->samples[ writeIndex + 1 ] += value; //Right Channel
 		    }
 		    activeSound->lastPlayLocation += samplesToWrite;
 
 			if( activeSound->lastPlayLocation >= activeSound->baseSound->sampleCount ) {
-				activeSound->baseSound = NULL;
-				activeSound->lastPlayLocation = 0;
+				if( !activeSound->looping ) {
+					activeSound->baseSound = NULL;
+					activeSound->lastPlayLocation = 0;
+					activeSound->playing = false;
+				} else {
+					activeSound->lastPlayLocation = 
+					    activeSound->lastPlayLocation % activeSound->baseSound->sampleCount;
+				}
 			}
 		}
+
 	}
 }
 #endif

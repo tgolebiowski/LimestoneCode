@@ -100,7 +100,7 @@ static void CreateOrthoCameraMatrix(
 	Mat4* m
 ) {
     m->m[0][0] = 1.0f / width; m->m[0][1] = 0.0f; m->m[0][2] = 0.0f; m->m[0][3] = 0.0f;
-    m->m[1][0] = 0.0f; m->m[1][1] = 1.0f / height; m->m[1][2] = 0.0f; m->m[1][3] = 0.0f;
+    m->m[1][0] = 0.0f; m->m[1][1] = -1.0f / height; m->m[1][2] = 0.0f; m->m[1][3] = 0.0f;
     m->m[2][0] = 0.0f; m->m[2][1] = 0.0f; m->m[2][2] = 1.0f / depth; m->m[2][3] = 0.0f;
     m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = 0.0f; m->m[3][3] = 1.0f;
 }
@@ -125,9 +125,9 @@ static Mat4 CreatePerspectiveMatrix(
 //A NOTE viewprojection is MultMatrix( view, projection )
 
 static Mat4 CreateViewMatrix( Quat rotation, Vec3 p ) {
-    Vec3 xAxis = ApplyQuatToVec( rotation, { -1.0f, 0.0f, 0.0f } );
-    Vec3 yAxis = ApplyQuatToVec( rotation, { 0.0f, -1.0f, 0.0f } );
-    Vec3 zAxis = ApplyQuatToVec( rotation, { 0.0f, 0.0f, -1.0f } );
+    Vec3 xAxis = ApplyQuatToVec( rotation, { 1.0f, 0.0f, 0.0f } );
+    Vec3 yAxis = ApplyQuatToVec( rotation, { 0.0f, 1.0f, 0.0f } );
+    Vec3 zAxis = ApplyQuatToVec( rotation, { 0.0f, 0.0f, 1.0f } );
 
     return {
         xAxis.x, yAxis.x, zAxis.x, 0.0f,

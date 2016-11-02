@@ -26,6 +26,8 @@ typedef intptr_t intptr;
 #define MEGABYTES(value) KILOBYTES(value) * 1024
 #define GIGABYTES(value) MEGABYTES(value) * 1024
 
+#define SIZEOF_GLOBAL_HEAP MEGABYTES( 32 )
+
 struct Stack {
 	void* start;
 	void* current;

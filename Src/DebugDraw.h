@@ -1,9 +1,10 @@
 static char* PrimitiveVertShader = 
 "#version 140\n"
 "uniform mat4 cameraMatrix;"
+"uniform mat4 modelMatrix;"
 "attribute vec3 position;"
 "void main() { "
-"    gl_Position = cameraMatrix * vec4( position, 1.0 );"
+"    gl_Position = cameraMatrix * modelMatrix * vec4( position, 1.0 );"
 "}";
 
 static char* PrimitiveFragShader =
@@ -14,6 +15,7 @@ static char* PrimitiveFragShader =
 "}";
 
 struct PrimitiveDrawingData {
+    RenderDriver* renderDriver;
     PtrToGpuMem primitiveData;
     ShaderProgram primitiveShader;
     int transformUniformIndex;
@@ -21,21 +23,26 @@ struct PrimitiveDrawingData {
     int colorUniformIndex;
 };
 
-void DrawLine( 
-    RenderDriver* renderDriver, 
-    Vec3* line, 
-    PrimitiveDrawingData* drawData,
+static void DrawVertsImmediate( 
+    PrimitiveDrawingData* primRenderer,
+    Vec3* verts,
+    int vertCount,
+    bool line,
+    bool suppressBackFaceCulling,
     Mat4* cameraMatrix,
+    Mat4* modelMatrix,
     float* color
 ) {
-    renderDriver->CopyDataToGpuArray( 
-        renderDriver,
-        drawData->primitiveData, 
-        (void*)line, 
-        sizeof( Vec3 ) * 2 
+    primRenderer->renderDriver->CopyDataToGpuArray( 
+        primRenderer->primitiveData, 
+        (void*)verts, 
+        sizeof( Vec3 ) * vertCount 
     );
 
     Mat4 i; SetToIdentity( &i );
+    if( modelMatrix == NULL ) {
+        modelMatrix = &i;
+    }
 
     float whiteColor[4] = { 1.0f,1.0f,1.0f,1.0f };
     if( color == NULL ) {
@@ -43,22 +50,21 @@ void DrawLine(
     }
 
     RenderCommand drawLineCommand = { };
-    drawLineCommand.dolines = true;
-    drawLineCommand.shader = &drawData->primitiveShader;
-    drawLineCommand.elementCount = 2;
-    drawLineCommand.vertexInputData[ 0 ] = drawData->primitiveData;
-    //drawLineCommand.uniformData[ drawData->transformUniformIndex ] = &i;
-    drawLineCommand.uniformData[ drawData->cameraUniformIndex ] = cameraMatrix;
-    drawLineCommand.uniformData[ drawData->colorUniformIndex ] = color;
+    drawLineCommand.shader = &primRenderer->primitiveShader;
+    drawLineCommand.elementCount = vertCount;
+    drawLineCommand.vertexFormat = RenderCommand::SEPARATE_GPU_BUFFS;
+    drawLineCommand.vertexInputData[ 0 ] = primRenderer->primitiveData;
+    drawLineCommand.uniformData[ primRenderer->transformUniformIndex ] = modelMatrix;
+    drawLineCommand.uniformData[ primRenderer->cameraUniformIndex ] = cameraMatrix;
+    drawLineCommand.uniformData[ primRenderer->colorUniformIndex ] = color;
 
-    renderDriver->DrawMesh( renderDriver, &drawLineCommand );
+    primRenderer->renderDriver->Draw( &drawLineCommand, line, suppressBackFaceCulling );
 }
 
-void DrawDot( 
-    RenderDriver* renderDriver, 
+static void DrawDot( 
+    PrimitiveDrawingData* primRenderer,
     Vec3 p,
     float radius,
-    PrimitiveDrawingData* drawData, 
     Mat4* cameraMatrix,
     float* color
 ) {
@@ -66,12 +72,12 @@ void DrawDot(
     Vec3 points [ numTrisInDot * 3 ];
     for( int i = 0; i < numTrisInDot; ++i ) {
         Vec3 edgeP1 = { 
-            ( cos( ( 2 * PI * ((float)i) ) / (float)numTrisInDot ) * radius ) + p.x, 
+            ( cos( ( 2 * PI * ((float)i) ) / (float)numTrisInDot ) * radius ) + p.x,
             ( sin( ( 2 * PI * ((float)i) ) / (float)numTrisInDot ) * radius ) + p.y,
             p.z
         };
         Vec3 edgeP2 = { 
-            ( cos( ( 2 * PI * ((float)i + 1) ) / (float)numTrisInDot ) * radius ) + p.x, 
+            ( cos( ( 2 * PI * ((float)i + 1) ) / (float)numTrisInDot ) * radius ) + p.x,
             ( sin( ( 2 * PI * ((float)i + 1) ) / (float)numTrisInDot ) * radius ) + p.y,
             p.z
         };
@@ -81,9 +87,8 @@ void DrawDot(
         points[i * 3 + 2] = p;
     }
 
-    renderDriver->CopyDataToGpuArray(
-        renderDriver,
-        drawData->primitiveData,
+    primRenderer->renderDriver->CopyDataToGpuArray(
+        primRenderer->primitiveData,
         points,
         sizeof( Vec3 ) * numTrisInDot * 3
     );
@@ -94,36 +99,86 @@ void DrawDot(
     }
 
     RenderCommand drawDotCommand = { };
-    drawDotCommand.dolines = false;
-    drawDotCommand.shader = &drawData->primitiveShader;
+    drawDotCommand.shader = &primRenderer->primitiveShader;
     drawDotCommand.elementCount = numTrisInDot * 3;
-    drawDotCommand.vertexInputData[ 0 ] = drawData->primitiveData;
-    //drawDotCommand.uniformData[ drawData->transformUniformIndex ] = &i;
-    drawDotCommand.uniformData[ drawData->cameraUniformIndex ] = cameraMatrix;
-    drawDotCommand.uniformData[ drawData->colorUniformIndex ] = color;
+    drawDotCommand.vertexFormat = RenderCommand::SEPARATE_GPU_BUFFS;
+    drawDotCommand.vertexInputData[ 0 ] = primRenderer->primitiveData;
+    drawDotCommand.uniformData[ primRenderer->cameraUniformIndex ] = cameraMatrix;
+    drawDotCommand.uniformData[ primRenderer->colorUniformIndex ] = color;
 
-    renderDriver->DrawMesh( renderDriver, &drawDotCommand );
+    primRenderer->renderDriver->Draw( &drawDotCommand, false, true );
 }
 
-void InitPrimitveRenderData( PrimitiveDrawingData* r, RenderDriver* renderDriver ) {
-    r->primitiveData = renderDriver->AllocNewGpuArray( renderDriver );
+static void DrawGridOnXZPlane( 
+    PrimitiveDrawingData* primRenderer,
+    Vec3 p, 
+    float range, 
+    Mat4* viewProjectionMat
+) {
+    Vec3 origin = { (int)p.x, 0.0f, (int)p.z };
+
+    for( int i = 0; i < range; ++i ) {
+        const float halfRange = range / 2.0f;
+
+        float rangeX, minusRangeX, rangeZ, minusRangeZ;
+        rangeX = origin.x - halfRange;
+        minusRangeX = origin.x + halfRange;
+        rangeZ = origin.z - halfRange;
+        minusRangeZ = origin.z + halfRange;
+
+        Vec3 x = { minusRangeX, 0.0f,  rangeZ + ( (float)i ) };
+        Vec3 x2 = { rangeX, 0.0f, rangeZ + ( (float)i ) };
+
+        Vec3 z = { rangeX + ( (float)i ), 0.0f, rangeZ };
+        Vec3 z2 = { rangeX + ( (float)i ), 0.0f, minusRangeZ };
+
+        Vec3 xAxis [2] = { x, x2 };
+        Vec3 zAxis [2] = { z, z2 };
+
+        float semiTransparentLine [4] = { 1.0f, 1.0f, 1.0f, 0.5f };
+        DrawVertsImmediate( 
+            primRenderer,
+            (Vec3*)xAxis,
+            2,
+            true,
+            false,
+            viewProjectionMat,
+            NULL,
+            (float*)&semiTransparentLine
+        );
+        DrawVertsImmediate( 
+            primRenderer,
+            (Vec3*)zAxis,
+            2,
+            true,
+            false,
+            viewProjectionMat,
+            NULL,
+            (float*)&semiTransparentLine
+        );
+    }
+}
+
+static void InitPrimitveRenderData( 
+    PrimitiveDrawingData* primRenderer,
+    RenderDriver* renderDriver
+) {
+    primRenderer->primitiveData = renderDriver->AllocNewGpuArray();
     renderDriver->CreateShaderProgram( 
-        renderDriver,
         PrimitiveVertShader,
         PrimitiveFragShader,
-        &r->primitiveShader
+        &primRenderer->primitiveShader
     );
 
-    /*r->transformUniformIndex = GetIndexOfProgramUniformInput( 
-        &r->primitiveShader, 
+    primRenderer->transformUniformIndex = GetIndexOfProgramUniformInput( 
+        &primRenderer->primitiveShader, 
         "modelMatrix" 
-    );*/
-    r->cameraUniformIndex = GetIndexOfProgramUniformInput(
-        &r->primitiveShader,
+    );
+    primRenderer->cameraUniformIndex = GetIndexOfProgramUniformInput(
+        &primRenderer->primitiveShader,
         "cameraMatrix"
     );
-    r->colorUniformIndex = GetIndexOfProgramUniformInput(
-        &r->primitiveShader,
+    primRenderer->colorUniformIndex = GetIndexOfProgramUniformInput(
+        &primRenderer->primitiveShader,
         "primitiveColor"
     );
-}

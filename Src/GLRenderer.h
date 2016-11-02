@@ -383,11 +383,18 @@ static void Draw( RenderCommand* command, bool doLines, bool noBackFaceCull ) {
 #include "tinyxml2/tinyxml2.h"
 #include "tinyxml2/tinyxml2.cpp"
 static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeometryData* storage, Armature* armature ) {
+    if( rawData == NULL ) {
+        printf( "No data passed in.\n" );
+        return false;
+    }
+
     tinyxml2::XMLDocument colladaDoc;
     colladaDoc.Parse( (const char*)rawData );
 
-    tinyxml2::XMLElement* meshNode = colladaDoc.FirstChildElement( "COLLADA" )->FirstChildElement( "library_geometries" )
-    ->FirstChildElement( "geometry" )->FirstChildElement( "mesh" );
+    tinyxml2::XMLElement* meshNode = colladaDoc.FirstChildElement( "COLLADA" )
+    ->FirstChildElement( "library_geometries" )
+    ->FirstChildElement( "geometry" )
+    ->FirstChildElement( "mesh" );
 
     char* colladaTextBuffer = NULL;
     size_t textBufferLen = 0;
@@ -398,7 +405,7 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
     uint16 indexCount = 0;
     float* rawColladaVertexData;
     float* rawColladaNormalData;
-    float* rawColladaUVData;
+    float* rawColladaUVData = NULL;
     float* rawIndexData;
     ///Basic Mesh Geometry Data
     {
@@ -411,20 +418,34 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
         tinyxml2::XMLElement* meshSrc = meshNode->FirstChildElement( "polylist" );
         tinyxml2::XMLElement* colladaIndexArray = meshSrc->FirstChildElement( "p" );
 
+        int dataInputCount = 0;
         int count;
         const char* colladaVertArrayVal = vertexFloatArray->FirstChild()->Value();
         vertexFloatArray->QueryAttribute( "count", &count );
         vCount = count;
+        rawColladaVertexData = (float*)alloca( sizeof(float) * vCount );
+        dataInputCount++;
+
         const char* colladaNormArrayVal = normalFloatArray->FirstChild()->Value();
         normalFloatArray->QueryAttribute( "count", &count );
         nCount = count;
-        const char* colladaUVMapArrayVal = uvMapFloatArray->FirstChild()->Value();
-        uvMapFloatArray->QueryAttribute( "count", &count );
-        uvCount = count;
+        rawColladaNormalData = (float*)alloca( sizeof(float) * nCount );
+        dataInputCount++;
+
+        char* colladaUVMapArrayVal = NULL;
+        if( uvMapFloatArray != NULL ) {
+            colladaUVMapArrayVal = (char*)uvMapFloatArray->FirstChild()->Value();
+            uvMapFloatArray->QueryAttribute( "count", &count );
+            uvCount = count;
+            rawColladaUVData = (float*)alloca( sizeof(float) * uvCount );
+            dataInputCount++;
+        }
+
         const char* colladaIndexArrayVal = colladaIndexArray->FirstChild()->Value();
         meshSrc->QueryAttribute( "count", &count );
         //Assume this is already triangulated
-        indexCount = count * 3 * 3;
+        indexCount = count * 3 * dataInputCount;
+        rawIndexData = (float*)alloca( sizeof(float) * indexCount );
 
         ///TODO: replace this with fmaxf?
         std::function< size_t (size_t, size_t) > sizeComparison = []( size_t size1, size_t size2 ) -> size_t {
@@ -434,14 +455,10 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
 
         textBufferLen = strlen( colladaVertArrayVal );
         textBufferLen = sizeComparison( strlen( colladaNormArrayVal ), textBufferLen );
-        textBufferLen = sizeComparison( strlen( colladaUVMapArrayVal ), textBufferLen );
+        //textBufferLen = sizeComparison( strlen( colladaUVMapArrayVal ), textBufferLen );
         textBufferLen = sizeComparison( strlen( colladaIndexArrayVal ), textBufferLen );
         colladaTextBuffer = (char*)alloca( textBufferLen );
         memset( colladaTextBuffer, 0, textBufferLen );
-        rawColladaVertexData = (float*)alloca( sizeof(float) * vCount );
-        rawColladaNormalData = (float*)alloca( sizeof(float) * nCount );
-        rawColladaUVData = (float*)alloca( sizeof(float) * uvCount );
-        rawIndexData = (float*)alloca( sizeof(float) * indexCount );
 
         memset( rawColladaVertexData, 0, sizeof(float) * vCount );
         memset( rawColladaNormalData, 0, sizeof(float) * nCount );
@@ -458,9 +475,11 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
         TextToNumberConversion( colladaTextBuffer, rawColladaNormalData );
 
         //Reading UV map data
-        memset( colladaTextBuffer, 0, textBufferLen );
-        strcpy( colladaTextBuffer, colladaUVMapArrayVal );
-        TextToNumberConversion( colladaTextBuffer, rawColladaUVData );
+        if( uvMapFloatArray != NULL ) {
+            memset( colladaTextBuffer, 0, textBufferLen );
+            strcpy( colladaTextBuffer, colladaUVMapArrayVal );
+            TextToNumberConversion( colladaTextBuffer, rawColladaUVData );
+        }
 
         //Reading index data
         memset( colladaTextBuffer, 0, textBufferLen );
@@ -672,7 +691,11 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
 
         uint16 vertIndex = rawIndexData[ counter++ ];
         uint16 normalIndex = rawIndexData[ counter++ ];
-        uint16 uvIndex = rawIndexData[ counter++ ];
+
+        uint16 uvIndex = 0;
+        if( rawColladaUVData != NULL ) {
+            uvIndex = rawIndexData[ counter++ ];
+        }
 
         v.x = rawColladaVertexData[ vertIndex * 3 + 0 ];
         v.z = -rawColladaVertexData[ vertIndex * 3 + 1 ];
@@ -682,15 +705,21 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
         n.z = -rawColladaNormalData[ normalIndex * 3 + 1 ];
         n.y = rawColladaNormalData[ normalIndex * 3 + 2 ];
 
-        uv_x = rawColladaUVData[ uvIndex * 2 ];
-        uv_y = rawColladaUVData[ uvIndex * 2 + 1 ];
+        if( rawColladaUVData != NULL ) {
+            uv_x = rawColladaUVData[ uvIndex * 2 ];
+            uv_y = rawColladaUVData[ uvIndex * 2 + 1 ];
+        }
 
         ///TODO: check for exact copies of data, use to index to first instance instead
+
         uint32 storageIndex = storage->dataCount;
         storage->vData[ storageIndex ] = v;
         storage->normalData[ storageIndex ] = n;
-        storage->uvData[ storageIndex * 2 ] = uv_x;
-        storage->uvData[ storageIndex * 2 + 1 ] = uv_y;
+        if( rawColladaUVData != NULL ) {
+            storage->uvData[ storageIndex * 2 ] = uv_x;
+            storage->uvData[ storageIndex * 2 + 1 ] = uv_y;
+        }
+
         if( rawBoneWeightData != NULL ) {
             uint16 boneDataIndex = storage->dataCount * MAXBONESPERVERT;
             uint16 boneVertexIndex = vertIndex * MAXBONESPERVERT;

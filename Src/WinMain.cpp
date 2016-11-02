@@ -175,6 +175,7 @@ InputState QueryInput(
 -----------------------------------------------------------------------------------------*/
 
 #include <strsafe.h>
+//NOTE: this allocates the file size + 1 byte, and sets that last byte to zero
 void* ReadWholeFile( char* filename, Stack* allocater ) {
 	HANDLE fileHandle;
 	//TODO: look into other options, such as: Overlapped, No_Bufffering, and Random_Access
@@ -202,9 +203,9 @@ void* ReadWholeFile( char* filename, Stack* allocater ) {
 
 	//Reserve Space
 	void* data = 0;
-	data = StackAllocAligned( allocater, fileSize.QuadPart );
-	memset( data, 0, fileSize.QuadPart );
+	data = StackAllocAligned( allocater, fileSize.QuadPart + 1 );
 	assert( data != 0 );
+	memset( data, 0, fileSize.QuadPart + 1 );
 
 	//Read data
 	DWORD dataRead = 0;
@@ -613,7 +614,7 @@ static void PushAudioToSoundCard( App* gameapp, Win32Sound* win32Sound ) {
 		targetCursor = targetCursor % win32Sound->writeBufferSize;
 
 		//Wrap up on math, how many bytes do we actually write
-		if( win32Sound->byteToLock > targetCursor ) {
+		if( win32Sound->byteToLock >= targetCursor ) {
 			win32Sound->bytesToWrite = win32Sound->writeBufferSize - win32Sound->byteToLock;
 			win32Sound->bytesToWrite += targetCursor;
 		} else {
@@ -622,6 +623,7 @@ static void PushAudioToSoundCard( App* gameapp, Win32Sound* win32Sound ) {
 
 		if( win32Sound->bytesToWrite == 0 ) {
 			printf( "BTW is zero, BTL:%lu, TC:%lu, PC:%lu, WC:%lu \n", win32Sound->byteToLock, targetCursor, playCursorPosition, writeCursorPosition );
+			assert(false);
 		}
 
 	    //Save number of samples that can be written to platform independent struct
@@ -721,7 +723,6 @@ GLRenderDriver Win32InitGLRenderer(
 	    gl##name = (name##proc*)wglGetProcAddress( "gl" #name );
 
 	GL_FUNCS
-
 	#undef GLE
 
 	return InitGLRenderer( 
@@ -940,8 +941,9 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 	App gameapp = { };
 
+	size_t systemsMemorySize = MEGABYTES( 8 );
 	Stack gameSlab;
-	gameSlab.size = MEGABYTES( 32 );
+	gameSlab.size = SIZEOF_GLOBAL_HEAP + systemsMemorySize;
 	gameSlab.start = VirtualAlloc( 
 		NULL, 
 		gameSlab.size, 
@@ -951,7 +953,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	gameSlab.current = gameSlab.start;
 	assert( gameSlab.start != NULL );
 
-	Stack systemsMemory = AllocateNewStackFromStack( &gameSlab, MEGABYTES( 8 ) );
+	Stack systemsMemory = AllocateNewStackFromStack( &gameSlab, systemsMemorySize );
 
 	GLRenderDriver glDriver = Win32InitGLRenderer( 
 		hwnd,
