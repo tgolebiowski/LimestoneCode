@@ -283,7 +283,7 @@ static void Draw( RenderCommand* command, bool doLines, bool noBackFaceCull ) {
                 (GLvoid*)command->VertexFormat.vertexAttributeOffsets[ vertexInputIndex ]
             );
         }
-    } else if( command->vertexFormat == RenderCommand::SEPARATE_GPU_BUFFS ) {
+    } else if( command->vertexFormat == RenderCommand::SEPARATE_GPU_ARRAYS ) {
         for( 
             int attributeIndex = 0; 
             attributeIndex < command->shader->vertInputCount; 

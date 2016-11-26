@@ -24,7 +24,7 @@ char* ImGuiVertShaderSrc =
 "    gl_Position = vec4("
 "        ( pos.x / ( windowDimensions.x / 2.0 ) ) - 1.0,"
 "        -( pos.y / ( windowDimensions.y / 2.0 ) ) + 1.0,"
-"        0.5f,"
+"        0.001f,"
 "        1.0f"
 "    );"
 "    Frag_UV = uv;"
@@ -55,6 +55,7 @@ struct ImguiLimestoneDriver {
 static void* ImGuiMemAlloc( size_t size ) {
     Stack* mem = ((ImguiLimestoneDriver*)ImGui::GetIO().UserData)->mem;
     void* newMem = StackAllocAligned( mem, size );
+    printf( "Imgui Did alloc.\n" );
     return newMem;
 }
 
@@ -143,8 +144,8 @@ static void UpdateImgui(
 
     //We reset these functions every frame, to support code hot-reloading
     imguiIO.RenderDrawListsFn = RenderImGuiVisuals;
-    imguiIO.MemAllocFn = ImGuiMemAlloc;
-    imguiIO.MemFreeFn = ImGuiMemFree;
+    //imguiIO.MemAllocFn = ImGuiMemAlloc;
+    //imguiIO.MemFreeFn = ImGuiMemFree;
 
     imguiIO.MousePos.x = ( ( mX + 1.0f ) / 2.0f ) * windowWidth;
     imguiIO.MousePos.y = ( 1.0f - ( ( mY + 1.0f ) / 2.0f ) ) * windowHeight;

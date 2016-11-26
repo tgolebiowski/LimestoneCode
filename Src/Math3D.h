@@ -2,12 +2,15 @@
 #define MATH3D
 #include <math.h>
 
-//This whole thing is like 95% lifted code from Polycode, so credit there.
-
 #define PI 3.14159265359
+#define TWO_PI ( 2.0f * PI )
 
-#define MAXf(f1, f2) f1 > f2 ? f1 : f2
-#define MINf(f1, f2) f1 < f2 ? f1 : f2
+#define MAXf(f1, f2) ( ((float)(f1 >= f2)) * f1 ) + ( ((float)(f1 < f2)) * f2 )
+#define MINf(f1, f2) ( ((float)(f1 <= f2)) * f1 ) + ( ((float)(f1 > f2)) * f2 )
+//Thanks Amazing Thew!
+#define ABSf(f) ( MAXf( ( -f ), f ) )
+
+#define LERP( f1, f2, t ) ( ( (1.0f - t) * f1 ) + ( t * f2 ) )
 
 struct Vec2 {
 	float x, y;
@@ -127,11 +130,15 @@ float AngleBetween( Vec3 v1, Vec3 v2) {
                                  Mat4
 ---------------------------------------------------------------------*/
 
-void SetToIdentity(Mat4* m) {
-	m->m[0][0] = 1.0f; m->m[0][1] = 0.0f; m->m[0][2] = 0.0f; m->m[0][3] = 0.0f;
-	m->m[1][0] = 0.0f; m->m[1][1] = 1.0f; m->m[1][2] = 0.0f; m->m[1][3] = 0.0f;
-	m->m[2][0] = 0.0f; m->m[2][1] = 0.0f; m->m[2][2] = 1.0f; m->m[2][3] = 0.0f;
-	m->m[3][0] = 0.0f; m->m[3][1] = 0.0f; m->m[3][2] = 0.0f; m->m[3][3] = 1.0f;
+static Mat4 IdentityMatrix = {
+	1.0f, 0.0f, 0.0f, 0.0f,
+	0.0f, 1.0f, 0.0f, 0.0f,
+	0.0f, 0.0f, 1.0f, 0.0f,
+	0.0f, 0.0f, 0.0f, 1.0f
+};
+
+static void SetToIdentity( Mat4* m ) {
+	*m = IdentityMatrix;
 }
 
 void SetScale( Mat4* m , float x, float y, float z) {
@@ -144,6 +151,12 @@ void SetTranslation( Mat4* m, float x, float y, float z ) {
 	m->m[3][0] = x;
 	m->m[3][1] = y;
 	m->m[3][2] = z;
+}
+
+void SetTranslation( Mat4* m, Vec3 p ) {
+	m->m[3][0] = p.x;
+	m->m[3][1] = p.y;
+	m->m[3][2] = p.z;
 }
 
 void SetRotation( Mat4* mtx, float x, float y, float z, float angle) {
@@ -254,21 +267,6 @@ Mat4 InverseMatrix( Mat4 m ) {
     return retVal;
 }
 
-Mat4 LookAtMatrix( Vec3 position, Vec3 target, Vec3 up ) {
-	Vec3 f = DiffVec( position, target );
-	Normalize( &f );
-	Normalize( &up );
-	Vec3 s = Cross( f, up );
-	Vec3 u = Cross( s, f );
-
-	Mat4 lookatMat;
-	lookatMat.m[0][0] = s.x; lookatMat.m[0][1] = u.x; lookatMat.m[0][2] = -f.x; lookatMat.m[0][3] = 0.0f;
-	lookatMat.m[1][0] = s.y; lookatMat.m[1][1] = u.y; lookatMat.m[1][2] = -f.y; lookatMat.m[1][3] = 0.0f;
-	lookatMat.m[2][0] = s.z; lookatMat.m[2][1] = u.z; lookatMat.m[2][2] = -f.z; lookatMat.m[2][3] = 0.0f;
-	lookatMat.m[3][0] = 0.0f; lookatMat.m[3][1] = 0.0f; lookatMat.m[3][2] = 0.0f; lookatMat.m[3][3] = 1.0f;
-	return lookatMat;
-}
-
 Mat4 operator * ( const Mat4 m1, const Mat4 m2 ) {
 	return MultMatrix(m1, m2);
 }
@@ -328,7 +326,12 @@ Quat RotationBtwnVec3( Vec3 a, Vec3 b ) {
 	};
 }
 
-static inline Quat FromAngleAxis(const float axisX, const float axisY, const float axisZ, const float angle) {
+static inline Quat FromAngleAxis(
+	const float axisX,
+	const float axisY, 
+	const float axisZ, 
+	const float angle
+) {
 	Quat quat;
 	float halfAngle = ( 0.5 * angle );
 	float fSin = sin(halfAngle);
@@ -517,9 +520,9 @@ Vec3 QuatToEuler( const Quat q ) {
 -----------------------------------------------------------------------------------------------------*/
 
 Mat4 Mat4FromComponents( Vec3 scale, Quat rotation, Vec3 translation ) {
-	Vec3 x = ApplyQuatToVec( rotation, { 1.0f, 0.0f, 0.0f } );
-	Vec3 y = ApplyQuatToVec( rotation, { 0.0f, 1.0f, 0.0f } );
-	Vec3 z = ApplyQuatToVec( rotation, { 0.0f, 0.0f, 1.0f } );
+	Vec3 x = ApplyQuatToVec( rotation, { 1.0f * scale.x, 0.0f, 0.0f } );
+	Vec3 y = ApplyQuatToVec( rotation, { 0.0f, 1.0f * scale.y, 0.0f } );
+	Vec3 z = ApplyQuatToVec( rotation, { 0.0f, 0.0f, 1.0f * scale.z } );
 
 	Mat4 m = {
 		x.x, x.y, x.z, 0.0f,
@@ -531,9 +534,9 @@ Mat4 Mat4FromComponents( Vec3 scale, Quat rotation, Vec3 translation ) {
 	//TODO: Make this work! Stop doing things the dumb way
 	//Mat4 m = MatrixFromQuat( rotation );
 
-	m[0][0] *= scale.x;
-	m[1][1] *= scale.y;
-	m[2][2] *= scale.z;
+	//m[0][0] *= scale.x;
+	//m[1][1] *= scale.y;
+	//m[2][2] *= scale.z;
 
 	m[3][0] = translation.x;
 	m[3][1] = translation.y;

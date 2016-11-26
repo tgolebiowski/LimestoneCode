@@ -25,9 +25,11 @@ struct MeshGeometryData {
 	Vec3* vData;
 	Vec3* normalData;
 	float* uvData;
-	uint32 dataCount;
+
     float* boneWeightData;
     uint32* boneIndexData;
+
+    uint32 dataCount;
 };
 
 struct TextureData {
@@ -58,7 +60,7 @@ struct ShaderProgram {
 
 struct RenderCommand {
     enum {
-        INTERLEAVESTREAM, SEPARATE_GPU_BUFFS
+        INTERLEAVESTREAM, SEPARATE_GPU_ARRAYS
     };
 
 	ShaderProgram* shader;
@@ -109,15 +111,16 @@ static Mat4 CreatePerspectiveMatrix(
     float fov, 
     float aspect, 
     float nearPlane,
-    float farPlane 
+    float farPlane,
+    float scale
 ) {
     float depth = farPlane - nearPlane;
     float inverseTanFov = 1.0 / tanf( fov / 2.0 );
 
     return {
-        -inverseTanFov / aspect, 0.0f, 0.0f, 0.0f,
-        0.0f, inverseTanFov, 0.0f, 0.0f,
-        0.0f, 0.0f, -( ( farPlane + nearPlane ) / depth ), -1.0f,
+        ( inverseTanFov / aspect ) / scale, 0.0f, 0.0f, 0.0f,
+        0.0f, -inverseTanFov / scale, 0.0f, 0.0f,
+        0.0f, 0.0f, ( ( farPlane + nearPlane ) / depth ) / scale, 1.0f,
         0.0f, 0.0f, ( ( farPlane * nearPlane ) / depth ), 1.0f
     };
 }
@@ -128,6 +131,23 @@ static Mat4 CreateViewMatrix( Quat rotation, Vec3 p ) {
     Vec3 xAxis = ApplyQuatToVec( rotation, { 1.0f, 0.0f, 0.0f } );
     Vec3 yAxis = ApplyQuatToVec( rotation, { 0.0f, 1.0f, 0.0f } );
     Vec3 zAxis = ApplyQuatToVec( rotation, { 0.0f, 0.0f, 1.0f } );
+
+    return {
+        xAxis.x, yAxis.x, zAxis.x, 0.0f,
+        xAxis.y, yAxis.y, zAxis.y, 0.0f,
+        xAxis.z, yAxis.z, zAxis.z, 0.0f,
+        -Dot( xAxis, p ), -Dot( yAxis, p ), -Dot( zAxis, p ), 1.0f
+    };
+}
+
+static Mat4 CreateViewMatrix( Vec3 p, Vec3 lookAtTarget ) {
+    Vec3 up = { 0.0f, 1.0f, 0.0f };
+    Vec3 lookDirection = lookAtTarget - p;
+    Normalize( &lookDirection );
+
+    Vec3 zAxis = lookDirection;
+    Vec3 xAxis = Cross( lookDirection, up );
+    Vec3 yAxis = Cross( zAxis, xAxis );
 
     return {
         xAxis.x, yAxis.x, zAxis.x, 0.0f,

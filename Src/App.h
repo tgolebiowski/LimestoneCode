@@ -26,7 +26,7 @@ typedef intptr_t intptr;
 #define MEGABYTES(value) KILOBYTES(value) * 1024
 #define GIGABYTES(value) MEGABYTES(value) * 1024
 
-#define SIZEOF_GLOBAL_HEAP MEGABYTES( 32 )
+#define SIZEOF_GLOBAL_HEAP MEGABYTES( 64 )
 
 struct Stack {
 	void* start;
@@ -36,26 +36,28 @@ struct Stack {
 
 #define SPACE_IN_STACK(s) s->size - ((intptr)s->current - (intptr)s->start)
 
-Stack AllocateNewStackFromStack( Stack* slab, uint64 newStackSize ) {
-	Stack slabSub = { 0, 0, 0 };
-	if( SPACE_IN_STACK(slab) > newStackSize ) {
-		slabSub.start = slab->current;
-		slabSub.current = slab->current;
-		slabSub.size = newStackSize;
-		slab->current = (void*)( (char*)slab->current + newStackSize );
+Stack AllocateNewStackFromStack( Stack* stack, uint64 newStackSize ) {
+	Stack stackSub = { 0, 0, 0 };
+	if( SPACE_IN_STACK(stack) > newStackSize ) {
+		stackSub.start = stack->current;
+		stackSub.current = stack->current;
+		stackSub.size = newStackSize;
+		stack->current = (void*)( (char*)stack->current + newStackSize );
 	} else {
-		assert(false);
+		int64 spaceNeeded = newStackSize - SPACE_IN_STACK(stack);
+		assert( spaceNeeded > 0 );
 	}
-	return slabSub;
+	return stackSub;
 }
-
+ 
 void* StackAlloc( Stack* stack, uint64 sizeInBytes ) {
 	if( SPACE_IN_STACK(stack) > sizeInBytes ) {
 		void* returnValue = stack->current;
 		stack->current = (void*)( (char*)stack->current + sizeInBytes );
 		return returnValue;
 	} else {
-		assert(false);
+		int64 spaceNeeded = sizeInBytes - SPACE_IN_STACK(stack);
+		assert( spaceNeeded > 0 );
 		return NULL;
 	}
 }
@@ -88,6 +90,76 @@ void FreeFromStack( Stack* stack, void* ptr ) {
 	}
 }
 
+struct Pool {
+	uint32 blockSize;
+	uint32 totalSize;
+	void* start;
+	uint32 inFreeList;
+	uint32 freeListHead;
+	uint32 initialized;
+};
+
+Pool InitPool( Stack* baseMem, uint32 blockSize, uint32 numBlocks ) {
+	//So a free list index can fit in block
+	assert( blockSize > 4 );
+
+	Pool pool = { };
+	pool.blockSize = blockSize;
+	pool.totalSize = blockSize * numBlocks;
+	pool.start = StackAllocAligned( baseMem, pool.totalSize );
+	pool.inFreeList = 0;
+	pool.freeListHead = 0;
+	pool.initialized = 0;
+
+	return pool;
+}
+
+#define ADDR_VIA_INDEX( index, block, start ) (void*)( (intptr)start + (intptr)( block * index ) )
+
+void* PoolAlloc( Pool* pool ) {
+	//Take from freelist first, since this defrags memory naturally
+	if( pool->inFreeList > 0 ) {
+		//Get Address to return
+		int32 newAllocIndex = pool->freeListHead;
+		void* freeAddr = ADDR_VIA_INDEX( newAllocIndex, pool->blockSize, pool->start );
+
+		//Read next block in freelist and store (can be garbage, this won't matter) 
+		pool->freeListHead = *((uint32*)freeAddr);
+		--pool->inFreeList;
+
+		memset( freeAddr, 0, pool->blockSize );
+		return freeAddr;
+	}
+
+	//If nothing free list, check if space remains
+	bool hasRemainingIndicies = ( pool->totalSize / pool->blockSize ) > pool->initialized;
+
+	//If space remains...
+	if( hasRemainingIndicies ) {
+		//Alloc as though it were a stack
+		void* newAddr = ADDR_VIA_INDEX( pool->initialized, pool->blockSize, pool->start );
+		++pool->initialized;
+
+		memset( newAddr, 0, pool->blockSize );
+		return newAddr;
+	}
+
+	return NULL;
+}
+
+#define INDEX_VIA_ADDR( addr, block, start ) (uint32)( ( ((intptr)addr) - ((intptr)start) ) / block )
+
+void PoolFree( Pool* pool, void* addr ) {
+	uint32 indexToFree = INDEX_VIA_ADDR( addr, pool->blockSize, pool->start );
+
+	if( pool->inFreeList > 0 ) {
+		*((uint32*)addr) = pool->freeListHead;
+	}
+
+	++pool->inFreeList;
+	pool->freeListHead = indexToFree;
+}
+
 struct System {
 	uint16 windowWidth;
 	uint16 windowHeight;
@@ -103,8 +175,11 @@ struct InputState {
 		CTRL = 0, 
 		BACKSPACE = 1, 
 		TAB = 2, 
-		DEL = 3
+		DEL = 3,
+		SPACE = 4
 	};
+
+	InputState* prevState;
 
 	bool romanCharKeys[32];
 	bool spcKeys[8];
@@ -115,26 +190,39 @@ struct InputState {
 	float mouseY;
 	bool mouseButtons[4];
 
-	struct {
-		float leftStick_x, leftStick_y;
-		float rightStick_x, rightStick_y;
-		float leftTrigger, rightTrigger;
-		bool leftBumper, rightBumper;
-		bool button1, button2, button3, button4;
-		bool specialButtonLeft, specialButtonRight;
-	} controllerState;
+	float leftStick_x, leftStick_y;
+	float rightStick_x, rightStick_y;
+	float leftTrigger, rightTrigger;
+	bool leftBumper, rightBumper;
+	bool button1, button2, button3, button4;
+	bool specialButtonLeft, specialButtonRight;
 };
 
 #ifdef DLL_ONLY
 static bool IsKeyDown( InputState* i, char key ) {
 	if( key >= 'A' && key <= 'Z' ) key += ( 'a' - 'A' );
-	return i->romanCharKeys[ key - 'a' ];
+	int index = key - 'a';
+	return i->romanCharKeys[ index ];
+}
+
+static bool IsKeyDown( InputState* i, InputState::SPC_KEY_ENUM key ) {
+	return i->spcKeys[ (int)key ];
+}
+
+static bool WasKeyPressed( InputState* i, char key ) {
+	return !IsKeyDown( i->prevState, key ) && IsKeyDown( i, key );
+}
+
+static bool WasKeyPressed( InputState* i, InputState::SPC_KEY_ENUM key ) {
+	return !IsKeyDown( i->prevState, key ) && IsKeyDown( i, key );
 }
 #endif
 
 #include "Math3D.h"
 #include "Renderer.h"
 #include "Sound.h"
+#include "Thread.h"
+
 
 #define GAME_INIT(name) void* name( Stack* mainSlab, RenderDriver* renderDriver, SoundDriver* soundDriver, System* system )
 typedef GAME_INIT( gameInit );

@@ -91,55 +91,58 @@ void EnableCrashingOnCrashes()
 	FreeLibrary( kernel32 );
 }
 
-InputState QueryInput( 
+static void QueryInput( 
 	int windowWidth, 
 	int windowHeight, 
 	int windowPosX, 
-	int windowPosY 
+	int windowPosY,
+	InputState* stateStorage
 ) {
-	InputState inputSnapshot = { };
-	memset( &inputSnapshot.romanCharKeys, 0, sizeof(bool) * 32 );
+	memset( &stateStorage->romanCharKeys, 0, sizeof(bool) * 32 );
 	for( int keyIndex = 0; keyIndex < 26; ++keyIndex ) {
 		const int asciiStart = (int)'a';
 		int keyChar = asciiStart + keyIndex;
 
 		if( keyChar >= 'a' && keyChar <= 'z' ) {
-			keyChar -= ( 'a' - 'A');
+			keyChar -= ( 'a' - 'A' );
 		}
 
 		short keystate = GetAsyncKeyState( keyChar );
-		inputSnapshot.romanCharKeys[keyIndex] = ( 1 << 16 ) & keystate;
+		stateStorage->romanCharKeys[ keyIndex ] = ( 1 << 16 ) & keystate;
 	}
 
-	inputSnapshot.spcKeys[ InputState::CTRL ] = 
+	memset( &stateStorage->spcKeys, 0, sizeof(bool) * 8 );
+	stateStorage->spcKeys[ InputState::CTRL ] = 
 	( 1 << 16 ) & GetAsyncKeyState( VK_CONTROL );
-	inputSnapshot.spcKeys[ InputState::BACKSPACE ] = 
+	stateStorage->spcKeys[ InputState::BACKSPACE ] = 
 	( 1 << 16 ) & GetAsyncKeyState( VK_BACK );
-	inputSnapshot.spcKeys[ InputState::TAB ] = 
+	stateStorage->spcKeys[ InputState::TAB ] = 
 	( 1 << 16 ) & GetAsyncKeyState( VK_TAB );
-	inputSnapshot.spcKeys[ InputState::DEL ] =
+	stateStorage->spcKeys[ InputState::DEL ] =
 	( 1 << 16 ) & GetAsyncKeyState( VK_DELETE );
+	stateStorage->spcKeys[ InputState::SPACE ] = 
+	( 1 << 16 ) & GetAsyncKeyState( VK_SPACE );
 
 	memcpy( 
-		&inputSnapshot.keysPressedSinceLastUpdate, 
+		&stateStorage->keysPressedSinceLastUpdate, 
 		keypressHistory,
 		24
-		);
+	);
 	memset( &keypressHistory, 0, KEY_HISTORY_LEN );
 	keypressHistoryIndex = 0;
 
 	POINT mousePosition;
 	GetCursorPos( &mousePosition );
-	inputSnapshot.mouseX = ( (float)(mousePosition.x - windowPosX)) / 
+	stateStorage->mouseX = ( (float)(mousePosition.x - windowPosX)) / 
 	( (float)windowWidth / 2.0f ) - 1.0f;
-	inputSnapshot.mouseY = ( ( (float)(mousePosition.y - windowPosY)) / 
+	stateStorage->mouseY = ( ( (float)(mousePosition.y - windowPosY)) / 
 		( (float)windowHeight / 2.0f ) - 1.0f) * -1.0f;
 
-	inputSnapshot.mouseButtons[0] = 
+	stateStorage->mouseButtons[0] = 
 	( 1 << 16 ) & GetAsyncKeyState( VK_LBUTTON );
-	inputSnapshot.mouseButtons[1] = 
+	stateStorage->mouseButtons[1] = 
 	( 1 << 16 ) & GetAsyncKeyState( VK_MBUTTON );
-	inputSnapshot.mouseButtons[2] = 
+	stateStorage->mouseButtons[2] = 
 	( 1 << 16 ) & GetAsyncKeyState( VK_RBUTTON );
 
 	XINPUT_STATE state;
@@ -147,27 +150,25 @@ InputState QueryInput(
 	memset( &state, 0, sizeof( XINPUT_STATE ) ) ;
 	queryResult = XInputGetState( 0, &state );
 	if( queryResult == ERROR_SUCCESS ) {
-				//Note: polling of the sticks results in the range not quite reaching 1.0 in the positive direction
-				//it is like this to avoid branching on greater or less than 0.0
-		inputSnapshot.controllerState.leftStick_x = ((float)state.Gamepad.sThumbLX / 32768.0f );
-		inputSnapshot.controllerState.leftStick_y = ((float)state.Gamepad.sThumbLY / 32768.0f );
-		inputSnapshot.controllerState.rightStick_x = ((float)state.Gamepad.sThumbRX / 32768.0f );
-		inputSnapshot.controllerState.rightStick_y = ((float)state.Gamepad.sThumbRY / 32768.0f );
-		inputSnapshot.controllerState.leftTrigger = ((float)state.Gamepad.bLeftTrigger / 255.0f );
-		inputSnapshot.controllerState.rightTrigger = ((float)state.Gamepad.bRightTrigger / 255.0f );
-		inputSnapshot.controllerState.leftBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
-		inputSnapshot.controllerState.rightBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
-		inputSnapshot.controllerState.button1 = state.Gamepad.wButtons & XINPUT_GAMEPAD_A;
-		inputSnapshot.controllerState.button2 = state.Gamepad.wButtons & XINPUT_GAMEPAD_B;
-		inputSnapshot.controllerState.button3 = state.Gamepad.wButtons & XINPUT_GAMEPAD_X;
-		inputSnapshot.controllerState.button4 = state.Gamepad.wButtons & XINPUT_GAMEPAD_Y;
-		inputSnapshot.controllerState.specialButtonLeft = state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK;
-		inputSnapshot.controllerState.specialButtonRight = state.Gamepad.wButtons & XINPUT_GAMEPAD_START;
+		//Note: polling of the sticks results in the range not quite reaching 1.0 in the positive direction
+		//it is like this to avoid branching on greater or less than 0.0
+		stateStorage->leftStick_x = ((float)state.Gamepad.sThumbLX / 32768.0f );
+		stateStorage->leftStick_y = ((float)state.Gamepad.sThumbLY / 32768.0f );
+		stateStorage->rightStick_x = ((float)state.Gamepad.sThumbRX / 32768.0f );
+		stateStorage->rightStick_y = ((float)state.Gamepad.sThumbRY / 32768.0f );
+		stateStorage->leftTrigger = ((float)state.Gamepad.bLeftTrigger / 255.0f );
+		stateStorage->rightTrigger = ((float)state.Gamepad.bRightTrigger / 255.0f );
+		stateStorage->leftBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+		stateStorage->rightBumper = state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
+		stateStorage->button1 = state.Gamepad.wButtons & XINPUT_GAMEPAD_A;
+		stateStorage->button2 = state.Gamepad.wButtons & XINPUT_GAMEPAD_B;
+		stateStorage->button3 = state.Gamepad.wButtons & XINPUT_GAMEPAD_X;
+		stateStorage->button4 = state.Gamepad.wButtons & XINPUT_GAMEPAD_Y;
+		stateStorage->specialButtonLeft = state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK;
+		stateStorage->specialButtonRight = state.Gamepad.wButtons & XINPUT_GAMEPAD_START;
 	} else {
-		inputSnapshot.controllerState = { };
+		//TODO: Clear input?
 	}
-
-	return inputSnapshot;
 }
 
 /*-----------------------------------------------------------------------------------------
@@ -334,6 +335,31 @@ void LoadGameCode( App* gameapp ) {
 	gameapp->GameInit = (gameInit*)GetProcAddress( dllHandle, "GameInit" );
 	gameapp->UpdateAndRender = (updateAndRender*)GetProcAddress( dllHandle, "UpdateAndRender" );
 	gameapp->MixSound = (mixSound*)GetProcAddress( dllHandle, "MixSound" );
+}
+
+static WorkerThreadData threadData;
+
+static void InitWin32WorkerThread( Stack* systemMem ) {
+	void (*workerThread)(void*) = &WorkThreadMain;
+
+	maxJobs = 8;
+	workQueue = (Job*)StackAllocAligned( systemMem, sizeof( Job ) * maxJobs );
+	threadData.jobs = workQueue;
+	threadData.maxJobs = maxJobs;
+
+	DWORD threadId = 0;
+	HANDLE threadHandle = CreateThread(
+		NULL, 
+		0, 
+		(LPTHREAD_START_ROUTINE)workerThread, 
+		&threadData, 
+		0, 
+		&threadId
+	);
+	
+	if( threadHandle != NULL ) {
+		printf( "Created Worker Thread.\n" );
+	}
 }
 
 /*-----------------------------------------------------------------------------------------
@@ -955,6 +981,8 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 	Stack systemsMemory = AllocateNewStackFromStack( &gameSlab, systemsMemorySize );
 
+	InitWin32WorkerThread( &systemsMemory );
+
 	GLRenderDriver glDriver = Win32InitGLRenderer( 
 		hwnd,
 		&system, 
@@ -982,6 +1010,12 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 	appIsRunning = true;
 
+	InputState inputSnapshot1 = { };
+	InputState inputSnapshot2 = { };
+	inputSnapshot1.prevState = &inputSnapshot2;
+	inputSnapshot2.prevState = &inputSnapshot1;
+	InputState* currentSnapshotStorage = &inputSnapshot1;
+
 	MSG Msg;
 	while( appIsRunning ) {
 		if( DidFileUpdate( dllTrackingIndex ) ) {
@@ -999,18 +1033,21 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 		//GAME LOOP
 		if(	gameapp.UpdateAndRender != NULL && gameapp.MixSound != NULL ) {
-		    InputState inputSnapshot = QueryInput( 
+
+			currentSnapshotStorage = currentSnapshotStorage->prevState;
+		    QueryInput( 
 		    	system.windowWidth, 
 		    	system.windowHeight,
 		    	windowPosX,
-		    	windowPosY
+		    	windowPosY,
+		    	currentSnapshotStorage
 		    );
 		    keypressHistoryIndex = 0;
 
 			appIsRunning = gameapp.UpdateAndRender( 
 				gameMemoryPtr, 
 				(float)elapsedTime.QuadPart, 
-				&inputSnapshot,
+				currentSnapshotStorage,
 				&win32Sound.driver,
 				(RenderDriver*)&glDriver,
 				&system
