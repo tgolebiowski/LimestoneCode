@@ -23,7 +23,11 @@ struct PrimitiveDrawingData {
     int colorUniformIndex;
 };
 
-static void MakeIcosphere( MeshGeometryData* data, Stack* allocater ) {
+static void MakeIcosphere( 
+    MeshGeometryData* data, 
+    Stack* allocater, 
+    float radius = 0.5f 
+) {
     float t = ( 1.0f + sqrt( 5.0f ) ) / 2.0f;
 
     Vec3 basePoints [12] = {
@@ -43,7 +47,6 @@ static void MakeIcosphere( MeshGeometryData* data, Stack* allocater ) {
         { -t, 0.0f, 1.0f }
     };
 
-    float radius = 0.5f;
     for( int i = 0; i < 12; ++i ) {
         Normalize( &basePoints[ i ] );
         basePoints[i] = basePoints[ i ] * radius;

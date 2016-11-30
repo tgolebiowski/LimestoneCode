@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <cstring>
 #include <stdio.h>
+
 #define NULL 0
 
 #include <stdint.h>
