@@ -34,8 +34,16 @@ GLE( void, UniformMatrix4fv, GLint location, GLsizei count, GLboolean transpose,
 \
 GLE( void, ActiveTexture, GLenum texture ) \
 \
-GLE( void, GenFrameBuffers, GLsizei n, GLuint* ids ) \
+GLE( GLenum, CheckFramebufferStatus, GLenum target ) \
+\
+GLE( void, GenFramebuffers, GLsizei n, GLuint* ids ) \
+GLE( void, GenRenderbuffers, GLsizei n, GLuint* ids ) \
 GLE( void, BindFramebuffer, GLenum target, GLuint framebuffer ) \
+GLE( void, BindRenderbuffer, GLenum target, GLuint framebuffer ) \
+GLE( void, RenderbufferStorage, GLenum target, GLenum internalformat, GLsizei width, GLsizei height ) \
+GLE( void, DrawBuffers, GLsizei n, GLenum* bufs ) \
+GLE( void, FramebufferRenderbuffer, GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer) \
+GLE( void, FramebufferTexture, GLenum target, GLenum attachment, GLuint texture, GLint level ) \
 GLE( void, FramebufferTexture2D, GLenum target, GLenum attachment, GLenum texTarget, GLuint texture, GLint level )
 
 #define GLDECL WINAPI
@@ -50,6 +58,7 @@ GL_FUNCS
 
 struct GLRenderDriver {
     RenderDriver baseDriver;
+    Framebuffer defaultFramebuffer;
 };
 
 /*----------------------------------------------------------------------------------
@@ -78,10 +87,6 @@ static void PrintGLShaderLog( GLuint shader ) {
 /*----------------------------------------------------------------------------------
                                  Texture stuff
 -----------------------------------------------------------------------------------*/
-
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_ONLY_PNG
-#include "stb/stb_image.h"
 
 static void CopyTextureDataToGpuMem( 
     TextureData* texData, 
@@ -217,17 +222,6 @@ static void CreateShaderProgram(
     glUseProgram(0);
 }
 
-static PtrToGpuMem CopyVertexDataToGpuMem( 
-    void* data, 
-    size_t size 
-) {
-    GLuint glVBOPtr;
-    glGenBuffers( 1, &glVBOPtr );
-    glBindBuffer( GL_ARRAY_BUFFER, glVBOPtr );
-    glBufferData( GL_ARRAY_BUFFER, size, data, GL_STATIC_DRAW );
-    return glVBOPtr;
-}
-
 static PtrToGpuMem AllocNewGpuArray() {
     PtrToGpuMem newBuff = 0;
     glGenBuffers( 1, &newBuff );
@@ -240,7 +234,14 @@ static void CopyDataToGpuArray( PtrToGpuMem copyTarget, void* data, uint64 dataS
     glBufferData( GL_ARRAY_BUFFER, dataSize, data, GL_DYNAMIC_DRAW );
 }
 
-static void Draw( RenderCommand* command, bool doLines, bool noBackFaceCull ) {
+static void Draw( 
+    RenderCommand* command, 
+    bool doLines, 
+    bool noBackFaceCull, 
+    bool suppressDepthWrite,
+    bool isWireFrame,
+    bool dontDepthCheck 
+) {
     //Bind Shader
     glUseProgram( command->shader->programID );
 
@@ -351,21 +352,39 @@ static void Draw( RenderCommand* command, bool doLines, bool noBackFaceCull ) {
         }
         glActiveTexture( GL_TEXTURE0 + samplerIndex );
         glBindTexture( GL_TEXTURE_2D, command->samplerData[ samplerIndex ] );
+        glUniform1i( command->shader->samplerPtrs[ samplerIndex ], samplerIndex );
     }
 
     GLenum primType = GL_TRIANGLES;
     if( doLines ) {
-        primType = GL_LINES;
+        primType = GL_LINE_STRIP;
+    } else if ( isWireFrame ) {
+        glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
     }
 
     if( noBackFaceCull ) {
         glDisable( GL_CULL_FACE );
     }
+    if( suppressDepthWrite ) {
+        glDepthMask( false );
+    }
+    if( dontDepthCheck ) {
+        glDisable( GL_DEPTH_TEST );
+    }
 
     glDrawArrays( primType, 0, command->elementCount );
 
+    if( isWireFrame ) {
+        glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    }
     if( noBackFaceCull ) {
         glEnable( GL_CULL_FACE );
+    }
+    if( suppressDepthWrite ) {
+        glDepthMask( true );
+    }
+    if( dontDepthCheck ) {
+        glEnable( GL_DEPTH_TEST );
     }
 
     for( 
@@ -675,7 +694,7 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
 
     const uint32 vertCount = indexCount / 3;
     storage->vData = (Vec3*)StackAllocAligned( allocater, vertCount * sizeof( Vec3 ), 16 );
-    storage->uvData = (float*)StackAllocAligned( allocater, vertCount * 2 * sizeof( float ), 4 );
+    storage->uvData = (Vec2*)StackAllocAligned( allocater, vertCount * sizeof( Vec2 ), 4 );
     storage->normalData = (Vec3*)StackAllocAligned( allocater, vertCount * sizeof( Vec3 ), 4 );
     if( rawBoneWeightData != NULL ) {
         storage->boneWeightData = (float*)StackAllocAligned( allocater, sizeof(float) * vertCount * MAXBONESPERVERT, 4 );
@@ -687,7 +706,7 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
 
     while( counter < indexCount ) {
         Vec3 v, n;
-        float uv_x, uv_y;
+        Vec2 uv;
 
         uint16 vertIndex = rawIndexData[ counter++ ];
         uint16 normalIndex = rawIndexData[ counter++ ];
@@ -706,18 +725,43 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
         n.y = rawColladaNormalData[ normalIndex * 3 + 2 ];
 
         if( rawColladaUVData != NULL ) {
-            uv_x = rawColladaUVData[ uvIndex * 2 ];
-            uv_y = rawColladaUVData[ uvIndex * 2 + 1 ];
+            //NOTE:OpenGL has its 1,1 corner in the top right, but also uploads textures
+            //upside down(??or is that just stbimage?), so this is fine :I
+            uv.x = rawColladaUVData[ uvIndex * 2 ];
+            uv.y = 1.0f - rawColladaUVData[ uvIndex * 2 + 1 ];
+        } else {
+            uv = { 0.0f, 0.0f };
         }
 
-        ///TODO: check for exact copies of data, use to index to first instance instead
+        //TODO: need index for "new" verticies, since dataCount will fall out of sync
+        //as soon as there is one copy.
+        //TODO: add and normalize normals, simple but will fail on pointy bits
+        //TODO: write index to storage->index[ dataCount ]
+        //TODO IN RENDERER: setup and bind index buffer
+        //TODO IN RENDERER: support for imm mode verts, w/ no index buffs
+
+        if( storage->dataCount == 0 ) {
+            storage->aabbMin = v;
+            storage->aabbMax = v;
+        } else {
+            storage->aabbMin = {
+                MINf( v.x, storage->aabbMin.x ),
+                MINf( v.y, storage->aabbMin.y ),
+                MINf( v.z, storage->aabbMin.z )
+            };
+
+            storage->aabbMax = {
+                MAXf( v.x, storage->aabbMax.x ),
+                MAXf( v.y, storage->aabbMax.y ),
+                MAXf( v.z, storage->aabbMax.z )
+            };
+        }
 
         uint32 storageIndex = storage->dataCount;
         storage->vData[ storageIndex ] = v;
         storage->normalData[ storageIndex ] = n;
         if( rawColladaUVData != NULL ) {
-            storage->uvData[ storageIndex * 2 ] = uv_x;
-            storage->uvData[ storageIndex * 2 + 1 ] = uv_y;
+            storage->uvData[ storageIndex ] = uv;
         }
 
         if( rawBoneWeightData != NULL ) {
@@ -751,6 +795,71 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
 "    gl_FragColor = texture( tex1, gl_TexCoord[0].xy );" \
 "}"
 
+static void CreateFramebuffer( 
+    Framebuffer* framebuffer, 
+    uint16 height, 
+    uint16 width 
+) {
+    GLuint framebufferPtr;
+    glGenFramebuffers( 1, &framebufferPtr );
+    glBindFramebuffer( GL_FRAMEBUFFER, framebufferPtr );
+
+    GLuint colorbufferTexturePtr;
+    glGenTextures( 1, &colorbufferTexturePtr );
+    glBindTexture( GL_TEXTURE_2D, colorbufferTexturePtr );
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, 0 );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
+
+    GLuint depthbufferTexturePtr;
+    glGenTextures( 1, &depthbufferTexturePtr );
+    glBindTexture( GL_TEXTURE_2D, depthbufferTexturePtr );
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0 );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );         
+
+    glFramebufferTexture( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, colorbufferTexturePtr, 0 );
+    glFramebufferTexture( GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthbufferTexturePtr, 0 );
+
+    GLenum drawbuffer = GL_COLOR_ATTACHMENT0;
+    glDrawBuffers( 1, &drawbuffer );
+
+    if( glCheckFramebufferStatus( GL_FRAMEBUFFER ) != GL_FRAMEBUFFER_COMPLETE ) {
+        printf( "Failed to create new framebuffer\n" );
+    }
+
+    framebuffer->framebufferPtr = framebufferPtr;
+    framebuffer->colorTexture = colorbufferTexturePtr;
+    framebuffer->depthTexture = depthbufferTexturePtr;
+    framebuffer->height = height;
+    framebuffer->width = width;
+
+    //reset to default framebuffer
+    glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+}
+
+static void SetFramebuffer( Framebuffer* framebuffer ) {
+    glBindFramebuffer( GL_FRAMEBUFFER, framebuffer->framebufferPtr );
+    glFramebufferTexture( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, framebuffer->colorTexture, 0 );
+    glFramebufferTexture( GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, framebuffer->depthTexture, 0 );
+
+    GLenum drawbuffer = GL_COLOR_ATTACHMENT0;
+    glDrawBuffers( 1, &drawbuffer );
+
+    if( glCheckFramebufferStatus( GL_FRAMEBUFFER ) != GL_FRAMEBUFFER_COMPLETE ) {
+        printf( "Failed to create new framebuffer\n" );
+    }
+
+    glViewport( 0, 0, framebuffer->width, framebuffer->height );
+
+    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+}
+
+static void ClearFramebuffer( System* system ) {
+    glBindFramebuffer( GL_FRAMEBUFFER, 0 );
+    glViewport( 0, 0, system->windowWidth, system->windowHeight );
+}
+
 static GLRenderDriver InitGLRenderer( 
     uint16 screen_w, 
     uint16 screen_h 
@@ -768,7 +877,7 @@ static GLRenderDriver InitGLRenderer(
     printf( "Max Vertex Attributes: %d\n", k );
 
     //Initialize clear color
-    glClearColor( 128.0f / 255.0f, 128.0f / 255.0f, 128.0f / 255.0f, 1.0f );
+    glClearColor( 128.0f / 255.0f, 128.0f / 255.0f, 155.0f / 255.0f, 1.0f );
 
     glEnable( GL_BLEND );
     glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
@@ -785,7 +894,6 @@ static GLRenderDriver InitGLRenderer(
     //Check for error
     GLenum error = glGetError();
     if( error != GL_NO_ERROR ) {
-        //printf( "Error initializing OpenGL! %s\n", gluErrorString( error ) );
         printf( "Error initializing OpenGL\n" );
         GLRenderDriver driver = { };
         return driver;
@@ -795,13 +903,19 @@ static GLRenderDriver InitGLRenderer(
 
     GLRenderDriver driver = { };
     driver.baseDriver.ParseMeshDataFromCollada = &ParseMeshDataFromCollada;
+
     driver.baseDriver.AllocNewGpuArray = &AllocNewGpuArray;
-    driver.baseDriver.CopyVertexDataToGpuMem = &CopyVertexDataToGpuMem;
     driver.baseDriver.CopyDataToGpuArray = &CopyDataToGpuArray;
+
     driver.baseDriver.CopyTextureDataToGpuMem = &CopyTextureDataToGpuMem;
+
     driver.baseDriver.CreateShaderProgram = &CreateShaderProgram;
     driver.baseDriver.ClearShaderProgram = &ClearShaderProgram;
     driver.baseDriver.Draw = &Draw;
+
+    driver.baseDriver.CreateFramebuffer = &CreateFramebuffer;
+    driver.baseDriver.SetFramebuffer = &SetFramebuffer;
+    driver.baseDriver.ClearFramebuffer = &ClearFramebuffer;
 
     return driver;
 }

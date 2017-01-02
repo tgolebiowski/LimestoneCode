@@ -50,6 +50,7 @@ static void MakeIcosphere(
     for( int i = 0; i < 12; ++i ) {
         Normalize( &basePoints[ i ] );
         basePoints[i] = basePoints[ i ] * radius;
+        assert( abs( Vec3Length( basePoints[i] ) - radius ) < 1e-04 );
     }
 
     int indexList [ 20 * 3 ] = {
@@ -84,6 +85,26 @@ static void MakeIcosphere(
         data->vData[ i ] = basePoints[ indexList[ i ] ];
     }
 
+    data->normalData = (Vec3*)StackAllocAligned( allocater, sizeof( Vec3 ) * 20 * 3 );
+    for( int i = 0; i < 20; ++i ) {
+        int baseIndex = i * 3;
+        Vec3 v1 = basePoints[ indexList[ baseIndex + 0 ] ];
+        Vec3 v2 = basePoints[ indexList[ baseIndex + 1 ] ];
+        Vec3 v3 = basePoints[ indexList[ baseIndex + 2 ] ];
+
+        Vec3 n = Cross( ( v3 - v2 ), ( v1 - v2 ) );
+        Normalize( &n );
+
+        float dotTest = Dot( v3, n );
+        if( dotTest < 0.0f ) {
+            n = n * -1.0f;
+        }
+
+        data->normalData[ baseIndex + 0 ] = n;
+        data->normalData[ baseIndex + 1 ] = n;
+        data->normalData[ baseIndex + 2 ] = n;
+    }
+
     data->dataCount = 20 * 3;
 }
 
@@ -93,6 +114,8 @@ static void DrawVertsImmediate(
     int vertCount,
     bool line,
     bool suppressBackFaceCulling,
+    bool wireframe,
+    bool nodepthtest,
     Mat4* cameraMatrix,
     Mat4* modelMatrix,
     float* color
@@ -122,7 +145,7 @@ static void DrawVertsImmediate(
     drawLineCommand.uniformData[ primRenderer->cameraUniformIndex ] = cameraMatrix;
     drawLineCommand.uniformData[ primRenderer->colorUniformIndex ] = color;
 
-    primRenderer->renderDriver->Draw( &drawLineCommand, line, suppressBackFaceCulling );
+    primRenderer->renderDriver->Draw( &drawLineCommand, line, suppressBackFaceCulling, false, wireframe, nodepthtest );
 }
 
 static void DrawDot( 
@@ -173,7 +196,7 @@ static void DrawDot(
     drawDotCommand.uniformData[ primRenderer->transformUniformIndex ] = (void*)&matrix;
     drawDotCommand.uniformData[ primRenderer->colorUniformIndex ] = color;
 
-    primRenderer->renderDriver->Draw( &drawDotCommand, false, true );
+    primRenderer->renderDriver->Draw( &drawDotCommand, false, true, false, false, false );
 }
 
 static void DrawGridOnXZPlane( 
@@ -209,6 +232,8 @@ static void DrawGridOnXZPlane(
             2,
             true,
             false,
+            false,
+            false,
             viewProjectionMat,
             NULL,
             (float*)&semiTransparentLine
@@ -218,6 +243,8 @@ static void DrawGridOnXZPlane(
             (Vec3*)zAxis,
             2,
             true,
+            false,
+            false,
             false,
             viewProjectionMat,
             NULL,
@@ -237,15 +264,15 @@ static void InitPrimitveRenderData(
         &primRenderer->primitiveShader
     );
 
-    primRenderer->transformUniformIndex = GetIndexOfProgramUniformInput( 
+    primRenderer->transformUniformIndex = GetIndexOfShaderInput( 
         &primRenderer->primitiveShader, 
         "modelMatrix" 
     );
-    primRenderer->cameraUniformIndex = GetIndexOfProgramUniformInput(
+    primRenderer->cameraUniformIndex = GetIndexOfShaderInput(
         &primRenderer->primitiveShader,
         "cameraMatrix"
     );
-    primRenderer->colorUniformIndex = GetIndexOfProgramUniformInput(
+    primRenderer->colorUniformIndex = GetIndexOfShaderInput(
         &primRenderer->primitiveShader,
         "primitiveColor"
     );

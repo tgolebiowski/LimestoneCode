@@ -49,14 +49,10 @@ struct ImguiLimestoneDriver {
     ImFont defaultFont;
     RenderDriver* renderDriver;
     float x, y;
-    Stack* mem;
 };
 
 static void* ImGuiMemAlloc( size_t size ) {
-    Stack* mem = ((ImguiLimestoneDriver*)ImGui::GetIO().UserData)->mem;
-    void* newMem = StackAllocAligned( mem, size );
-    printf( "Imgui Did alloc.\n" );
-    return newMem;
+
 }
 
 static void ImGuiMemFree( void* v) {
@@ -86,19 +82,19 @@ static void RenderImGuiVisuals(ImDrawList** const cmd_lists, int cmd_lists_count
         {
             const ImDrawCmd* pcmd = &cmd_list->commands[cmd_i];
 
-            int posIndex = GetIndexOfProgramVertexInput( 
+            int posIndex = GetIndexOfShaderInput( 
                 &imData->ImGuiUIShader, 
                 "pos" 
             );
-            int uvIndex = GetIndexOfProgramVertexInput(
+            int uvIndex = GetIndexOfShaderInput(
                 &imData->ImGuiUIShader,
                 "uv"
             );
-            int colIndex = GetIndexOfProgramVertexInput(
+            int colIndex = GetIndexOfShaderInput(
                 &imData->ImGuiUIShader,
                 "col"
             );
-            int windowUniform = GetIndexOfProgramUniformInput(
+            int windowUniform = GetIndexOfShaderInput(
                 &imData->ImGuiUIShader,
                 "windowDimensions"
             );
@@ -121,7 +117,7 @@ static void RenderImGuiVisuals(ImDrawList** const cmd_lists, int cmd_lists_count
 
             command.elementCount = pcmd->vtx_count;
 
-            renderDriver->Draw( &command, false, true );
+            renderDriver->Draw( &command, false, true, false, false, true );
 
             vtx_buffer += ( sizeof( ImDrawVert ) * pcmd->vtx_count );
         }
@@ -180,7 +176,6 @@ static void* InitImGui_LimeStone(
     ImguiLimestoneDriver* imguiDriver = (ImguiLimestoneDriver*)
         StackAlloc( allocater, sizeof( ImguiLimestoneDriver ) );
     imguiDriver->renderDriver = rDriver;
-    imguiDriver->mem = allocater;
 
     size_t imguiStateSize = ImGui::GetInternalStateSize();
     void* imguiState = StackAllocAligned( allocater, imguiStateSize );

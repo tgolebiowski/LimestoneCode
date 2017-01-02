@@ -4,27 +4,44 @@
 struct MeshGeometryData;
 struct ShaderProgram;
 struct RenderCommand;
-struct RenderCommand_Interleaved;
 struct TextureData;
+struct Framebuffer;
 
 typedef uint32 PtrToGpuMem;
 
 struct RenderDriver {
     bool (*ParseMeshDataFromCollada)( void*, Stack*, MeshGeometryData*, Armature* );
+
     PtrToGpuMem (*AllocNewGpuArray)( void );
-	PtrToGpuMem (*CopyVertexDataToGpuMem)( void*, size_t );
     void (*CopyDataToGpuArray)( PtrToGpuMem, void*, uint64 );
+
     void (*CopyTextureDataToGpuMem)( TextureData*, PtrToGpuMem* );
+
+    void (*CreateFramebuffer)( Framebuffer* frambuffer, uint16, uint16 );
+    void (*SetFramebuffer)(Framebuffer* framebuffer);
+    void (*ClearFramebuffer)( System* );
+
 	void (*CreateShaderProgram)( char*, char*, ShaderProgram* );
     void (*ClearShaderProgram)( ShaderProgram* );
-	void (*Draw)( RenderCommand*, bool, bool );
+
+	void (*Draw)( 
+        RenderCommand* cmd, 
+        bool doLines, 
+        bool suppressBackFaceCull, 
+        bool suppressDepthWrite, 
+        bool isWireFrame, 
+        bool dontDepthCheck 
+    );
 };
 
 #define MAXBONESPERVERT 4
 struct MeshGeometryData {
+    Vec3 aabbMax;
+    Vec3 aabbMin;
+
 	Vec3* vData;
 	Vec3* normalData;
-	float* uvData;
+	Vec2* uvData;
 
     float* boneWeightData;
     uint32* boneIndexData;
@@ -37,6 +54,14 @@ struct TextureData {
 	uint16 width;
 	uint16 height;
 	uint8 channelsPerPixel;
+};
+
+struct Framebuffer {
+    PtrToGpuMem framebufferPtr;
+    PtrToGpuMem colorTexture;
+    PtrToGpuMem depthTexture;
+    uint16 width;
+    uint16 height;
 };
 
 #define MAX_SUPPORTED_VERT_INPUTS 16
@@ -57,6 +82,28 @@ struct ShaderProgram {
     int32 uniformTypes[ MAX_SUPPORTED_UNIFORMS ];
     uint8 vertInputCount, uniformCount, samplerCount;
 };
+
+static int GetIndexOfShaderInput( ShaderProgram* shader, char* inputName ) {
+    for( int i = 0; i < shader->vertInputCount; ++i ) {
+        if( strcmp( shader->vertexInputNames[i] , inputName ) == 0 ) {
+            return i;
+        }
+    }
+
+    for( int i = 0; i < shader->uniformCount; ++i ) {
+        if( strcmp( shader->uniformNames[i] , inputName ) == 0 ) {
+            return i;
+        }
+    }
+
+    for( int i = 0; i < shader->samplerCount; ++i ) {
+        if( strcmp( shader->samplerNames[i] , inputName ) == 0 ) {
+            return i;
+        }
+    }
+
+    return -1;
+}
 
 struct RenderCommand {
     enum {
@@ -83,16 +130,6 @@ struct RenderCommand {
     PtrToGpuMem samplerData[ MAX_SUPPORTED_TEX_SAMPLERS ];
 };
 
-struct Framebuffer {
-    enum FramebufferType {
-        DEPTH, COLOR
-    };
-    FramebufferType type;
-    uint32 framebufferPtr;
-    TextureData framebufferTexture;
-    PtrToGpuMem textureBindingID;
-};
-
 #ifdef DLL_ONLY
 //View Ranges on this matrix are exactly xyz: width, height, depth
 static void CreateOrthoCameraMatrix( 
@@ -108,37 +145,25 @@ static void CreateOrthoCameraMatrix(
 }
 
 static Mat4 CreatePerspectiveMatrix( 
-    float fov, 
-    float aspect, 
-    float nearPlane,
-    float farPlane,
-    float scale
+    float nearPlane, float farPlane,
+    float width, float height,
+    float h_fov
 ) {
     float depth = farPlane - nearPlane;
-    float inverseTanFov = 1.0 / tanf( fov / 2.0 );
+    float aspect = width / height;
+    float aTan = tan( h_fov * 0.5f );
 
-    return {
-        ( inverseTanFov / aspect ) / scale, 0.0f, 0.0f, 0.0f,
-        0.0f, -inverseTanFov / scale, 0.0f, 0.0f,
-        0.0f, 0.0f, ( ( farPlane + nearPlane ) / depth ) / scale, 1.0f,
-        0.0f, 0.0f, ( ( farPlane * nearPlane ) / depth ), 1.0f
+    Mat4 m = {
+        1.0f / ( aTan * aspect ), 0.0f, 0.0f, 0.0f,
+        0.0f, -1.0f / aTan, 0.0f, 0.0f, //-1.0f / aTan flips up with down on the image
+        0.0f, 0.0f, ( -nearPlane - farPlane ) / depth, ( 2.0f * farPlane * nearPlane ) / depth,
+        0.0f, 0.0f, -1.0f, 0.0f //-1.0f reverses depth to be "correct"
     };
+
+    return m;
 }
 
 //A NOTE viewprojection is MultMatrix( view, projection )
-
-static Mat4 CreateViewMatrix( Quat rotation, Vec3 p ) {
-    Vec3 xAxis = ApplyQuatToVec( rotation, { 1.0f, 0.0f, 0.0f } );
-    Vec3 yAxis = ApplyQuatToVec( rotation, { 0.0f, 1.0f, 0.0f } );
-    Vec3 zAxis = ApplyQuatToVec( rotation, { 0.0f, 0.0f, 1.0f } );
-
-    return {
-        xAxis.x, yAxis.x, zAxis.x, 0.0f,
-        xAxis.y, yAxis.y, zAxis.y, 0.0f,
-        xAxis.z, yAxis.z, zAxis.z, 0.0f,
-        -Dot( xAxis, p ), -Dot( yAxis, p ), -Dot( zAxis, p ), 1.0f
-    };
-}
 
 static Mat4 CreateViewMatrix( Vec3 p, Vec3 lookAtTarget ) {
     Vec3 up = { 0.0f, 1.0f, 0.0f };
@@ -157,55 +182,21 @@ static Mat4 CreateViewMatrix( Vec3 p, Vec3 lookAtTarget ) {
     };
 }
 
-static void CreateEmptyTexture(
-    TextureData* texData,
-    uint16 width,
-    uint16 height,
-    Stack* allocater
-) {
-    size_t texDataSize = sizeof( uint8 ) * 4 * width * height;
-	texData->data = ( uint8* )StackAlloc( allocater, texDataSize );
-    texData->width = width;
-    texData->height = height;
-    texData->channelsPerPixel = 4;
-}
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#include "stb/stb_image.h"
+static TextureData ReadTextureFromDisk( char* fileName, System* system, Stack* tempData ) {
+    int bytesInFile;
+    void* fileData = system->ReadWholeFile( fileName, tempData, &bytesInFile );
 
-static int32 GetShaderProgramInputPtr( ShaderProgram* shader, char* inputName ) {
-    for( int i = 0; i < shader->vertInputCount; ++i ) {
-        if( strcmp( shader->vertexInputNames[i] , inputName ) == 0 ) {
-            return shader->vertexInputPtrs[i];
-        }
-    }
+    int x, y, components;
+    TextureData data = { };
+    data.data = stbi_load_from_memory( (const stbi_uc*)fileData, bytesInFile, &x, &y, &components, 4 );
+    data.height = y;
+    data.width = x;
+    data.channelsPerPixel = components;
 
-    for( int i = 0; i < shader->uniformCount; ++i ) {
-        if( strcmp( shader->uniformNames[i] , inputName ) == 0 ) {
-            return shader->uniformPtrs[i];
-        }
-    }
-
-    for( int i = 0; i < shader->samplerCount; ++i ) {
-        if( strcmp( shader->samplerNames[i] , inputName ) == 0 ) {
-            return shader->samplerPtrs[i];
-        }
-    }
-
-    return -1;
-}
-
-static int GetIndexOfProgramVertexInput( ShaderProgram* shader, char* inputName ) {
-    for( int i = 0; i < shader->vertInputCount; ++i ) {
-        if( strcmp( shader->vertexInputNames[i] , inputName ) == 0 ) {
-            return i;
-        }
-    }
-}
-
-static int GetIndexOfProgramUniformInput( ShaderProgram* shader, char* inputName ) {
-    for( int i = 0; i < shader->uniformCount; ++i ) {
-        if( strcmp( shader->uniformNames[i] , inputName ) == 0 ) {
-            return i;
-        }
-    }
+    return data;
 }
 
 static void CreateShaderProgramFromSourceFiles(
@@ -216,8 +207,8 @@ static void CreateShaderProgramFromSourceFiles(
     Stack* allocater,
     System* system
 ) {
-    char* vertSrc = (char*)system->ReadWholeFile( vertProgramFilePath, allocater );
-    char* fragSrc = (char*)system->ReadWholeFile( fragProgramFilePath, allocater );
+    char* vertSrc = (char*)system->ReadWholeFile( vertProgramFilePath, allocater, NULL );
+    char* fragSrc = (char*)system->ReadWholeFile( fragProgramFilePath, allocater, NULL );
 
     driver->CreateShaderProgram( vertSrc, fragSrc, bindDataStorage );
 

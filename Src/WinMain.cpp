@@ -30,6 +30,7 @@ struct DynamicFileTracking {
 
 global_variable HDC deviceContext;
 global_variable HGLRC openglRenderContext;
+global_variable App gameapp = { };
 
 global_variable bool appIsRunning;
 global_variable DynamicFileTracking fileTracking;
@@ -134,15 +135,15 @@ static void QueryInput(
 	POINT mousePosition;
 	GetCursorPos( &mousePosition );
 	stateStorage->mouseX = ( (float)(mousePosition.x - windowPosX)) / 
-	( (float)windowWidth / 2.0f ) - 1.0f;
+	    ( (float)windowWidth / 2.0f ) - 1.0f;
 	stateStorage->mouseY = ( ( (float)(mousePosition.y - windowPosY)) / 
 		( (float)windowHeight / 2.0f ) - 1.0f) * -1.0f;
 
-	stateStorage->mouseButtons[0] = 
+	stateStorage->mouseButtons[ InputState::MOUSE_BUTTONS::LEFT ] = 
 	( 1 << 16 ) & GetAsyncKeyState( VK_LBUTTON );
-	stateStorage->mouseButtons[1] = 
+	stateStorage->mouseButtons[ InputState::MOUSE_BUTTONS::MIDDLE ] = 
 	( 1 << 16 ) & GetAsyncKeyState( VK_MBUTTON );
-	stateStorage->mouseButtons[2] = 
+	stateStorage->mouseButtons[ InputState::MOUSE_BUTTONS::RIGHT ] = 
 	( 1 << 16 ) & GetAsyncKeyState( VK_RBUTTON );
 
 	XINPUT_STATE state;
@@ -175,21 +176,42 @@ static void QueryInput(
                                 File system query
 -----------------------------------------------------------------------------------------*/
 
+void PrintErrorMessage(DWORD ErrorCode)
+{
+    TCHAR *pMsgBuf = NULL;
+    DWORD nMsgLen = FormatMessage(
+    	FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL, 
+        ErrorCode, 
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPTSTR)&pMsgBuf, 
+        0, 
+        NULL
+    );
+    if (!nMsgLen)
+        return;
+
+    printf( "%s\n", pMsgBuf );
+
+    LocalFree(pMsgBuf);
+}
+
 #include <strsafe.h>
 //NOTE: this allocates the file size + 1 byte, and sets that last byte to zero
-void* ReadWholeFile( char* filename, Stack* allocater ) {
+void* ReadWholeFile( char* filename, Stack* allocater, int* bytesRead ) {
 	HANDLE fileHandle;
 	//TODO: look into other options, such as: Overlapped, No_Bufffering, and Random_Access
 	fileHandle = CreateFile( 
 		filename, 
 		GENERIC_READ, 
-		FILE_SHARE_READ, 
+		FILE_SHARE_READ | FILE_SHARE_WRITE, 
 		0, 
 		OPEN_EXISTING, 
 		FILE_ATTRIBUTE_NORMAL, 
 		0 
 	);
 	if( fileHandle == INVALID_HANDLE_VALUE ) {
+		PrintErrorMessage( GetLastError() );
 		return NULL;
 	}
 
@@ -217,11 +239,65 @@ void* ReadWholeFile( char* filename, Stack* allocater ) {
 		return NULL;
 	}
 
+	if( bytesRead != NULL ) {
+		*bytesRead = dataRead;
+	}
+
 	//Close
 	BOOL closeReturnValue = CloseHandle( fileHandle );
 	assert( closeReturnValue );
 
 	return data;
+}
+
+void WriteFile( char* fileName, void* data, int dataToWrite ) {
+	HANDLE fileHandle;
+	//TODO: look into other options, such as: Overlapped, No_Bufffering, and Random_Access
+	fileHandle = CreateFile( 
+		fileName, 
+		GENERIC_WRITE, 
+		FILE_SHARE_READ | FILE_SHARE_WRITE, 
+		0, 
+		CREATE_NEW, 
+		FILE_ATTRIBUTE_NORMAL, 
+		0 
+	);
+	if( fileHandle == INVALID_HANDLE_VALUE ) {
+		fileHandle = CreateFile(
+			fileName, 
+			GENERIC_WRITE, 
+			FILE_SHARE_WRITE,
+			0,
+			TRUNCATE_EXISTING,
+			FILE_ATTRIBUTE_NORMAL,
+			0
+		);
+
+		if( fileHandle == INVALID_HANDLE_VALUE ) {
+			PrintErrorMessage( GetLastError() );
+			printf("Did not write to file %s\n", fileName );
+			return;
+		}
+	}
+
+	DWORD bytesWritten = 0;
+	DWORD writeSuccess = WriteFile( 
+		fileHandle, 
+		data, 
+		dataToWrite, 
+		&bytesWritten, 
+		NULL //NOT NULL if i ever do overlapped stuff according to msdn
+	);
+
+	if( writeSuccess != 1 ) {
+		PrintErrorMessage( GetLastError() );
+		printf("Did not write to file %s\n", fileName );
+		return;
+	}
+
+	//Close
+	BOOL closeReturnValue = CloseHandle( fileHandle );
+	assert( closeReturnValue );
 }
 
 //TODO: support Unicode, currently this breaks if used w/ UNICODE
@@ -320,6 +396,7 @@ bool DidFileUpdate( int trackingIndex ) {
 }
 
 #define GAME_CODE_FILEPATH "App.dll"
+#define RUNNING_GAME_CODE_FILEPATH "App_Running.dll" 
 void LoadGameCode( App* gameapp ) {
 	if( gameapp->gameCodeHandle != NULL ) {
 		FreeLibrary( gameapp->gameCodeHandle );
@@ -328,9 +405,9 @@ void LoadGameCode( App* gameapp ) {
 		gameapp->MixSound = NULL;
 	}
 
-	CopyFile( GAME_CODE_FILEPATH, "App_Running.dll", false );
+	CopyFile( GAME_CODE_FILEPATH, RUNNING_GAME_CODE_FILEPATH, false );
 
-	HMODULE dllHandle = LoadLibrary( "App_Running.dll" );
+	HMODULE dllHandle = LoadLibrary( RUNNING_GAME_CODE_FILEPATH );
 	gameapp->gameCodeHandle = dllHandle;
 	gameapp->GameInit = (gameInit*)GetProcAddress( dllHandle, "GameInit" );
 	gameapp->UpdateAndRender = (updateAndRender*)GetProcAddress( dllHandle, "UpdateAndRender" );
@@ -423,7 +500,7 @@ static LoadedSound LoadWaveFile( char* filePath, Stack* allocater ) {
 
 	LoadedSound result = { };
 
-	void* fileData = ReadWholeFile( filePath, allocater );
+	void* fileData = ReadWholeFile( filePath, allocater, NULL );
 
 	if( fileData != NULL ) {
 		struct RiffIterator {
@@ -574,11 +651,14 @@ static Win32Sound Win32InitSound( HWND hwnd, int targetGameHZ, Stack* systemStor
 					BufferSize 
 				);
 
-				size_t playingInfoBufferSize = sizeof( PlayingSound ) * MAXSOUNDSATONCE;
-				driver->activeSoundList = (PlayingSound*)StackAllocAligned(
+				size_t playingInfoBufferSize = sizeof( QueuedSound ) * MAXSOUNDSATONCE;
+				driver->activeSoundList = (QueuedSound*)StackAllocAligned(
 					systemStorage,
 					playingInfoBufferSize 
 				);
+				for( int i = 0; i < MAXSOUNDSATONCE; ++i ) {
+					driver->activeSoundList[ i ].playing = false;
+				}
 			}
 
 			HRESULT playResult = win32Sound.writeBuffer->Play( 0, 0, DSBPLAY_LOOPING );
@@ -727,7 +807,7 @@ GLRenderDriver Win32InitGLRenderer(
 		    PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
 		    32,                       //Colordepth of the framebuffer.
 		    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //Don't care....
-		    32,                       //Number of bits for the depthbuffer
+		    16,                       //Number of bits for the depthbuffer
 	        0,                        //Number of bits for the stencilbuffer
 		    0,                        //Number of Aux buffers in the framebuffer.
 		    0, 0, 0, 0, 0             //Don't care...
@@ -839,22 +919,29 @@ void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyfr
                                  Win32 App required stuff
 ------------------------------------------------------------------------------------------*/
 
+static void EndProgram( HWND hwnd ) {
+	appIsRunning = false;
+	wglMakeCurrent( deviceContext, NULL );
+	wglDeleteContext( openglRenderContext );
+	ReleaseDC( hwnd, deviceContext );
+
+	if( gameapp.gameCodeHandle != NULL ) {
+		FreeLibrary( gameapp.gameCodeHandle );
+	}
+
+	DeleteFile( RUNNING_GAME_CODE_FILEPATH );
+}
+
 static LRESULT CALLBACK WndProc( HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 	switch (uMsg) {
 		case WM_CLOSE: {
-			appIsRunning = false;
-			wglMakeCurrent( deviceContext, NULL );
-			wglDeleteContext( openglRenderContext );
-			ReleaseDC( hwnd, deviceContext );
+			EndProgram( hwnd );
 			DestroyWindow( hwnd );
 			break;
 		}
 
 		case WM_DESTROY: {
-			appIsRunning = false;
-			wglMakeCurrent( deviceContext, NULL );
-			wglDeleteContext( openglRenderContext );
-			ReleaseDC( hwnd, deviceContext );
+			EndProgram( hwnd );
 			PostQuitMessage( 0 );
 			break;
 		}
@@ -909,6 +996,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	system.GetMostRecentMatchingFile = &GetMostRecentMatchingFile;
 	system.TrackFileUpdates = &TrackFileUpdates;
 	system.DidFileUpdate = &DidFileUpdate;
+	system.WriteFile = &WriteFile;
 
 	//Center position of window
 	uint16 fullScreenWidth = GetSystemMetrics( SM_CXSCREEN );
@@ -965,8 +1053,6 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	BOOL canSupportHiResTimer = QueryPerformanceFrequency( &timerResolution );
 	assert( canSupportHiResTimer );
 
-	App gameapp = { };
-
 	size_t systemsMemorySize = MEGABYTES( 8 );
 	Stack gameSlab;
 	gameSlab.size = SIZEOF_GLOBAL_HEAP + systemsMemorySize;
@@ -983,12 +1069,10 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 	InitWin32WorkerThread( &systemsMemory );
 
-	GLRenderDriver glDriver = Win32InitGLRenderer( 
-		hwnd,
-		&system, 
-		&systemsMemory
-	);
+	GLRenderDriver glDriver = Win32InitGLRenderer( hwnd, &system, &systemsMemory );
 	Win32Sound win32Sound = Win32InitSound( hwnd, 60, &systemsMemory );
+
+	void* imguistate = InitImGui_LimeStone(	&systemsMemory,	(RenderDriver*)&glDriver, system.windowWidth, system.windowHeight );
 
 	printf( "Remaining System Memory: %Id\n", SPACE_IN_STACK( (&gameSlab) ) );
 
@@ -1044,14 +1128,23 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 		    );
 		    keypressHistoryIndex = 0;
 
+		    UpdateImgui( currentSnapshotStorage, imguistate, system.windowWidth, system.windowHeight );
+
 			appIsRunning = gameapp.UpdateAndRender( 
 				gameMemoryPtr, 
 				(float)elapsedTime.QuadPart, 
 				currentSnapshotStorage,
 				&win32Sound.driver,
 				(RenderDriver*)&glDriver,
-				&system
+				&system,
+				imguistate
 			);
+
+			#define SUPPRESS_IMGUI 1
+
+			#if SUPPRESS_IMGUI
+			ImGui::Render();
+			#endif
 
 		    PushAudioToSoundCard( &gameapp, &win32Sound );
 

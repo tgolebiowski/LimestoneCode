@@ -5,7 +5,9 @@
 
 #define NULL 0
 
+#include <time.h>
 #include <stdint.h>
+
 typedef uint8_t uint8;
 typedef int8_t int8;
 typedef uint16_t uint16;
@@ -16,6 +18,7 @@ typedef uint64_t uint64;
 typedef int64_t int64;
 typedef uintptr_t uintptr;
 typedef intptr_t intptr;
+typedef tm TimeStruct;
 
 #define global_variable static
 
@@ -161,16 +164,6 @@ void PoolFree( Pool* pool, void* addr ) {
 	pool->freeListHead = indexToFree;
 }
 
-struct System {
-	uint16 windowWidth;
-	uint16 windowHeight;
-
-	void* (*ReadWholeFile) (char*, Stack*);
-	int (*GetMostRecentMatchingFile) (char*, char*);
-	int (*TrackFileUpdates)( char* filePath );
-	bool (*DidFileUpdate)( int trackingIndex );
-};
-
 struct InputState {
 	enum SPC_KEY_ENUM {
 		CTRL = 0, 
@@ -180,6 +173,12 @@ struct InputState {
 		SPACE = 4
 	};
 
+	enum MOUSE_BUTTONS {
+		LEFT = 0, 
+		MIDDLE = 1, 
+		RIGHT = 2
+	};
+
 	InputState* prevState;
 
 	bool romanCharKeys[32];
@@ -187,8 +186,10 @@ struct InputState {
 
 	char keysPressedSinceLastUpdate [24];
 
+	//Mouse coords range from -1 to 1, from the top left corner to the bottom right
 	float mouseX;
 	float mouseY;
+
 	bool mouseButtons[4];
 
 	float leftStick_x, leftStick_y;
@@ -217,16 +218,33 @@ static bool WasKeyPressed( InputState* i, char key ) {
 static bool WasKeyPressed( InputState* i, InputState::SPC_KEY_ENUM key ) {
 	return !IsKeyDown( i->prevState, key ) && IsKeyDown( i, key );
 }
+
+static bool  WasMouseButtonClicked( InputState* i, InputState::MOUSE_BUTTONS b ) {
+	return i->mouseButtons[ b ] && !i->prevState->mouseButtons[ b ];
+}
+
+static 
 #endif
+
+struct System {
+	uint16 windowWidth;
+	uint16 windowHeight;
+
+	void* (*ReadWholeFile) (char* fileName, Stack* tempStorage, int* bytesRead );
+	int (*GetMostRecentMatchingFile) (char*, char*);
+	int (*TrackFileUpdates)( char* filePath );
+	bool (*DidFileUpdate)( int trackingIndex );
+	void (*WriteFile)(char* fileName, void* data, int bytesToWrite );
+};
 
 #include "Math3D.h"
 #include "Renderer.h"
 #include "Sound.h"
 #include "Thread.h"
-
+#include "DearImGui_Limestone.h"
 
 #define GAME_INIT(name) void* name( Stack* mainSlab, RenderDriver* renderDriver, SoundDriver* soundDriver, System* system )
 typedef GAME_INIT( gameInit );
 
-#define GAME_UPDATEANDRENDER(name) bool name( void* gameMemory, float millisecondsElapsed, InputState* i, SoundDriver* soundDriver, RenderDriver* renderDriver, System* system )
+#define GAME_UPDATEANDRENDER(name) bool name( void* gameMemory, float millisecondsElapsed, InputState* i, SoundDriver* soundDriver, RenderDriver* renderDriver, System* system, void* imguistate )
 typedef GAME_UPDATEANDRENDER( updateAndRender );

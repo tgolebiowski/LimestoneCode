@@ -1,7 +1,5 @@
 #define DLL_ONLY
 #include "App.h"
-#include "DebugDraw.h"
-#include "DearImGui_Limestone.h"
 
 
 struct GameMemory {
@@ -9,10 +7,11 @@ struct GameMemory {
 };
 
 extern "C" GAME_INIT( GameInit ) {
-
+	return NULL;
 }
 
 extern "C" GAME_UPDATEANDRENDER( UpdateAndRender ) {
+	ImGui::SetInternalState( imguistate );
 
     return true;
 } 

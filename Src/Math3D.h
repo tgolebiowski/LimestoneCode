@@ -44,7 +44,7 @@ float InvSqrt(float x) {
 	                                Vec2
 ------------------------------------------------------------------------*/
 
-float Vec2Len( Vec2 v ) {
+float Vec2Length( Vec2 v ) {
 	return sqrtf( v.x * v.x + v.y * v.y );
 }
 
@@ -57,7 +57,7 @@ float Dot( Vec2 a, Vec2 b ) {
 }
 
 void Normalize( Vec2* v ) {
-	float l = Vec2Len( *v );
+	float l = Vec2Length( *v );
 	if( l > 1e-08 ) {
 		float invL = 1.0f / l;
 		v->x *= invL;
@@ -104,7 +104,10 @@ Vec3 DiffVec( Vec3 a, Vec3 b ) {
 }
 
 float Dot( Vec3 v1, Vec3 v2 ) {
-	return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+	return 
+	    ( v1.x * v2.x ) + 
+	    ( v1.y * v2.y ) + 
+	    ( v1.z * v2.z );
 }
 
 Vec3 Cross( Vec3 v1, Vec3 v2 ) {
@@ -145,6 +148,31 @@ void SetScale( Mat4* m , float x, float y, float z) {
 	m->m[0][0] = x;
 	m->m[1][1] = y;
 	m->m[2][2] = z;
+}
+
+void SetScale( Mat4* m, Vec3 v ) {
+	SetScale( m, v.x, v.y, v.z );
+}
+
+void SetScale( Mat4* m, float s ) {
+	SetScale( m, s, s, s );
+}
+
+//TODO: spring lerp macro or function
+Mat4 CreateScaleMatByAxis( Vec3 n, float scaling ) {
+	Normalize( &n );
+
+	float fI = scaling - 1.0f;
+
+	Mat4 scaleMat = 
+	{
+		1.0f + fI * n.x * n.x, fI * n.x * n.y, fI * n.x * n.z, 0.0f,
+		fI * n.y * n.x, 1.0f + fI * n.y * n.y, fI * n.y * n.z, 0.0f,
+		fI * n.z * n.x, fI * n.z * n.y, 1.0f + fI * n.z * n.z, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f
+	};
+
+	return scaleMat;
 }
 
 void SetTranslation( Mat4* m, float x, float y, float z ) {
@@ -277,20 +305,6 @@ Vec3 MultVec( Mat4 m, Vec3 v, float w = 1.0f ) {
 		     v.x * m.m[0][2] + v.y * m.m[1][2] + v.z * m.m[2][2] + m.m[3][2] * w};
 }
 
-Vec3 GetEulersFromMat4( Mat4 m ) {
-	Vec3 r1 = { m[0][0], m[0][1], m[0][2] };
-	Vec3 r2 = { m[1][0], m[1][1], m[1][2] };
-	Vec3 r3 = { m[2][0], m[2][1], m[2][2] };
-	Normalize( &r1 );
-	Normalize( &r2 );
-	Normalize( &r3 );
-	return { 
-		atan2( r3.y, r3.z ), 
-		atan2( -r3.x, sqrtf( r3.y * r3.y + r3.z * r3.z ) ), 
-		atan2( r2.x, r1.x ) 
-	};
-}
-
 /*----------------------------------------------------------------------------
                                     Quat
 ------------------------------------------------------------------------------*/
@@ -416,7 +430,7 @@ Quat Slerp( const Quat q1, const Quat q2, float weight ) {
 }
 
 Vec3 ApplyQuatToVec( Quat q, Vec3 v ) {
-	//Credit to Casey Muratori
+	//Credit to Fabien Giesen?? 
 	Vec3 t = Cross( {q.x, q.y, q.z }, v ) * 2.0f;
 	return v + t * q.w + Cross( {q.x, q.y, q.z}, t );
 }
