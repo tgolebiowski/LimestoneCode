@@ -108,6 +108,41 @@ static void MakeIcosphere(
     data->dataCount = 20 * 3;
 }
 
+static void MakeTexturedQuad( 
+    MeshGeometryData* data, 
+    Stack* allocater, 
+    float x, 
+    float y 
+) {
+    float halfX = 0.5f * x;
+    float halfY = 0.5f * y;
+
+    Vec3 verts [4] = {
+        { -halfX, halfY, 0.0f },
+        { halfX, halfY, 0.0f },
+        { halfX, -halfY, 0.0f },
+        { -halfX, -halfY, 0.0f }
+    };
+    Vec2 uv [4] = {
+        { 0.0f, 0.0f },
+        { 1.0f, 0.0f },
+        { 1.0f, 1.0f },
+        { 0.0f, 1.0f }
+    };
+
+    data->vData = (Vec3*)StackAllocAligned( allocater, sizeof( Vec3 ) * 2 * 3 );
+    data->uvData = (Vec2*)StackAllocAligned( allocater, sizeof( Vec2 ) * 2 * 3 );
+
+    //CCW indicies
+    const int indexBuffer [6] = { 0,3,2,0,2,1 };
+
+    for( int i = 0; i < 6; ++i ) {
+        data->vData[ i ] = verts[ indexBuffer[ i ] ];
+        data->uvData[ i ] = uv[ indexBuffer[ i ] ];
+    }
+    data->dataCount = 6;
+}
+
 static void DrawVertsImmediate( 
     PrimitiveDrawingData* primRenderer,
     Vec3* verts,
@@ -153,6 +188,7 @@ static void DrawDot(
     Vec3 p,
     float radius,
     Mat4* cameraMatrix,
+    Mat4* modelMatrix,
     float* color
 ) {
     const int numTrisInDot = 14;
@@ -185,15 +221,13 @@ static void DrawDot(
         color = (float*)myColor;
     }
 
-    Mat4 matrix = {}; SetToIdentity( &matrix );
-
     RenderCommand drawDotCommand = { };
     drawDotCommand.shader = &primRenderer->primitiveShader;
     drawDotCommand.elementCount = numTrisInDot * 3;
     drawDotCommand.vertexFormat = RenderCommand::SEPARATE_GPU_ARRAYS;
     drawDotCommand.vertexInputData[ 0 ] = primRenderer->primitiveData;
     drawDotCommand.uniformData[ primRenderer->cameraUniformIndex ] = cameraMatrix;
-    drawDotCommand.uniformData[ primRenderer->transformUniformIndex ] = (void*)&matrix;
+    drawDotCommand.uniformData[ primRenderer->transformUniformIndex ] = (void*)modelMatrix;
     drawDotCommand.uniformData[ primRenderer->colorUniformIndex ] = color;
 
     primRenderer->renderDriver->Draw( &drawDotCommand, false, true, false, false, false );
@@ -207,7 +241,7 @@ static void DrawGridOnXZPlane(
 ) {
     Vec3 origin = { (int)p.x, 0.0f, (int)p.z };
 
-    for( int i = 0; i < range; ++i ) {
+    for( int i = 0; i <= range; ++i ) {
         const float halfRange = range / 2.0f;
 
         float rangeX, minusRangeX, rangeZ, minusRangeZ;
@@ -279,6 +313,78 @@ static void InitPrimitveRenderData(
 
     primRenderer->renderDriver = renderDriver;
 }
+
+#if 0 
+static void RenderArmatureAsLines( 
+    RendererStorage* rStorage,
+    DebugDraw* debugDraw,
+    Armature* armature, 
+    Mat4 transform, 
+    Vec3 color 
+) {
+    /*bool isDepthTesting;
+    glGetBooleanv( GL_DEPTH_TEST, ( GLboolean* )&isDepthTesting );
+    if( isDepthTesting ) {
+        glDisable( GL_DEPTH_TEST );
+    }*/
+
+    uint8 dataCount = 0;
+    uint8 jointData = 0;
+    Vec3 boneLines [64];
+    Vec3 jointXAxes [64];
+    Vec3 jointYAxes [64];
+    Vec3 jointZAxes [64];
+
+    for( uint8 boneIndex = 0; boneIndex < armature->boneCount; ++boneIndex ) {
+        Bone* bone = &armature->bones[ boneIndex ];
+
+        Vec3 p1 = { 0.0f, 0.0f, 0.0f };
+        p1 = MultVec( InverseMatrix( bone->invBindPose ), p1 );
+        p1 = MultVec( *bone->currentTransform, p1 );
+        RenderDebugCircle( debugDraw, MultVec( transform, p1 ), 0.05f, { 1.0f, 1.0f, 1.0f } );
+
+        if( bone->childCount > 0 ) {
+            for( uint8 childIndex = 0; childIndex < bone->childCount; ++childIndex ) {
+                Bone* child = bone->children[ childIndex ];
+
+                Vec3 p2 = { 0.0f, 0.0f, 0.0f };
+                p2 = MultVec( InverseMatrix( child->invBindPose ), p2 );
+                p2 = MultVec( *child->currentTransform, p2 );
+
+                boneLines[ dataCount++ ] = p1;
+                boneLines[ dataCount++ ] = p2;
+            }
+        }
+
+        Vec3 px = { 1.0f, 0.0f, 0.0f };
+        Vec3 py = { 0.0f, 1.0f, 0.0f };
+        Vec3 pz = { 0.0f, 0.0f, 1.0f };
+        px = MultVec( InverseMatrix( bone->invBindPose ), px );
+        px = MultVec( *bone->currentTransform, px );
+        py = MultVec( InverseMatrix( bone->invBindPose ), py );
+        py = MultVec( *bone->currentTransform, py );
+        pz = MultVec( InverseMatrix( bone->invBindPose ), pz );
+        pz = MultVec( *bone->currentTransform, pz );
+        jointXAxes[ jointData ] = p1; 
+        jointYAxes[ jointData ] = p1; 
+        jointZAxes[ jointData ] = p1;
+        jointData++;
+        jointXAxes[ jointData ] = px;
+        jointYAxes[ jointData ] = py;
+        jointZAxes[ jointData ] = pz;
+        jointData++;
+    }
+
+    //RenderDebugLines( rStorage, (float*)&boneLines[0], dataCount, transform, color );
+    //RenderDebugLines( rStorage, (float*)&jointXAxes[0], jointData, transform, { 0.09, 0.85, 0.15 } );
+    //RenderDebugLines( rStorage, (float*)&jointYAxes[0], jointData, transform, { 0.85, 0.85, 0.14 } );
+    //RenderDebugLines( rStorage, (float*)&jointZAxes[0], jointData, transform, { 0.09, 0.11, 0.85 } );
+
+    //if( isDepthTesting ) {
+        //glEnable( GL_DEPTH_TEST );
+    //}
+}
+#endif
 
 //Weird idea that didn't work:
 //Take tetrahedron, subdivide faces into a "triforce", push verticies are not the radius

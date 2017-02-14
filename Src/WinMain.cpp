@@ -1,11 +1,9 @@
 #include <stdio.h>
-//#include <stdbool.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <XInput.h>
 #include <assert.h>
-#include <functional>
 
 #include <GL/gl.h>
 #include "OpenGL/wglext.h"
@@ -43,27 +41,6 @@ global_variable int keypressHistoryIndex;
 	                            Ancillary Helpers
 ------------------------------------------------------------------------------------------*/
 
-void TextToNumberConversion( char* textIn, float* numbersOut ) {
-	char* start;
-	char* end; 
-	start = textIn; 
-	end = start;
-	uint16 index = 0;
-	do {
-		do {
-			end++;
-		} while( *end != ' ' && *end != 0 );
-		assert( ( end - start) < 16 );
-		char buffer [16];
-		memcpy( &buffer[0], start, end - start);
-		buffer[end - start] = 0;
-		start = end;
-
-		numbersOut[index] = atof( buffer );
-		index++;
-	} while( *end != 0 );
-}
-
 //Copy-Pasted from altdevblog
 void EnableCrashingOnCrashes()
 {
@@ -92,6 +69,10 @@ void EnableCrashingOnCrashes()
 	FreeLibrary( kernel32 );
 }
 
+static bool HasFocus() {
+	return GetFocus() != NULL;
+}
+
 static void QueryInput( 
 	int windowWidth, 
 	int windowHeight, 
@@ -99,6 +80,10 @@ static void QueryInput(
 	int windowPosY,
 	InputState* stateStorage
 ) {
+	if( !HasFocus() ) {
+		return;
+	}
+
 	memset( &stateStorage->romanCharKeys, 0, sizeof(bool) * 32 );
 	for( int keyIndex = 0; keyIndex < 26; ++keyIndex ) {
 		const int asciiStart = (int)'a';
@@ -198,9 +183,9 @@ void PrintErrorMessage(DWORD ErrorCode)
 
 #include <strsafe.h>
 //NOTE: this allocates the file size + 1 byte, and sets that last byte to zero
-void* ReadWholeFile( char* filename, Stack* allocater, int* bytesRead ) {
+static void* ReadWholeFile( char* filename, Stack* allocater, int* bytesRead ) {
 	HANDLE fileHandle;
-	//TODO: look into other options, such as: Overlapped, No_Bufffering, and Random_Access
+	//TODO: look into other options, such as: Overlapped, No_Buffering, and Random_Access
 	fileHandle = CreateFile( 
 		filename, 
 		GENERIC_READ, 
@@ -250,7 +235,7 @@ void* ReadWholeFile( char* filename, Stack* allocater, int* bytesRead ) {
 	return data;
 }
 
-void WriteFile( char* fileName, void* data, int dataToWrite ) {
+static void WriteFile( char* fileName, void* data, int dataToWrite ) {
 	HANDLE fileHandle;
 	//TODO: look into other options, such as: Overlapped, No_Bufffering, and Random_Access
 	fileHandle = CreateFile( 
@@ -685,6 +670,8 @@ static void PushAudioToSoundCard( App* gameapp, Win32Sound* win32Sound ) {
 		win32Sound->writeBufferSize
 	);
 
+	ImGui::Begin( "Audio State" );
+
 	//Setup info needed for writing (where to, how much, etc.)
 	DWORD playCursorPosition, writeCursorPosition;
 	if( SUCCEEDED( win32Sound->writeBuffer->GetCurrentPosition( &playCursorPosition, &writeCursorPosition) ) ) {
@@ -787,6 +774,8 @@ static void PushAudioToSoundCard( App* gameapp, Win32Sound* win32Sound ) {
 	if( !SUCCEEDED( result ) ) {
 		printf("Couldn't Unlock\n");
 	}
+
+	ImGui::End();
 }
 
 /*----------------------------------------------------------------------------------------
@@ -835,84 +824,6 @@ GLRenderDriver Win32InitGLRenderer(
 		system->windowWidth, 
 		system->windowHeight 
 	);
-}
-
-void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* keyframe, Armature* armature ) {
-	tinyxml2::XMLDocument colladaDoc;
-	colladaDoc.LoadFile( fileName );
-
-	tinyxml2::XMLNode* animationNode = colladaDoc.FirstChildElement( "COLLADA" )->FirstChildElement( "library_animations" )->FirstChild();
-	while( animationNode != NULL ) {
-		//Desired data: what bone, and what local transform to it occurs
-		Mat4 boneLocalTransform;
-		Bone* targetBone = NULL;
-
-		//Parse the target attribute from the XMLElement for channel, and get the bone it corresponds to
-		const char* transformName = animationNode->FirstChildElement( "channel" )->Attribute( "target" );
-		size_t nameLen = strlen( transformName );
-		char* transformNameCopy = (char*)alloca( nameLen );
-		strcpy( transformNameCopy, transformName );
-		char* nameEnd = transformNameCopy;
-		while( *nameEnd != '/' && *nameEnd != 0 ) {
-			nameEnd++;
-		}
-		memset( transformNameCopy, 0, nameLen );
-		nameLen = nameEnd - transformNameCopy;
-		memcpy( transformNameCopy, transformName, nameLen );
-		for( uint8 boneIndex = 0; boneIndex < armature->boneCount; boneIndex++ ) {
-			if( strcmp( armature->bones[ boneIndex ].name, transformNameCopy ) == 0 ) {
-				targetBone = &armature->bones[ boneIndex ];
-				break;
-			}
-		}
-
-		//Parse matrix data, and extract first keyframe data
-		tinyxml2::XMLNode* transformMatrixElement = animationNode->FirstChild()->NextSibling();
-		const char* matrixTransformData = transformMatrixElement->FirstChild()->FirstChild()->Value();
-		size_t transformDataLen = strlen( matrixTransformData ) + 1;
-		char* transformDataCopy = (char*)alloca( transformDataLen * sizeof( char ) );
-		memset( transformDataCopy, 0, transformDataLen );
-		memcpy( transformDataCopy, matrixTransformData, transformDataLen );
-		int count = 0; 
-		transformMatrixElement->FirstChildElement()->QueryAttribute( "count", &count );
-		float* rawTransformData = (float*)alloca(  count * sizeof(float) );
-		memset( rawTransformData, 0, count * sizeof(float) );
-		TextToNumberConversion( transformDataCopy, rawTransformData );
-		memcpy( &boneLocalTransform.m[0][0], &rawTransformData[0], 16 * sizeof(float) );
-
-		//Save data in BoneKeyFrame struct
-		boneLocalTransform = TransposeMatrix( boneLocalTransform );
-		if( targetBone == armature->rootBone ) {
-			Mat4 correction;
-			correction.m[0][0] = 1.0f; correction.m[0][1] = 0.0f; correction.m[0][2] = 0.0f; correction.m[0][3] = 0.0f;
-			correction.m[1][0] = 0.0f; correction.m[1][1] = 0.0f; correction.m[1][2] = -1.0f; correction.m[1][3] = 0.0f;
-			correction.m[2][0] = 0.0f; correction.m[2][1] = 1.0f; correction.m[2][2] = 0.0f; correction.m[2][3] = 0.0f;
-			correction.m[3][0] = 0.0f; correction.m[3][1] = 0.0f; correction.m[3][2] = 0.0f; correction.m[3][3] = 1.0f;
-			boneLocalTransform = MultMatrix( boneLocalTransform, correction );
-		}
-		BoneKeyFrame* key = &keyframe->targetBoneTransforms[ targetBone->boneIndex ];
-		key->combinedMatrix = boneLocalTransform;
-
-		animationNode = animationNode->NextSibling();
-	}
-
-	//Pre multiply bones with parents to save doing it during runtime
-	struct {
-		ArmatureKeyFrame* keyframe;
-		void PremultiplyKeyFrame( Bone* target, Mat4 parentTransform ) {
-			BoneKeyFrame* boneKey = &keyframe->targetBoneTransforms[ target->boneIndex ];
-			Mat4 netMatrix = MultMatrix( boneKey->combinedMatrix, parentTransform );
-
-			for( uint8 boneIndex = 0; boneIndex < target->childCount; boneIndex++ ) {
-				PremultiplyKeyFrame( target->children[ boneIndex ], netMatrix );
-			}
-			boneKey->combinedMatrix = netMatrix;
-			DecomposeMat4( boneKey->combinedMatrix, &boneKey->scale, &boneKey->rotation, &boneKey->translation );
-		}
-	}LocalRecursiveScope;
-	LocalRecursiveScope.keyframe = keyframe;
-	Mat4 i; SetToIdentity( &i );
-	LocalRecursiveScope.PremultiplyKeyFrame( armature->rootBone, i );
 }
 
 /*----------------------------------------------------------------------------------------
@@ -997,6 +908,7 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 	system.TrackFileUpdates = &TrackFileUpdates;
 	system.DidFileUpdate = &DidFileUpdate;
 	system.WriteFile = &WriteFile;
+	system.HasFocus = &HasFocus;
 
 	//Center position of window
 	uint16 fullScreenWidth = GetSystemMetrics( SM_CXSCREEN );
@@ -1042,8 +954,8 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 		NULL
 	);
 
-	LPRECT windowRect = { };
-	GetClientRect( hwnd, windowRect );
+	RECT windowRect = { };
+	GetClientRect( hwnd, &windowRect );
 
 	SetWindowLong( hwnd, GWL_STYLE, 0 );
 	ShowWindow ( hwnd, SW_SHOWNORMAL );
@@ -1140,13 +1052,9 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 				imguistate
 			);
 
-			#define SUPPRESS_IMGUI 1
-
-			#if SUPPRESS_IMGUI
-			ImGui::Render();
-			#endif
-
 		    PushAudioToSoundCard( &gameapp, &win32Sound );
+
+		    ImGui::Render();
 
 			BOOL swapBufferSuccess = SwapBuffers( deviceContext );
 			glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );

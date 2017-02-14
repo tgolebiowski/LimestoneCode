@@ -129,7 +129,7 @@ static inline void ProcessStaticQueuedSound(
 	}
 	activeSound->lastPlayLocation += samplesToWrite;
 
-	if( activeSound->lastPlayLocation >= activeSound->baseSound->sampleCount ) {
+	if( activeSound->lastPlayLocation >= activeSound->baseSound->sampleCount - 1 ) {
 		if( !activeSound->looping ) {
 			activeSound->baseSound = NULL;
 			activeSound->lastPlayLocation = 0;
@@ -219,6 +219,15 @@ extern "C" MIX_SOUND( MixSound ) {
 			ProcessStaticQueuedSound( activeSound, srb );
 		} else {
 			ProcessQueuedChirp( activeSound, srb );
+		}
+
+		char header [16] = { };
+		sprintf( header, "Slot %d", soundIndex );
+		if( ImGui::CollapsingHeader( header ) ) {
+			ImGui::Text( "lastPlayLocation: %d, soundLength: %d",
+				activeSound->lastPlayLocation,
+				activeSound->baseSound->sampleCount
+			);
 		}
 	}
 }

@@ -26,15 +26,26 @@ struct ArmatureKeyFrame {
 	BoneKeyFrame targetBoneTransforms[ MAXBONES ];
 };
 
-//----------------------------------------------------------------------------
-//-------------------------REQUIRED FROM PLATFORM LAYER
-//----------------------------------------------------------------------------
-void LoadAnimationDataFromCollada( const char* fileName, ArmatureKeyFrame* pose, Armature* armature );
+static Bone* GetBoneByName( Armature* armature, char* name ) {
+    for( int i = 0; i < armature->boneCount; ++i ) {
+        Bone* bone = &armature->bones[ i ];
+        int compare = strcmp( &bone->name[0], name );
+        if( compare == 0 ) {
+            return bone;
+        }
+    }
+
+    return NULL;
+}
 
 void ApplyKeyFrameToArmature( ArmatureKeyFrame* pose, Armature* armature ) {
     for( uint8 boneIndex = 0; boneIndex < armature->boneCount; ++boneIndex ) {
         Bone* bone = &armature->bones[ boneIndex ];
-        *bone->currentTransform = MultMatrix( bone->invBindPose, pose->targetBoneTransforms[ boneIndex ].combinedMatrix );
+        *bone->currentTransform = pose->targetBoneTransforms[ boneIndex ].combinedMatrix;
+        /* *bone->currentTransform = MultMatrix( 
+            bone->invBindPose, 
+            pose->targetBoneTransforms[ boneIndex ].combinedMatrix 
+        );*/
     }
 }
 

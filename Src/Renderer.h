@@ -182,8 +182,14 @@ static Mat4 CreateViewMatrix( Vec3 p, Vec3 lookAtTarget ) {
     };
 }
 
+static Mat4 CreateBillboardMatrix( Mat4 viewMatrix ) {
+    SetTranslation( &viewMatrix, 0.0f, 0.0f, 0.0f );
+    return InverseMatrix( viewMatrix );
+}
+
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
+#define STBI_ONLY_JPG
 #include "stb/stb_image.h"
 static TextureData ReadTextureFromDisk( char* fileName, System* system, Stack* tempData ) {
     int bytesInFile;

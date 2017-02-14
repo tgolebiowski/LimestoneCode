@@ -22,15 +22,11 @@ typedef tm TimeStruct;
 
 #define global_variable static
 
-/* --------------------------------------------------------------------------
-	                      STUFF THE OS PROVIDES THE GAME
------------------------------------------------------------------------------*/
-
 #define KILOBYTES(value) value * 1024
 #define MEGABYTES(value) KILOBYTES(value) * 1024
 #define GIGABYTES(value) MEGABYTES(value) * 1024
 
-#define SIZEOF_GLOBAL_HEAP MEGABYTES( 64 )
+#define SIZEOF_GLOBAL_HEAP MEGABYTES( 66 )
 
 struct Stack {
 	void* start;
@@ -49,7 +45,7 @@ Stack AllocateNewStackFromStack( Stack* stack, uint64 newStackSize ) {
 		stack->current = (void*)( (char*)stack->current + newStackSize );
 	} else {
 		int64 spaceNeeded = newStackSize - SPACE_IN_STACK(stack);
-		assert( spaceNeeded > 0 );
+		assert( spaceNeeded == 0 );
 	}
 	return stackSub;
 }
@@ -61,7 +57,7 @@ void* StackAlloc( Stack* stack, uint64 sizeInBytes ) {
 		return returnValue;
 	} else {
 		int64 spaceNeeded = sizeInBytes - SPACE_IN_STACK(stack);
-		assert( spaceNeeded > 0 );
+		assert( spaceNeeded == 0 );
 		return NULL;
 	}
 }
@@ -103,6 +99,12 @@ struct Pool {
 	uint32 initialized;
 };
 
+#define BLOCKS_IN_POOL( p ) ( p.totalSize / p.blockSize )
+
+#define ADDR_VIA_INDEX( index, block, start ) (void*)( (intptr)start + (intptr)( block * index ) )
+
+#define INDEX_VIA_ADDR( addr, block, start ) (uint32)( ( ((intptr)addr) - ((intptr)start) ) / block )
+
 Pool InitPool( Stack* baseMem, uint32 blockSize, uint32 numBlocks ) {
 	//So a free list index can fit in block
 	assert( blockSize > 4 );
@@ -117,8 +119,6 @@ Pool InitPool( Stack* baseMem, uint32 blockSize, uint32 numBlocks ) {
 
 	return pool;
 }
-
-#define ADDR_VIA_INDEX( index, block, start ) (void*)( (intptr)start + (intptr)( block * index ) )
 
 void* PoolAlloc( Pool* pool ) {
 	//Take from freelist first, since this defrags memory naturally
@@ -150,8 +150,6 @@ void* PoolAlloc( Pool* pool ) {
 
 	return NULL;
 }
-
-#define INDEX_VIA_ADDR( addr, block, start ) (uint32)( ( ((intptr)addr) - ((intptr)start) ) / block )
 
 void PoolFree( Pool* pool, void* addr ) {
 	uint32 indexToFree = INDEX_VIA_ADDR( addr, pool->blockSize, pool->start );
@@ -222,8 +220,7 @@ static bool WasKeyPressed( InputState* i, InputState::SPC_KEY_ENUM key ) {
 static bool  WasMouseButtonClicked( InputState* i, InputState::MOUSE_BUTTONS b ) {
 	return i->mouseButtons[ b ] && !i->prevState->mouseButtons[ b ];
 }
-
-static 
+ 
 #endif
 
 struct System {
@@ -235,13 +232,23 @@ struct System {
 	int (*TrackFileUpdates)( char* filePath );
 	bool (*DidFileUpdate)( int trackingIndex );
 	void (*WriteFile)(char* fileName, void* data, int bytesToWrite );
+	bool (*HasFocus)(void);
 };
+
+/* ----
+	Shared Includes
+-----*/
 
 #include "Math3D.h"
 #include "Renderer.h"
-#include "Sound.h"
-#include "Thread.h"
 #include "DearImGui_Limestone.h"
+#include "Sound.h"
+#include "Parsing.h"
+#include "Thread.h"
+
+/*--------
+	Exported functions in DLL
+---------*/
 
 #define GAME_INIT(name) void* name( Stack* mainSlab, RenderDriver* renderDriver, SoundDriver* soundDriver, System* system )
 typedef GAME_INIT( gameInit );

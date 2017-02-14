@@ -548,10 +548,6 @@ Mat4 Mat4FromComponents( Vec3 scale, Quat rotation, Vec3 translation ) {
 	//TODO: Make this work! Stop doing things the dumb way
 	//Mat4 m = MatrixFromQuat( rotation );
 
-	//m[0][0] *= scale.x;
-	//m[1][1] *= scale.y;
-	//m[2][2] *= scale.z;
-
 	m[3][0] = translation.x;
 	m[3][1] = translation.y;
 	m[3][2] = translation.z;
