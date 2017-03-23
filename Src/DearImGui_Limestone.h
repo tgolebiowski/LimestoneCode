@@ -117,8 +117,10 @@ static void RenderImGuiVisuals(ImDrawList** const cmd_lists, int cmd_lists_count
 
             command.elementCount = pcmd->vtx_count;
 
-            renderDriver->Draw( &command, false, true, false, false, true );
-
+            renderDriver->SetRenderState( SUPPRESS_BACKFACE_CULL, 0.0f );
+            renderDriver->SetRenderState( SUPPRESS_DEPTH_TEST, 0.0f );
+            renderDriver->Draw( &command, false, false );
+            renderDriver->ResetRenderState();
             vtx_buffer += ( sizeof( ImDrawVert ) * pcmd->vtx_count );
         }
     }

@@ -5,11 +5,20 @@
 #define PI 3.14159265359
 #define TWO_PI ( 2.0f * PI )
 
-#define MAXf(f1, f2) ( ((float)(f1 >= f2)) * f1 ) + ( ((float)(f1 < f2)) * f2 )
-#define MINf(f1, f2) ( ((float)(f1 <= f2)) * f1 ) + ( ((float)(f1 > f2)) * f2 )
-//Thanks Amazing Thew!
-#define ABSf(f) ( MAXf( ( -f ), f ) )
+static float MAXf(float f1, float f2) { 
+	return ( ((float)(f1 >= f2)) * f1 ) + ( ((float)(f1 < f2)) * f2 );
+}
 
+static float MINf( float f1, float f2) { 
+	return ( ((float)(f1 <= f2)) * f1 ) + ( ((float)(f1 > f2)) * f2 );
+}
+
+//Thanks Amazing Thew!
+static float ABSf( float f ) {
+	return ( MAXf( ( -f ), f ) );
+}
+
+//Macro-ness allows this to work on Vec3s and floats alike, templates!
 #define LERP( f1, f2, t ) ( ( (1.0f - t) * f1 ) + ( t * f2 ) )
 
 struct Vec2 {
@@ -18,6 +27,10 @@ struct Vec2 {
 
 struct Vec3 {
 	float x, y, z;
+};
+
+struct Vec4 {
+	float r, g, b, a;
 };
 
 struct Quat {
@@ -64,6 +77,26 @@ void Normalize( Vec2* v ) {
 		v->y *= invL;
 	}
 }
+
+static inline void GetBaryCentricCoords( Vec2* tri, Vec2 p, Vec3* outCoords ) {
+	Vec2 p1 = tri[0];
+	Vec2 p2 = tri[1];
+	Vec2 p3 = tri[2];
+
+	float denominator = ((p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y));
+
+	//a corresponds with edge b/n points 2 & 3
+	float a = ((p2.y - p3.y) * (p.x - p3.x) + (p3.x - p2.x) * (p.y - p3.y)) / denominator;
+	//b corresponds with edge b/n points 1 & 3
+	float b = ((p3.y - p1.y) * (p.x - p3.x) + (p1.x - p3.x) * (p.y - p3.y)) / denominator;
+	//c corresponds with edge b/n points 1 & 2
+	float c = 1 - a - b;
+
+	outCoords->x = a;
+	outCoords->y = b;
+	outCoords->z = c;
+}
+
 
 /*-----------------------------------------------------------------------
                                     Vec3
@@ -581,6 +614,93 @@ void DecomposeMat4( Mat4 m, Vec3* scale, Quat* rotation, Vec3* translation ) {
 	Vec3 halfUp = ApplyQuatToVec( rot1, { 0.0f, 1.0f, 0.0f } );
 	Quat rot2 = RotationBtwnVec3( halfUp, y );
 	*rotation = MultQuats( rot2, rot1 );
+}
+
+struct Srt {
+	bool isNonAxisAlignedScaled;
+
+	union {
+		Vec3 vec;
+		Mat4 mat;
+	} scale;
+
+	Quat rotation;
+	Vec3 translation;
+};
+
+//----------------------------------------------------
+//Srt1 is the "base" or "anchor" transform, so the result transform is
+//srt1 and then srt2
+//Scale->rotation->translation
+//----------------------------------------------------
+static Srt operator + ( Srt srt1, Srt srt2 ) {
+	Srt result = { };
+	if( !srt1.isNonAxisAlignedScaled && !srt2.isNonAxisAlignedScaled ) {
+		Vec3 scale = {
+			srt1.scale.vec.x * srt2.scale.vec.x,
+			srt1.scale.vec.y * srt2.scale.vec.y,
+			srt1.scale.vec.z * srt2.scale.vec.z
+		};
+
+		result.isNonAxisAlignedScaled = false;
+		result.scale.vec = scale;
+	} else {
+		Mat4 s1, s2;
+		if( srt1.isNonAxisAlignedScaled ) {
+			s1 = srt1.scale.mat;
+		} else {
+			s1 = IdentityMatrix;
+			SetScale( &s1, srt1.scale.vec );
+		}
+
+		if( srt2.isNonAxisAlignedScaled ) {
+			s2 = srt2.scale.mat;
+		} else {
+			s2 = IdentityMatrix;
+			SetScale( &s2, srt2.scale.vec );
+		}
+
+		result.isNonAxisAlignedScaled = true;
+		result.scale.mat = MultMatrix( s2, s1 );
+	}
+
+	Quat rotation = MultQuats( srt1.rotation, srt2.rotation );
+
+	Vec3 translation = ApplyQuatToVec( srt1.rotation, srt2.translation );
+	translation.x *= srt1.scale.vec.x;
+	translation.y *= srt1.scale.vec.y;
+	translation.z *= srt1.scale.vec.z;
+	translation = translation + srt1.translation;
+
+	result.rotation = rotation;
+	result.translation = translation;
+
+	return result;
+}
+
+static Mat4 SrtAsMat4( Srt srt ) {
+	if( srt.isNonAxisAlignedScaled ) {
+		const Vec3 noScale = { 1.0f, 1.0f, 1.0f };
+		return 
+		MultMatrix( 
+			srt.scale.mat,
+			Mat4FromComponents( noScale, srt.rotation, srt.translation )
+		);
+	} else {
+		return Mat4FromComponents( srt.scale.vec, srt.rotation, srt.translation );
+	}
+}
+
+static Vec3 TransformVec( Srt transform, Vec3 startVec ) {
+	startVec.x *= transform.scale.vec.x;
+	startVec.y *= transform.scale.vec.y;
+	startVec.z *= transform.scale.vec.z;
+
+	startVec = ApplyQuatToVec( transform.rotation, startVec );
+
+	startVec = startVec + transform.translation;
+
+	return startVec;
 }
 
 #endif

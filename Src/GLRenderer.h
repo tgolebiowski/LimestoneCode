@@ -61,6 +61,13 @@ struct GLRenderDriver {
     Framebuffer defaultFramebuffer;
 };
 
+struct GLRendererGlobalState {
+    GLuint gpGPUArrays [ MAX_SUPPORTED_VERT_INPUTS ];
+    bool stateFlags [6];
+};
+
+static GLRendererGlobalState* globalGLRendererStorageRef = NULL;
+
 /*----------------------------------------------------------------------------------
                                   Shader stuff
 ----------------------------------------------------------------------------------*/
@@ -105,8 +112,8 @@ static void CopyTextureDataToGpuMem(
 
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0 );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0 );
 
@@ -237,14 +244,33 @@ static void CopyDataToGpuArray( PtrToGpuMem copyTarget, void* data, uint64 dataS
     glBufferData( GL_ARRAY_BUFFER, dataSize, data, GL_DYNAMIC_DRAW );
 }
 
-static void Draw( 
-    RenderCommand* command, 
-    bool doLines, 
-    bool noBackFaceCull, 
-    bool suppressDepthWrite,
-    bool isWireFrame,
-    bool dontDepthCheck 
-) {
+static void SetRenderState( int enumValue, float value ) {
+    if( enumValue == RS_LINEWIDTH ) {
+        glLineWidth( value );
+    } else if( enumValue == SUPPRESS_BACKFACE_CULL ) {
+        glDisable( GL_CULL_FACE );
+    } else if( enumValue == FLIP_FACES_AND_CULLING ) {
+        //TODO: implement
+
+    } else if( enumValue == SUPPRESS_DEPTH_WRITE ) {
+        glDepthMask( false );
+    } else if( enumValue == SUPPRESS_DEPTH_TEST ) {
+        glDisable( GL_DEPTH_TEST );
+    } else if( enumValue == TOGGLE_WIRE_FRAME ) {
+        //TODO: implement
+
+    }
+}
+
+static void ResetRenderState() {
+    glLineWidth( 1.0f );
+    glEnable( GL_CULL_FACE );
+    glDepthMask( true );
+    glEnable( GL_DEPTH_TEST );
+}
+
+static void Draw( RenderCommand* command, bool doLines, bool isWireFrame ) {
+
     //Bind Shader
     glUseProgram( command->shader->programID );
 
@@ -307,12 +333,55 @@ static void Draw(
                 count = 3;
             } else if( type == GL_FLOAT_VEC2 ) {
                 count = 2;
+            } else if ( type == GL_FLOAT_VEC4 ) {
+                count = 4;
             } else {
                 //Oops! an unsupported vertex type!
                 assert(false);
             }
 
             glBindBuffer( GL_ARRAY_BUFFER, attribBufferPtr );
+            glEnableVertexAttribArray( attribPtr );
+            glVertexAttribPointer( attribPtr, count, GL_FLOAT, GL_FALSE, 0, 0 );
+        }
+    } else if( command->vertexFormat == RenderCommand::RAW_CLIENT_ARRAYS ) {
+        for( 
+            int attributeIndex = 0; 
+            attributeIndex < command->shader->vertInputCount; 
+            ++attributeIndex 
+        ) {
+            GLuint attribPtr = command->shader->vertexInputPtrs[ attributeIndex ];
+            GLenum type = command->shader->vertexInputTypes[ attributeIndex ];
+
+            void* clientData = command->clientDataArrays[ attributeIndex ];
+
+            //TODO: check on shader side if no input needed
+            if( clientData == NULL ) {
+                continue;
+            }
+
+            int count;
+            if( type == GL_FLOAT_VEC3 ) {
+                count = 3;
+            } else if( type == GL_FLOAT_VEC2 ) {
+                count = 2;
+            } else if ( type == GL_FLOAT_VEC4 ) {
+                count = 4;
+            } else {
+                //Oops! an unsupported vertex type!
+                assert(false);
+            }
+
+            GLuint gpuArray = globalGLRendererStorageRef->gpGPUArrays[ attributeIndex ];
+            //NOTE: if type starts supporting something that is not an 
+            //array of floats this will break!!!!
+            CopyDataToGpuArray( 
+                gpuArray,
+                clientData,
+                sizeof( float ) * count * command->elementCount
+            );
+
+            glBindBuffer( GL_ARRAY_BUFFER, gpuArray );
             glEnableVertexAttribArray( attribPtr );
             glVertexAttribPointer( attribPtr, count, GL_FLOAT, GL_FALSE, 0, 0 );
         }
@@ -365,29 +434,10 @@ static void Draw(
         glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
     }
 
-    if( noBackFaceCull ) {
-        glDisable( GL_CULL_FACE );
-    }
-    if( suppressDepthWrite ) {
-        glDepthMask( false );
-    }
-    if( dontDepthCheck ) {
-        glDisable( GL_DEPTH_TEST );
-    }
-
     glDrawArrays( primType, 0, command->elementCount );
 
     if( isWireFrame ) {
         glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-    }
-    if( noBackFaceCull ) {
-        glEnable( GL_CULL_FACE );
-    }
-    if( suppressDepthWrite ) {
-        glDepthMask( true );
-    }
-    if( dontDepthCheck ) {
-        glEnable( GL_DEPTH_TEST );
     }
 
     for( 
@@ -511,6 +561,7 @@ static void ClearFramebuffer( System* system ) {
 }
 
 static GLRenderDriver InitGLRenderer( 
+    GLRendererGlobalState* globalStateStorage,
     uint16 screen_w, 
     uint16 screen_h 
 ) {
@@ -552,8 +603,6 @@ static GLRenderDriver InitGLRenderer(
     }
 
     GLRenderDriver driver = { };
-    driver.baseDriver.ParseMeshDataFromCollada = &ParseMeshDataFromCollada;
-
     driver.baseDriver.AllocNewGpuArray = &AllocNewGpuArray;
     driver.baseDriver.CopyDataToGpuArray = &CopyDataToGpuArray;
 
@@ -566,6 +615,11 @@ static GLRenderDriver InitGLRenderer(
     driver.baseDriver.CreateFramebuffer = &CreateFramebuffer;
     driver.baseDriver.SetFramebuffer = &SetFramebuffer;
     driver.baseDriver.ClearFramebuffer = &ClearFramebuffer;
+
+    driver.baseDriver.ResetRenderState = &ResetRenderState;
+    driver.baseDriver.SetRenderState = &SetRenderState;
+
+    glGenBuffers( 6, globalStateStorage->gpGPUArrays );
 
     return driver;
 }

@@ -22,6 +22,8 @@ typedef tm TimeStruct;
 
 #define global_variable static
 
+#define FORLOOP_I( length ) for( int i = 0; i < length; ++i )
+
 #define KILOBYTES(value) value * 1024
 #define MEGABYTES(value) KILOBYTES(value) * 1024
 #define GIGABYTES(value) MEGABYTES(value) * 1024
@@ -211,6 +213,10 @@ static bool IsKeyDown( InputState* i, InputState::SPC_KEY_ENUM key ) {
 
 static bool WasKeyPressed( InputState* i, char key ) {
 	return !IsKeyDown( i->prevState, key ) && IsKeyDown( i, key );
+}
+
+static bool WasKeyReleased( InputState* i, char key ) {
+	return IsKeyDown( i->prevState, key ) && !IsKeyDown( i, key );
 }
 
 static bool WasKeyPressed( InputState* i, InputState::SPC_KEY_ENUM key ) {

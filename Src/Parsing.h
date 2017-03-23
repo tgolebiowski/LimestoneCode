@@ -56,8 +56,6 @@ static Bone* ParseColladaBoneData(
     {
         bone->parent = parentBone;
         bone->boneIndex = armature->boneCount;
-        bone->currentTransform = &armature->boneTransforms[ armature->boneCount ];
-        SetToIdentity( bone->currentTransform );
         strcpy( &bone->name[0], boneElement->Attribute( "sid" ) );
         armature->boneCount++;
     }
@@ -83,7 +81,11 @@ static Bone* ParseColladaBoneData(
     } else {
         bone->bindPose = MultMatrix( m, parentBone->bindPose );
     }
-    *bone->currentTransform = bone->bindPose;
+    DecomposeMat4( bone->bindPose, 
+        &bone->transform.scale.vec,
+        &bone->transform.rotation,
+        &bone->transform.translation
+    );
 
     //Iterate for all children
     bone->childCount = 0;
@@ -102,120 +104,13 @@ static Bone* ParseColladaBoneData(
     return bone;
 }
 
-static bool ParseArmatureDataFromCollada( 
-    void* data, 
+//TODO: refactor this method
+static bool ParseMeshDataFromCollada( 
+    void* rawData, 
     Stack* allocater, 
+    MeshGeometryData* storage, 
     Armature* armature 
 ) {
-    if( data == NULL ) {
-        printf( "No data passed in.\n" );
-        return false;
-    }
-
-    tinyxml2::XMLDocument colladaDoc;
-    colladaDoc.Parse( (const char*)data );
-
-    //Get the type of element that could store an armature
-    tinyxml2::XMLElement* colladaElement = colladaDoc.FirstChildElement( "COLLADA" );
-    tinyxml2::XMLElement* visualScenesNode = NULL;
-    {
-        //TODO: check for nulls at each step
-        visualScenesNode = colladaElement
-        ->FirstChildElement( "library_visual_scenes" )
-        ->FirstChildElement( "visual_scene" )
-        ->FirstChildElement( "node" );
-    }
-
-    //Step through scene heirarchy until start of armature is found
-    tinyxml2::XMLElement* armatureNode = NULL;
-    while( visualScenesNode != NULL ) {
-        if( visualScenesNode->FirstChildElement( "node" ) != NULL && 
-            visualScenesNode->FirstChildElement( "node" )->Attribute( "type", "JOINT" ) != NULL 
-        ) {
-            armatureNode = visualScenesNode;
-            break;
-        } else {
-            visualScenesNode = visualScenesNode->NextSibling()->ToElement();
-        }
-    }
-    if( armatureNode == NULL ) {
-        printf( "No armature data found in this file\n" );
-        return false;
-    }
-
-    //Parse bind poses, number bones etc. recursively
-    armature->boneCount = 0;
-    tinyxml2::XMLElement* boneElement = armatureNode->FirstChildElement( "node" );
-    ParseColladaBoneData( boneElement, armature, NULL );
-
-    //TODO: clean/refactor this mess
-    //Parse inverse bind pose data from skinning section of XML
-    tinyxml2::XMLElement* controllersElement = colladaElement
-        ->FirstChildElement( "library_controllers" )
-        ->FirstChildElement( "controller" );
-    if( controllersElement != NULL ) {
-        tinyxml2::XMLElement* boneNamesSource = controllersElement
-            ->FirstChildElement( "skin" )
-            ->FirstChildElement( "source" );
-        tinyxml2::XMLElement* boneBindPoseSource = boneNamesSource->NextSibling()->ToElement();
-
-        float* boneMatriciesData = (float*)malloc( sizeof(float) * 16 * armature->boneCount );
-        const char* boneNameArrayData = boneNamesSource->FirstChild()->FirstChild()->Value();
-        const char* boneMatrixTextData = boneBindPoseSource->FirstChild()->FirstChild()->Value();
-        size_t nameDataLen = strlen( boneNameArrayData );
-        size_t matrixDataLen = strlen( boneMatrixTextData );
-
-        char* boneNamesLocalCopy = NULL;
-        boneNamesLocalCopy = (char*)malloc( nameDataLen + 1 );
-        memset( boneNamesLocalCopy, 0, nameDataLen + 1 );
-
-        char* colladaTextBuffer = NULL;
-        colladaTextBuffer = (char*)malloc( matrixDataLen );
-
-        memcpy( boneNamesLocalCopy, boneNameArrayData, nameDataLen );
-        memcpy( colladaTextBuffer, boneMatrixTextData, matrixDataLen );
-        TextToNumberConversion( colladaTextBuffer, boneMatriciesData, 16 );
-        char* nextBoneName = &boneNamesLocalCopy[0];
-        for( uint8 matrixIndex = 0; matrixIndex < armature->boneCount; matrixIndex++ ) {
-            Mat4 matrix;
-            memcpy( &matrix.m[0], &boneMatriciesData[matrixIndex * 16], sizeof(float) * 16 );
-
-            char boneName [32];
-            char* boneNameEnd = nextBoneName;
-            do {
-                boneNameEnd++;
-            } while( *boneNameEnd != ' ' && *boneNameEnd != 0 );
-            size_t charCount = boneNameEnd - nextBoneName;
-            memset( boneName, 0, sizeof( char ) * 32 );
-            memcpy( boneName, nextBoneName, charCount );
-            nextBoneName = boneNameEnd + 1;
-
-            Bone* targetBone = NULL;
-            for( uint8 boneIndex = 0; boneIndex < armature->boneCount; boneIndex++ ) {
-                Bone* bone = &armature->bones[ boneIndex ];
-                if( strcmp( bone->name, boneName ) == 0 ) {
-                    targetBone = bone;
-                    break;
-                }
-            }
-
-            targetBone->invBindPose = TransposeMatrix( matrix );
-            targetBone->invBindPose = FlipMatrixOrientation( targetBone->invBindPose );
-        }
-
-        free( boneMatriciesData );
-        free( boneNamesLocalCopy );
-        free( colladaTextBuffer );
-    } else {
-        for( int i = 0; i < armature->boneCount; ++i ) {
-            Bone* bone = &armature->bones[ i ];
-            bone->invBindPose = InverseMatrix( bone->bindPose );
-        }
-    }
-}
-
-//TODO: refactor this method
-static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeometryData* storage, Armature* armature ) {
     if( rawData == NULL ) {
         printf( "No data passed in.\n" );
         return false;
@@ -491,7 +386,119 @@ static bool ParseMeshDataFromCollada( void* rawData, Stack* allocater, MeshGeome
     return true;
 }
 
-void LoadAnimationDataFromCollada( 
+static bool ParseArmatureDataFromCollada( 
+    void* data, 
+    Stack* allocater, 
+    Armature* armature 
+) {
+    if( data == NULL ) {
+        printf( "No data passed in.\n" );
+        return false;
+    }
+
+    tinyxml2::XMLDocument colladaDoc;
+    colladaDoc.Parse( (const char*)data );
+
+    //Get the type of element that could store an armature
+    tinyxml2::XMLElement* colladaElement = colladaDoc.FirstChildElement( "COLLADA" );
+    tinyxml2::XMLElement* visualScenesNode = NULL;
+    {
+        //TODO: check for nulls at each step
+        visualScenesNode = colladaElement
+        ->FirstChildElement( "library_visual_scenes" )
+        ->FirstChildElement( "visual_scene" )
+        ->FirstChildElement( "node" );
+    }
+
+    //Step through scene heirarchy until start of armature is found
+    tinyxml2::XMLElement* armatureNode = NULL;
+    while( visualScenesNode != NULL ) {
+        if( visualScenesNode->FirstChildElement( "node" ) != NULL && 
+            visualScenesNode->FirstChildElement( "node" )->Attribute( "type", "JOINT" ) != NULL 
+        ) {
+            armatureNode = visualScenesNode;
+            break;
+        } else {
+            visualScenesNode = visualScenesNode->NextSibling()->ToElement();
+        }
+    }
+    if( armatureNode == NULL ) {
+        printf( "No armature data found in this file\n" );
+        return false;
+    }
+
+    //Parse bind poses, number bones etc. recursively
+    armature->boneCount = 0;
+    tinyxml2::XMLElement* boneElement = armatureNode->FirstChildElement( "node" );
+    ParseColladaBoneData( boneElement, armature, NULL );
+
+    //TODO: clean/refactor this mess
+    //Parse inverse bind pose data from skinning section of XML
+    tinyxml2::XMLElement* controllersElement = colladaElement
+        ->FirstChildElement( "library_controllers" )
+        ->FirstChildElement( "controller" );
+    if( controllersElement != NULL ) {
+        tinyxml2::XMLElement* boneNamesSource = controllersElement
+            ->FirstChildElement( "skin" )
+            ->FirstChildElement( "source" );
+        tinyxml2::XMLElement* boneBindPoseSource = boneNamesSource->NextSibling()->ToElement();
+
+        float* boneMatriciesData = (float*)malloc( sizeof(float) * 16 * armature->boneCount );
+        const char* boneNameArrayData = boneNamesSource->FirstChild()->FirstChild()->Value();
+        const char* boneMatrixTextData = boneBindPoseSource->FirstChild()->FirstChild()->Value();
+        size_t nameDataLen = strlen( boneNameArrayData );
+        size_t matrixDataLen = strlen( boneMatrixTextData );
+
+        char* boneNamesLocalCopy = NULL;
+        boneNamesLocalCopy = (char*)malloc( nameDataLen + 1 );
+        memset( boneNamesLocalCopy, 0, nameDataLen + 1 );
+
+        char* colladaTextBuffer = NULL;
+        colladaTextBuffer = (char*)malloc( matrixDataLen );
+
+        memcpy( boneNamesLocalCopy, boneNameArrayData, nameDataLen );
+        memcpy( colladaTextBuffer, boneMatrixTextData, matrixDataLen );
+        TextToNumberConversion( colladaTextBuffer, boneMatriciesData, 16 );
+        char* nextBoneName = &boneNamesLocalCopy[0];
+        for( uint8 matrixIndex = 0; matrixIndex < armature->boneCount; matrixIndex++ ) {
+            Mat4 matrix;
+            memcpy( &matrix.m[0], &boneMatriciesData[matrixIndex * 16], sizeof(float) * 16 );
+
+            char boneName [32];
+            char* boneNameEnd = nextBoneName;
+            do {
+                boneNameEnd++;
+            } while( *boneNameEnd != ' ' && *boneNameEnd != 0 );
+            size_t charCount = boneNameEnd - nextBoneName;
+            memset( boneName, 0, sizeof( char ) * 32 );
+            memcpy( boneName, nextBoneName, charCount );
+            nextBoneName = boneNameEnd + 1;
+
+            Bone* targetBone = NULL;
+            for( uint8 boneIndex = 0; boneIndex < armature->boneCount; boneIndex++ ) {
+                Bone* bone = &armature->bones[ boneIndex ];
+                if( strcmp( bone->name, boneName ) == 0 ) {
+                    targetBone = bone;
+                    break;
+                }
+            }
+
+            targetBone->invBindPose = TransposeMatrix( matrix );
+            targetBone->invBindPose = FlipMatrixOrientation( targetBone->invBindPose );
+        }
+
+        free( boneMatriciesData );
+        free( boneNamesLocalCopy );
+        free( colladaTextBuffer );
+    } else {
+        for( int i = 0; i < armature->boneCount; ++i ) {
+            Bone* bone = &armature->bones[ i ];
+            bone->invBindPose = InverseMatrix( bone->bindPose );
+        }
+    }
+}
+
+static void LoadAnimationDataFromCollada( 
     const char* fileName, 
     ArmatureKeyFrame* keyframe, 
     Armature* armature 
@@ -503,6 +510,12 @@ void LoadAnimationDataFromCollada(
         ->FirstChildElement( "library_animations" )
         ->FirstChild();
 
+    Mat4* localTransforms = NULL;
+    localTransforms = (Mat4*)malloc( sizeof( Mat4 ) * armature->boneCount );
+    assert( localTransforms );
+    memset( localTransforms, 0, sizeof( Mat4 ) * armature->boneCount );
+
+    //Read each local transform matrix
     while( animationNode != NULL ) {
         //Desired data: what bone, and what local transform to it occurs
         Mat4 boneLocalTransform = { };
@@ -525,7 +538,7 @@ void LoadAnimationDataFromCollada(
             }
         }
 
-        //TODO: can this block be refactored? simplified?
+        //get the local bone transform matrix
         {
             //Parse matrix data, and extract first keyframe data
             tinyxml2::XMLNode* transformMatrixElement = animationNode
@@ -540,30 +553,22 @@ void LoadAnimationDataFromCollada(
             memset( transformDataCopy, 0, transformDataLen );
             memcpy( transformDataCopy, matrixTransformData, transformDataLen );
 
+            float rawTransformData [16] = { };
             int count = 0; 
             transformMatrixElement->FirstChildElement()->QueryAttribute( "count", &count );
-            float* rawTransformData = (float*)malloc( count * sizeof(float) );
-            memset( rawTransformData, 0, count * sizeof(float) );
+            assert( count == 16 );
+            memset( rawTransformData, 0, 16 * sizeof(float) );
             TextToNumberConversion( transformDataCopy, rawTransformData, count );
             memcpy( &boneLocalTransform.m[0][0], &rawTransformData[0], 16 * sizeof(float) );
 
             free( transformDataCopy );
-            free( rawTransformData );
         }
 
-        //Save data in BoneKeyFrame struct
         boneLocalTransform = TransposeMatrix( boneLocalTransform );
         if( targetBone == armature->rootBone ) {
-            Mat4 correction;
-            correction.m[0][0] = 1.0f; correction.m[0][1] = 0.0f; correction.m[0][2] = 0.0f; correction.m[0][3] = 0.0f;
-            correction.m[1][0] = 0.0f; correction.m[1][1] = 0.0f; correction.m[1][2] = -1.0f; correction.m[1][3] = 0.0f;
-            correction.m[2][0] = 0.0f; correction.m[2][1] = 1.0f; correction.m[2][2] = 0.0f; correction.m[2][3] = 0.0f;
-            correction.m[3][0] = 0.0f; correction.m[3][1] = 0.0f; correction.m[3][2] = 0.0f; correction.m[3][3] = 1.0f;
-            //boneLocalTransform = MultMatrix( correction, boneLocalTransform );
             boneLocalTransform = FlipMatrixOrientation( boneLocalTransform );
         }
-        BoneKeyFrame* key = &keyframe->targetBoneTransforms[ targetBone->boneIndex ];
-        key->combinedMatrix = boneLocalTransform;
+        localTransforms[ targetBone->boneIndex ] = boneLocalTransform;
 
         animationNode = animationNode->NextSibling();
 
@@ -573,18 +578,25 @@ void LoadAnimationDataFromCollada(
     //Pre multiply bones with parents to save doing it during runtime
     struct {
         ArmatureKeyFrame* keyframe;
+        Mat4* localTransforms;
         void PremultiplyKeyFrame( Bone* target, Mat4 parentTransform ) {
             BoneKeyFrame* boneKey = &keyframe->targetBoneTransforms[ target->boneIndex ];
-            Mat4 netMatrix = MultMatrix( boneKey->combinedMatrix, parentTransform );
+            Mat4 localMatrix = localTransforms[ target->boneIndex ];
+            Mat4 netMatrix = MultMatrix( localMatrix, parentTransform );
 
             for( uint8 boneIndex = 0; boneIndex < target->childCount; boneIndex++ ) {
                 PremultiplyKeyFrame( target->children[ boneIndex ], netMatrix );
             }
-            boneKey->combinedMatrix = netMatrix;
-            DecomposeMat4( boneKey->combinedMatrix, &boneKey->scale, &boneKey->rotation, &boneKey->translation );
+            DecomposeMat4( netMatrix, 
+                &boneKey->transform.scale.vec, 
+                &boneKey->transform.rotation, 
+                &boneKey->transform.translation 
+            );
         }
     }LocalRecursiveScope;
     LocalRecursiveScope.keyframe = keyframe;
-    Mat4 i; SetToIdentity( &i );
-    LocalRecursiveScope.PremultiplyKeyFrame( armature->rootBone, i );
+    LocalRecursiveScope.localTransforms = localTransforms;
+    LocalRecursiveScope.PremultiplyKeyFrame( armature->rootBone, IdentityMatrix );
+
+    free( localTransforms );
 }

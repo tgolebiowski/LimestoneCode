@@ -3,6 +3,8 @@ static char* PrimitiveVertShader =
 "uniform mat4 cameraMatrix;"
 "uniform mat4 modelMatrix;"
 "attribute vec3 position;"
+"attribute vec3 color;"
+
 "void main() { "
 "    gl_Position = cameraMatrix * modelMatrix * vec4( position, 1.0 );"
 "}";
@@ -131,6 +133,7 @@ static void MakeTexturedQuad(
     };
 
     data->vData = (Vec3*)StackAllocAligned( allocater, sizeof( Vec3 ) * 2 * 3 );
+    data->normalData = (Vec3*)StackAllocAligned( allocater, sizeof( Vec3 ) * 2 * 3 );
     data->uvData = (Vec2*)StackAllocAligned( allocater, sizeof( Vec2 ) * 2 * 3 );
 
     //CCW indicies
@@ -139,8 +142,11 @@ static void MakeTexturedQuad(
     for( int i = 0; i < 6; ++i ) {
         data->vData[ i ] = verts[ indexBuffer[ i ] ];
         data->uvData[ i ] = uv[ indexBuffer[ i ] ];
+        data->normalData[ i ] = { 0.0f, 0.0f, 1.0f };
     }
     data->dataCount = 6;
+    data->aabbMax = { halfX, halfY, 0.0f };
+    data->aabbMin = { -halfX, -halfY, 0.0f };
 }
 
 static void DrawVertsImmediate( 
@@ -180,7 +186,14 @@ static void DrawVertsImmediate(
     drawLineCommand.uniformData[ primRenderer->cameraUniformIndex ] = cameraMatrix;
     drawLineCommand.uniformData[ primRenderer->colorUniformIndex ] = color;
 
-    primRenderer->renderDriver->Draw( &drawLineCommand, line, suppressBackFaceCulling, false, wireframe, nodepthtest );
+    if( suppressBackFaceCulling ) { 
+        primRenderer->renderDriver->SetRenderState( SUPPRESS_BACKFACE_CULL, 0.0f ); 
+    }
+    if( nodepthtest ) { 
+        primRenderer->renderDriver->SetRenderState( SUPPRESS_DEPTH_TEST, 0.0f ); 
+    }
+    primRenderer->renderDriver->Draw( &drawLineCommand, line, wireframe );
+    primRenderer->renderDriver->ResetRenderState();
 }
 
 static void DrawDot( 
@@ -230,7 +243,9 @@ static void DrawDot(
     drawDotCommand.uniformData[ primRenderer->transformUniformIndex ] = (void*)modelMatrix;
     drawDotCommand.uniformData[ primRenderer->colorUniformIndex ] = color;
 
-    primRenderer->renderDriver->Draw( &drawDotCommand, false, true, false, false, false );
+    primRenderer->renderDriver->SetRenderState( SUPPRESS_DEPTH_WRITE, 0.0f );
+    primRenderer->renderDriver->Draw( &drawDotCommand, false, false );
+    primRenderer->renderDriver->ResetRenderState();
 }
 
 static void DrawGridOnXZPlane( 
@@ -312,6 +327,58 @@ static void InitPrimitveRenderData(
     );
 
     primRenderer->renderDriver = renderDriver;
+}
+
+static void RenderArmatureAsLines( 
+    PrimitiveDrawingData* primRenderer, 
+    Mat4 cameraMatrix,
+    Armature* armature
+) {
+    //TODO: Move this logic to debugdraw
+    struct LocalFunctions {
+        Mat4* cameraMatrix;
+        Mat4* modelMatrix;
+        void drawBone(Bone* bone, PrimitiveDrawingData* primRenderer) {
+            Vec3 origin = { 0,0,0 };
+            //origin = MultVec( bone->invBindPose, origin );
+            origin = TransformVec( bone->transform, origin );
+
+            if( bone->childCount > 0 ) {
+                for( int i = 0; i < bone->childCount; ++i ) {
+                    Bone* childBone = bone->children[ i ];
+                    Vec3 o2 = { 0,0,0 };
+                    //o2 = MultVec( childBone->invBindPose, o2 );
+                    o2 = TransformVec( childBone->transform, o2 );
+
+                    Vec3 v [2] = { origin, o2 };
+                    DrawVertsImmediate(
+                        primRenderer,
+                        v, 2, true, false, false, false,
+                        this->cameraMatrix,
+                        this->modelMatrix,
+                        NULL
+                    );
+                    this->drawBone( childBone, primRenderer );
+                }
+            } else {
+                Vec3 o2 = { 0, 1, 0 };
+                o2 = TransformVec( bone->transform, o2 );
+
+                Vec3 v [2] = { origin, o2 };
+                DrawVertsImmediate(
+                    primRenderer,
+                    v, 2, true, false, false, false,
+                    this->cameraMatrix,
+                    this->modelMatrix,
+                    NULL
+                );
+            }
+        };
+    } lf = {
+        &cameraMatrix,
+        &IdentityMatrix
+    };
+    lf.drawBone( armature->rootBone, primRenderer );
 }
 
 #if 0 

@@ -9,9 +9,17 @@ struct Framebuffer;
 
 typedef uint32 PtrToGpuMem;
 
-struct RenderDriver {
-    bool (*ParseMeshDataFromCollada)( void*, Stack*, MeshGeometryData*, Armature* );
+//RenderState Change Options
+enum {
+    RS_LINEWIDTH = 0, 
+    SUPPRESS_BACKFACE_CULL = 1, 
+    FLIP_FACES_AND_CULLING = 2,
+    SUPPRESS_DEPTH_WRITE = 3, 
+    SUPPRESS_DEPTH_TEST = 4, 
+    TOGGLE_WIRE_FRAME = 5
+};
 
+struct RenderDriver {
     PtrToGpuMem (*AllocNewGpuArray)( void );
     void (*CopyDataToGpuArray)( PtrToGpuMem, void*, uint64 );
 
@@ -24,13 +32,12 @@ struct RenderDriver {
 	void (*CreateShaderProgram)( char*, char*, ShaderProgram* );
     void (*ClearShaderProgram)( ShaderProgram* );
 
+    void (*ResetRenderState)( void );
+    void (*SetRenderState)( int renderStateEnumValue, float value );
 	void (*Draw)( 
         RenderCommand* cmd, 
-        bool doLines, 
-        bool suppressBackFaceCull, 
-        bool suppressDepthWrite, 
-        bool isWireFrame, 
-        bool dontDepthCheck 
+        bool doLines,
+        bool isWireFrame
     );
 };
 
@@ -81,6 +88,28 @@ struct ShaderProgram {
     int32 vertexInputTypes[ MAX_SUPPORTED_VERT_INPUTS ];
     int32 uniformTypes[ MAX_SUPPORTED_UNIFORMS ];
     uint8 vertInputCount, uniformCount, samplerCount;
+
+    int32 operator[]( const char* lookup ) {
+        for( int i = 0; i < vertInputCount; ++i ) {
+            if( strcmp( vertexInputNames[i] , lookup ) == 0 ) {
+                return i;
+            }
+        }
+
+        for( int i = 0; i < uniformCount; ++i ) {
+            if( strcmp( uniformNames[i] , lookup ) == 0 ) {
+                return i;
+            }
+        }
+
+        for( int i = 0; i < samplerCount; ++i ) {
+            if( strcmp( samplerNames[i] , lookup ) == 0 ) {
+                return i;
+            }
+        }
+
+        return -1;
+    }
 };
 
 static int GetIndexOfShaderInput( ShaderProgram* shader, char* inputName ) {
@@ -106,8 +135,10 @@ static int GetIndexOfShaderInput( ShaderProgram* shader, char* inputName ) {
 }
 
 struct RenderCommand {
+    static RenderDriver* driver;
+
     enum {
-        INTERLEAVESTREAM, SEPARATE_GPU_ARRAYS
+        INTERLEAVESTREAM, SEPARATE_GPU_ARRAYS, RAW_CLIENT_ARRAYS
     };
 
 	ShaderProgram* shader;
@@ -116,7 +147,9 @@ struct RenderCommand {
 
     uint8 vertexFormat;
     union {
+        //TODO: rename to "gpuPtrInputs"
         uint32 vertexInputData [ MAX_SUPPORTED_VERT_INPUTS ];
+        void* clientDataArrays [ MAX_SUPPORTED_VERT_INPUTS ];
         struct {
             void* streamData;
             size_t streamSize;
@@ -165,13 +198,16 @@ static Mat4 CreatePerspectiveMatrix(
 
 //A NOTE viewprojection is MultMatrix( view, projection )
 
-static Mat4 CreateViewMatrix( Vec3 p, Vec3 lookAtTarget ) {
-    Vec3 up = { 0.0f, 1.0f, 0.0f };
+static Mat4 CreateViewMatrix( 
+    Vec3 p, 
+    Vec3 lookAtTarget, 
+    Vec3 upVec = { 0.0f, 1.0f, 0.0f } 
+) {
     Vec3 lookDirection = lookAtTarget - p;
     Normalize( &lookDirection );
 
     Vec3 zAxis = lookDirection;
-    Vec3 xAxis = Cross( lookDirection, up );
+    Vec3 xAxis = Cross( lookDirection, upVec );
     Vec3 yAxis = Cross( zAxis, xAxis );
 
     return {

@@ -786,8 +786,8 @@ static void PushAudioToSoundCard( App* gameapp, Win32Sound* win32Sound ) {
 
 GLRenderDriver Win32InitGLRenderer( 
 	HWND hwnd,
-	System* system, 
-	Stack* stackForGLAPI
+	System* system,
+	GLRendererGlobalState* state
 ) {
 	PIXELFORMATDESCRIPTOR pfd = {
 		sizeof( PIXELFORMATDESCRIPTOR ),
@@ -796,7 +796,7 @@ GLRenderDriver Win32InitGLRenderer(
 		    PFD_TYPE_RGBA,            //The kind of framebuffer. RGBA or palette.
 		    32,                       //Colordepth of the framebuffer.
 		    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //Don't care....
-		    16,                       //Number of bits for the depthbuffer
+		    32,                       //Number of bits for the depthbuffer
 	        0,                        //Number of bits for the stencilbuffer
 		    0,                        //Number of Aux buffers in the framebuffer.
 		    0, 0, 0, 0, 0             //Don't care...
@@ -807,6 +807,8 @@ GLRenderDriver Win32InitGLRenderer(
 	int letWindowsChooseThisPixelFormat;
 	letWindowsChooseThisPixelFormat = ChoosePixelFormat( deviceContext, &pfd ); 
 	SetPixelFormat( deviceContext, letWindowsChooseThisPixelFormat, &pfd );
+
+	//TODO: print & log the pixel format the user got
 
 	openglRenderContext = wglCreateContext( deviceContext );
 	if( wglMakeCurrent ( deviceContext, openglRenderContext ) == false ) {
@@ -820,9 +822,10 @@ GLRenderDriver Win32InitGLRenderer(
 	GL_FUNCS
 	#undef GLE
 
-	return InitGLRenderer( 
+	return InitGLRenderer(
+		state,
 		system->windowWidth, 
-		system->windowHeight 
+		system->windowHeight
 	);
 }
 
@@ -981,7 +984,9 @@ static int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR
 
 	InitWin32WorkerThread( &systemsMemory );
 
-	GLRenderDriver glDriver = Win32InitGLRenderer( hwnd, &system, &systemsMemory );
+	GLRendererGlobalState glRendererStorage = { };
+	globalGLRendererStorageRef = &glRendererStorage;
+	GLRenderDriver glDriver = Win32InitGLRenderer( hwnd, &system, globalGLRendererStorageRef );
 	Win32Sound win32Sound = Win32InitSound( hwnd, 60, &systemsMemory );
 
 	void* imguistate = InitImGui_LimeStone(	&systemsMemory,	(RenderDriver*)&glDriver, system.windowWidth, system.windowHeight );
